@@ -1,0 +1,45 @@
+# ---- 运行时与构建产物（规则：绝不提交 generated runtime directories）----
+runs/
+run/
+logs/
+*.log
+out/
+build/
+dist/
+dist-ssr/
+coverage/
+*.tsbuildinfo
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+.hatch/
+
+# ---- Node / 前端 ----
+node_modules/
+.vite/
+*.local
+
+# ---- 密钥与本地配置（规则：绝不 stage credentials）----
+.env
+.env.*
+*.pem
+*.key
+config.local.toml
+secrets/
+
+# ---- 编辑器与系统 ----
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+
+# ---- 临时 worktree 目录（若放在仓库内）----
+.worktrees/

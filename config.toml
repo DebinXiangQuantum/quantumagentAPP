@@ -1,0 +1,134 @@
+# =============================================================================
+# QuantumAgentApp 全局配置（唯一配置入口）
+# -----------------------------------------------------------------------------
+# 规则：
+#   1. 平台一切配置集中于本文件；后端启动时读取（环境变量 QAP_CONFIG 可覆盖路径，
+#      默认为仓库根目录 ./config.toml）。
+#   2. 密钥绝不写入本文件：每个模型通过 `api_key_env` 指向环境变量名，
+#      运行时从环境读取。
+#   3. 原型默认 `provider = "mock"`（零算力消耗、可离线演示）；
+#      接真实模型时改 `models.default` 的 provider/base_url/model 即可。
+# =============================================================================
+
+[server]
+host = "127.0.0.1"
+port = 8000
+# 前端 Vite 开发服务器来源（CORS 白名单）
+cors_origins = ["http://localhost:5173", "http://127.0.0.1:5173"]
+
+# -----------------------------------------------------------------------------
+# 模型提供方：支持三种 provider wire format
+#   provider = "openai"     → OpenAI Chat Completions 兼容格式（含各类中转/本地 vLLM）
+#   provider = "anthropic"  → Anthropic Messages API 格式
+#   provider = "mock"       → 内置脚本化 Mock（测试与演示用，不访问网络）
+# -----------------------------------------------------------------------------
+
+[models.default]
+provider = "mock"                       # 原型默认：不消耗算力
+model = "scripted-demo"
+# 接真实 OpenAI 格式时的示例（取消注释并调整）：
+# provider = "openai"
+# model = "gpt-4o-mini"
+# base_url = "https://api.openai.com/v1"
+# api_key_env = "OPENAI_API_KEY"
+# timeout_seconds = 120
+
+[models.claude]
+provider = "anthropic"
+model = "claude-sonnet-4-5"
+base_url = "https://api.anthropic.com"
+api_key_env = "ANTHROPIC_API_KEY"
+timeout_seconds = 120
+
+[models.openai-compatible]
+provider = "openai"
+model = "gpt-4o-mini"
+base_url = "https://api.openai.com/v1"
+api_key_env = "OPENAI_API_KEY"
+timeout_seconds = 120
+
+[models.mock]
+provider = "mock"
+model = "scripted-demo"
+
+# -----------------------------------------------------------------------------
+# Agent 运行时与内置演示插件
+# -----------------------------------------------------------------------------
+
+[agents]
+# 未显式绑定模型时使用的模型引用（指向 [models.<key>]）
+default_model_ref = "default"
+# 可选：外部插件目录（如 pulseagent 所在目录；为空则仅加载内置插件）
+plugins_dir = ""
+
+[agents.builtin.algorithm-designer]
+enabled = true
+model_ref = "default"
+
+[agents.builtin.calibration]
+enabled = true
+model_ref = "default"
+
+[agents.builtin.echo]
+enabled = true
+model_ref = "default"
+
+# -----------------------------------------------------------------------------
+# 异构硬件注册表（原型：模拟节点；simulated = true 时由内置模拟器驱动利用率）
+# kind: "qpu" | "gpu" | "cpu"；capacity = 同时可承载的步数（租约数）
+# -----------------------------------------------------------------------------
+
+[hardware]
+simulated = true
+tick_seconds = 2.0    # 模拟器利用率刷新周期（秒）
+
+[[hardware.nodes]]
+id = "qpu-quanta-20q"
+kind = "qpu"
+name = "QuANTA 20Q"
+model = "superconducting-transmon"
+capacity = 1
+
+[[hardware.nodes]]
+id = "gpu-a800-0"
+kind = "gpu"
+name = "A800 #0"
+model = "NVIDIA A800 80GB"
+capacity = 1
+
+[[hardware.nodes]]
+id = "gpu-a800-1"
+kind = "gpu"
+name = "A800 #1"
+model = "NVIDIA A800 80GB"
+capacity = 1
+
+[[hardware.nodes]]
+id = "cpu-node-0"
+kind = "cpu"
+name = "经典计算节点 #0"
+model = "EPYC 64C / 256GB"
+capacity = 4
+
+# -----------------------------------------------------------------------------
+# 调度器
+# -----------------------------------------------------------------------------
+
+[scheduler]
+max_parallel_steps = 4     # 平台全局同时运行的步数上限
+step_timeout_seconds = 60  # 单步超时（超时步标记 failed，任务视依赖决定成败）
+retry_failed_steps = false # 原型默认不重试
+
+# -----------------------------------------------------------------------------
+# 租户（原型：演示租户；demo_key 可被环境变量 QAP_DEMO_API_KEY 覆盖）
+# -----------------------------------------------------------------------------
+
+[tenancy]
+default_tenant = "demo"
+
+[[tenancy.tenants]]
+id = "demo"
+name = "Demo 租户"
+api_key = "demo-key"
+max_concurrent_tasks = 2
+max_messages_per_day = 1000
