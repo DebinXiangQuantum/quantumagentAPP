@@ -1,0 +1,167 @@
+"""领域模型：契约 §4 的序列化 JSON 结构（Pydantic v2）。
+
+不变量（本模块强制或配合校验）：
+- ``utilization ∈ [0,1]`` 且必须有限（NaN/±inf 拒绝）；
+- 所有带 ``-`` 前缀的 id 由 :class:`qap.core.ids.IdGenerator` 产生，
+  本模块只做形状校验（前缀正确性），全局唯一性由生成器保证；
+- Artifact 载荷在**构造时**即校验（非法载荷生成侧拒绝，见 artifacts.py）。
+"""
+
+from __future__ import annotations
+
+from typing import Any, Literal
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from qap.domain.artifacts import validate_artifact_payload
+
+#: Step/Task 共享的状态机字面量（契约 §4）
+StepStatus = Literal["pending", "running", "succeeded", "failed", "cancelled"]
+TaskStatus = Literal["pending", "running", "succeeded", "failed", "cancelled"]
+#: 硬件节点类型与在线状态
+NodeKind = Literal["qpu", "gpu", "cpu"]
+NodeStatus = Literal["online", "offline"]
+#: Step 的执行类别：classical→cpu 节点、quantum→qpu 节点、agent→gpu 节点
+StepKind = Literal["classical", "quantum", "agent"]
+
+
+def _check_finite_unit_interval(value: float) -> float:
+    """利用率校验：有限且 ∈ [0,1]（不变量 3 的前半部分）。"""
+    v = float(value)
+    if v != v or v in (float("inf"), float("-inf")):  # NaN 与 ±inf
+        raise ValueError(f"utilization must be finite, got {value!r}")
+    if not 0.0 <= v <= 1.0:
+        raise ValueError(f"utilization must be within [0,1], got {value}")
+    return v
+
+
+class AgentInfo(BaseModel):
+    """已注册 Agent 插件的对外描述（契约 §4 AgentInfo）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(min_length=1)
+    name: str = Field(min_length=1)
+    description: str = ""
+    capabilities: list[str] = Field(default_factory=list)
+    model_ref: str = Field(min_length=1)
+    builtin: bool = True
+
+
+class Conversation(BaseModel):
+    """会话（契约 §4 Conversation）。消息本体不内嵌，见 Message。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(pattern=r"^c-\d+$")
+    title: str = ""
+    agent_id: str = Field(min_length=1)
+    tenant_id: str = Field(min_length=1)
+    created_at: str
+
+
+class Artifact(BaseModel):
+    """Artifact 统一信封（契约 §6）：``{id, type, title, payload}``。
+
+    已知 type（circuit/counts/waveform）的载荷约束在构造期校验，
+    非法载荷直接抛 ``ValidationFailed``（生成侧拒绝）；
+    未知 type 允许通过——前端按契约对未知 type 优雅降级为 JSON 卡片，
+    后端只要求 payload 是可 JSON 序列化的对象。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(pattern=r"^a-\d+$")
+    type: str = Field(min_length=1)
+    title: str = ""
+    payload: dict[str, Any]
+
+    @field_validator("payload")
+    @classmethod
+    def _validate_payload(cls, payload: dict[str, Any], info) -> dict[str, Any]:
+        validate_artifact_payload(info.data.get("type"), payload)
+        return payload
+
+
+class Message(BaseModel):
+    """会话内一条消息（契约 §4 Message）。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(pattern=r"^m-\d+$")
+    conversation_id: str = Field(pattern=r"^c-\d+$")
+    role: Literal["user", "assistant"]
+    content: str
+    agent_id: str = Field(min_length=1)
+    artifacts: list[Artifact] = Field(default_factory=list)
+    created_at: str
+
+
+class Step(BaseModel):
+    """任务中的一个步骤（契约 §4 Step）。
+
+    ``node_id`` 未调度时为 null；``depends_on`` 引用同一 Task 内其他 Step id
+    （DAG 完整性校验见 orchestrator/dag.py）。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(pattern=r"^s-\d+$")
+    name: str = Field(min_length=1)
+    kind: StepKind
+    status: StepStatus = "pending"
+    node_id: str | None = None
+    depends_on: list[str] = Field(default_factory=list)
+    started_at: str | None = None
+    finished_at: str | None = None
+    detail: str = ""
+    error: str | None = None
+
+
+class Task(BaseModel):
+    """编排单位（契约 §4 Task）：步骤集合构成 DAG。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(pattern=r"^t-\d+$")
+    conversation_id: str = Field(pattern=r"^c-\d+$")
+    tenant_id: str = Field(min_length=1)
+    name: str = Field(min_length=1)
+    status: TaskStatus = "pending"
+    steps: list[Step] = Field(default_factory=list)
+    created_at: str
+
+
+class Allocation(BaseModel):
+    """硬件节点上的一份租约（契约 §4 Allocation）。
+
+    ``agent_id`` 记录"哪个 Agent 在用这块硬件"（§10 演示第 4 条的
+    可观察行为来源）；agent 步骤为发起 Agent，其余步骤为提交任务的 Agent。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    task_id: str = Field(pattern=r"^t-\d+$")
+    step_id: str = Field(pattern=r"^s-\d+$")
+    agent_id: str | None = None
+    leased_at: str
+
+
+class HardwareNode(BaseModel):
+    """硬件节点（契约 §4 HardwareNode）：容量/利用率/活动租约。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(min_length=1)
+    kind: NodeKind
+    name: str
+    model: str
+    status: NodeStatus = "online"
+    utilization: float = 0.0
+    capacity: int = Field(ge=1)
+    allocations: list[Allocation] = Field(default_factory=list)
+
+    @field_validator("utilization")
+    @classmethod
+    def _validate_utilization(cls, value: float) -> float:
+        return _check_finite_unit_interval(value)

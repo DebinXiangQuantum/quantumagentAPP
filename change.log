@@ -4,6 +4,32 @@
 Removed + Validation（本切片测试结论）+ Known defects（已知缺陷）。
 日期为提交日（ISO 8601）。
 
+## 2026-10-13 S2 领域模型 + Artifact 校验 + 事件总线 (backend)
+
+### Added
+- `qap/domain/models.py`：契约 §4 全部序列化模型；id 前缀形状校验
+  （c-/m-/t-/s-/a-）；utilization 有限且 ∈ [0,1]；Artifact 信封在构造期
+  调用载荷校验（非法载荷生成侧拒绝）；未知 artifact type 放行以配合
+  前端"未知 type 优雅降级"契约。
+- `qap/domain/artifacts.py`：circuit（qubits ∈ [1,32]、下标界内、
+  单量子门/受控门/SWAP 类/MEASURE 元数规则、控制-目标重叠拒绝、
+  操作 id 唯一；未知门名放行但下标仍校验）、counts（计数守恒
+  sum==shots、0/1 键长 == qubits、值非负 int、bool 排除）、
+  waveform（采样率 > 0 有限、samples ∈ [2,65536] 全有限、label 非空）。
+- `qap/events/bus.py`：asyncio EventBus——全局单调 seq（SSE 帧 id 即
+  seq；message.delta data 注入契约 seq 字段）、内存回放缓存最近 1024 条
+  （`?after=` 续传）、会话流（本会话事件 + 全局 hardware.updated）与
+  全局流（仅 task.updated/hardware.updated）两级过滤、有界订阅队列
+  （满时丢最旧并计数 dropped）。
+- `qap/core/clock.py`：契约格式 UTC 时间戳（秒级、Z 后缀）。
+- 测试 65 个新用例（不变量 / 非法输入 / 缓冲驱逐 / 会话隔离 / 溢出）。
+
+### Validation
+- `pytest`：91 passed（26 config + 65 本切片）。
+
+### Known defects
+- 无。
+
 ## 2026-10-13 S1 配置加载器与校验 (backend)
 
 ### Added

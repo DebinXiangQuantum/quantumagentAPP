@@ -76,6 +76,20 @@ Pydantic v2 严格校验（`extra=forbid`，缺键/类型错/未知 provider/未
 测试：`backend/tests/test_config.py`（26 用例：合法加载、密钥规则、
 15 类畸形配置 fail-fast、TOML 语法错、路径探测）。
 
+**S2（领域模型 + Artifact 校验 + 事件总线）**：
+- `qap/domain/models.py`：契约 §4 全部序列化模型（AgentInfo/Conversation/
+  Message/Step/Task/HardwareNode/Allocation/Artifact 信封），id 前缀形状校验、
+  utilization ∈ [0,1] 且有限（NaN/±inf 拒绝）、Artifact 载荷构造期校验、
+  未知 type 放行（前端降级渲染的契约配合）。
+- `qap/domain/artifacts.py`：circuit/counts/waveform 三类载荷的完整约束
+  （量子比特下标、门元数、计数守恒、采样有限性等），非法载荷生成侧拒绝。
+- `qap/events/bus.py`：asyncio 发布/订阅总线——全局单调 seq（SSE 帧 id 即
+  seq，`?after=` 续传游标）、内存回放缓存最近 1024 条、会话流/全局流两级
+  过滤、慢客户端有界队列丢最旧。
+- `qap/core/clock.py`：契约格式 UTC 时间戳。
+- 测试：test_domain_models / test_artifacts / test_events_bus（新增 65 用例：
+  不变量、非法输入、缓冲驱逐、会话隔离、队列溢出等）。
+
 ## 前端 (Frontend)
 
 *本节由 `feat/frontend` 分支的开发切片维护更新：组件清单、页面说明、测试结果。*
