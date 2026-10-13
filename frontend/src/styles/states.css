@@ -1,0 +1,269 @@
+/**
+ * states.css —— 组件基础形态与非理想态样式（自 global.css 拆分）。
+ *
+ * 内容：卡片/面板头/Tab 五态、统一状态徽标、警示条、同构骨架屏族、
+ *       全局错误条、光标淡出宿主（动效参数均走 token）。
+ */
+
+/* ============ 卡片 / 面板 ============ */
+.card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+}
+.card--elevated {
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-2);
+}
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-8);
+  padding: var(--space-12) var(--space-16);
+  border-bottom: 1px solid var(--border-default);
+}
+
+
+/* ============ Tab ============ */
+.tab {
+  padding: var(--space-8) var(--space-12);
+  font-family: var(--font-ui);
+  font-size: var(--fs-body);
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition:
+    color var(--motion-fast) var(--ease-out),
+    border-color var(--motion-fast) var(--ease-out);
+}
+.tab:hover {
+  color: var(--text-primary);
+}
+.tab:active {
+  color: var(--accent-cyan);
+}
+.tab[aria-selected='true'] {
+  color: var(--accent-cyan);
+  border-bottom-color: var(--accent-cyan);
+}
+.tab:disabled {
+  color: var(--text-faint);
+  cursor: not-allowed;
+}
+
+
+/* ============ 状态徽标（§6.5 全组件统一） ============ */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-8);
+  font-family: var(--font-data);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-data);
+  border-radius: var(--radius-sm);
+  border: 1px solid;
+  white-space: nowrap;
+}
+.status-badge__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+/* pending：空心 */
+.status-badge--pending {
+  color: var(--text-secondary);
+  border-color: var(--border-strong);
+  background: transparent;
+}
+.status-badge--pending .status-badge__dot {
+  background: transparent;
+  border: 1px solid var(--text-secondary);
+}
+/* running：warning 呼吸 */
+.status-badge--running {
+  color: var(--warning);
+  border-color: var(--warning);
+  background: transparent;
+}
+.status-badge--running .status-badge__dot {
+  animation: qap-badge-breathe var(--motion-glow-breath) var(--ease-out) infinite;
+}
+@keyframes qap-badge-breathe {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+.status-badge--succeeded {
+  color: var(--success);
+  border-color: var(--success);
+  background: transparent;
+}
+.status-badge--failed {
+  color: var(--danger);
+  border-color: var(--danger);
+  background: transparent;
+}
+/* cancelled：faint */
+.status-badge--cancelled {
+  color: var(--text-faint);
+  border-color: var(--border-default);
+  background: transparent;
+}
+
+
+/* ============ 警示条（错误态） ============ */
+.error-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-12);
+  padding: var(--space-8) var(--space-12);
+  background: var(--bg-inset);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: var(--fs-caption);
+}
+
+
+/* ============ 同构骨架屏结构（§7：占位结构与真实内容同构） ============ */
+.conversation-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  padding: var(--space-12);
+}
+.conversation-skeleton__title {
+  height: 13px;
+  width: 70%;
+}
+.conversation-skeleton__meta {
+  height: 12px;
+  width: 45%;
+}
+
+.message-list-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-24);
+}
+.message-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-16);
+}
+.message-skeleton__assistant {
+  display: flex;
+  gap: var(--space-12);
+}
+.message-skeleton__avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+}
+.message-skeleton__lines {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+}
+.message-skeleton__line {
+  height: 12px;
+  width: 90%;
+}
+.message-skeleton__line--short {
+  width: 55%;
+}
+.message-skeleton__user {
+  display: flex;
+  justify-content: flex-end;
+}
+.message-skeleton__bubble {
+  height: 36px;
+  width: 45%;
+  border-radius: var(--radius-md);
+}
+
+.hw-grid-skeleton {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(224px, 1fr));
+  gap: var(--space-12);
+}
+.hw-card-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  padding: var(--space-12);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+}
+.hw-card-skeleton__name {
+  height: 13px;
+  width: 55%;
+}
+.hw-card-skeleton__model {
+  height: 12px;
+  width: 75%;
+}
+.hw-card-skeleton__bar {
+  height: 6px;
+  width: 100%;
+  border-radius: var(--radius-sm);
+}
+.hw-card-skeleton__dots {
+  display: flex;
+  gap: var(--space-4);
+}
+.hw-card-skeleton__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.dag-skeleton {
+  position: relative;
+  height: 160px;
+}
+.dag-skeleton__node {
+  position: absolute;
+  width: 200px;
+  height: 64px;
+  border-radius: var(--radius-sm);
+  left: 0;
+  top: 0;
+}
+.dag-skeleton__node--child {
+  left: 272px;
+  top: 44px;
+}
+.dag-skeleton__node--child2 {
+  left: 544px;
+  top: 0;
+}
+
+/* 光标完成淡出的宿主行 */
+.message-cursor-fade {
+  display: flex;
+  justify-content: flex-start;
+  padding-left: 40px; /* 头像宽 28 + 间距 12，对齐助手正文 */
+}
+
+/* ============ 全局错误条（bootstrap 失败） ============ */
+.global-error {
+  flex-shrink: 0;
+  padding: var(--space-8) var(--space-16);
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-default);
+}
+.global-error__bar {
+  background: var(--bg-inset);
+}

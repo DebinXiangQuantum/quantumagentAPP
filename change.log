@@ -3,6 +3,23 @@
 格式：新条目置顶。每次切片提交必须更新（Added / Changed / Fixed + Validation +
 Known defects）。scope 见 docs/DEVELOPMENT.md §2。
 
+## 2026-10-13 `frontend: 样式文件拆分（global.css → states.css）`
+
+### Changed
+
+- `global.css` 630 行 → 371 行；卡片/面板头/Tab、状态徽标、警示条、骨架屏族、
+  全局错误条、光标淡出宿主拆至新建 `states.css`（269 行），满足"文件优先
+  <400 行"规则（两项均在 700 硬上限内）。
+
+### Validation
+
+- 构建产物 CSS 体积与拆分前逐字节一致（27.30 kB）；`npm test` 80 用例全绿。
+
+### Known defects
+
+- `src/api/mock/engine.ts` 623 行（脚本化演示链路内聚，<700 硬上限；拆分需
+  引入脚本上下文对象，收益有限，暂保留）。
+
 ## 2026-10-13 `frontend: 非理想态与动效打磨——骨架、错误重试、光标淡出（S6）`
 
 ### Added

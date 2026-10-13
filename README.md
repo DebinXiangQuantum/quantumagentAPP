@@ -82,8 +82,9 @@ frontend/package.json）。
   阴影/z-index/动效/布局尺寸，编译为 `:root` CSS 变量注入（逐字对齐
   docs/design.md §2–§5、§7）。
 - `src/styles/global.css` —— reset、五态按钮/输入、focus-visible ring、滚动条、
-  骨架 shimmer、流式光标闪烁(530ms)、呼吸光晕(2s)、条形生长(160ms)、
-  `prefers-reduced-motion` 全量降级。
+  流式光标闪烁(530ms)、呼吸光晕(2s)、条形生长(160ms)、
+  `prefers-reduced-motion` 全量降级；`src/styles/states.css` —— 卡片/Tab、
+  状态徽标、警示条、同构骨架屏（shimmer 1.2s）、全局错误条。
 - `src/components/layout/` —— `AppShell`（三栏 Grid：264px 会话侧栏 · 流体对话区
   max 820px · 360px 检查器）、`TopBar`（56px：产品名 / Agent 选择器 / 租户徽标 /
   SSE 连接灯）、`SessionSidebar`（会话列表/新建/切换）、`InspectorPanel`
