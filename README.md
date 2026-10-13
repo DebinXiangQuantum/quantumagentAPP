@@ -216,6 +216,32 @@ MEASURE 表针后收束；⑦ 容量点增加 title 提示；⑧ DAG 依赖边�
 **91 passed**（新增 formatHM×6 + DAG 纵向几何×1），build 零错误；
 DAG 面板/时间戳/占用徽标（"algorithm-designer · t-3/s-8"）截图复验通过。
 
+**v2 前端修订（2026-10-13，feat/frontend-v2，契约 v1.1）**：六个切片——
+① **三主题**（§2.1）：`tokens.ts buildTokenCss()` 输出 `:root`(dark 默认) +
+`[data-theme="light"|"sepia"]` 覆盖块（色板逐字对齐文档表；浅/护眼阴影降档
+`--shadow-1/2`、`color-scheme:light`）；`ThemeProvider` 挂 `<html data-theme>`，
+设置页三选一卡片即时预览，localStorage 持久化。② **三语言**（§2.2）：自研
+`src/i18n/`（zh/en/ja 字典 + `t(key,params?)`，零重依赖），界面 chrome 全量
+迁移（顶栏/侧栏/检查器 Tab/设置页/空态/按钮/占位/状态徽标/主题名/思考程度名/
+相对时间），三字典 key 集合一致性由测试锁定；用户与 Agent 内容不翻译。
+③ **顶栏改造**：移除 Agent 选择器（顶栏+输入区两处，编排 Agent 自动调度），
+新增模型选择器（admin models 渠道池）+ 思考程度选择器（off/low/high/max；
+切模型默认跟随渠道 default_thinking，手动改过本会话保持）；选择随消息发送
+（POST body `model_ref`/`thinking_level`）。④ **设置页**（§5 四分区）：侧栏
+底部齿轮入口，覆盖侧栏+对话区（检查器保留）——外观（主题/语言）、模型与思考
+（本地偏好持久化）、提供商渠道（GET/PUT/DELETE admin/models；api_key 仅写入
+永不回显；错误内联）、插件管理（启停开关/安装 source_path/两段式卸载确认）。
+⑤ **思考过程展示**（§7 v1.1）：store 归并 `message.reasoning` SSE（独立缓冲、
+seq 单调、先于正文）；completed 并入 `Message.reasoning`；助手消息顶部
+"🧠 思考过程"折叠块（默认收起+字数摘要+chevron 旋转；展开 mono/caption/
+secondary/240px 滚动；流式期间"思考中…"微光标态）。⑥ **截断修复（§5.1）+
+Mock 全链路**：DAG 节点 232×76、名称 2 行 line-clamp、id 单行截断、任务标题
+min-width:0；侧栏会话条目 min-width:0；Mock 引擎补齐 admin models fixtures
+（glm-5.3/glm-5.3-flash/mock + default_thinking）、插件 fixtures（含 broken
+示例）、orchestrator 编排流（文本启发式 dispatch 专家 → circuit+counts /
+waveform）、reasoning 流（思考增量→正文）；`VITE_USE_MOCK=1` 下设置页/模型
+选择/思考展示全部可演示。测试 **137 passed**（v1 91 + 新增 46），build 零错误。
+
 ### 组件清单（随切片增长）
 
 - `src/styles/tokens.ts` —— 设计系统唯一来源：全部色板/字体栈/字号/间距/圆角/
@@ -253,7 +279,21 @@ DAG 面板/时间戳/占用徽标（"algorithm-designer · t-3/s-8"）截图复�
   "agent · task/step"、offline 降饱和斜纹、点击开 Drawer 全量信息+历史任务）。
 - `src/components/common/` —— `StatusBadge`（五状态统一徽标：pending 空心/
   running warning 呼吸/succeeded/failed/cancelled faint）、`Drawer`
-  （右滑详情抽屉，Esc/遮罩关闭，z-drawer）。
+  （右滑详情抽屉，Esc/遮罩关闭，z-drawer）。、`ThemeProvider`（§2.1 三主题挂载：
+  订阅 uiStore.theme 写 `<html data-theme>`）。
+- `src/i18n/` —— 轻量自研三语 i18n（§2.2）：`zh.ts`/`en.ts`/`ja.ts` 字典 +
+  `translate()`/`t()`/`useTranslate()`（语言存 uiStore + localStorage，
+  切换即时生效；三字典 key 集合一致性由 i18n.test 锁定）。
+- `src/components/chat/ReasoningBlock.tsx` —— 思考过程折叠块（v1.1 §5）：
+  默认收起 + 字数摘要 + chevron 旋转；展开 mono/caption/secondary/240px 滚动；
+  流式 active 态"思考中…" + 微光标。
+- `src/components/settings/` —— 设置页（v1.1 §5 四分区）：`SettingsPage`
+  （覆盖侧栏+对话区，检查器保留）+ `AppearanceSection`（主题三选一卡片即时
+  预览 + 语言三选）+ `ModelThinkingSection`（默认模型/思考，本地偏好）+
+  `ChannelsSection`（渠道表 + 新建/编辑表单：api_key 仅写入不回显、校验内联、
+  两段式删除）+ `PluginsSection`（启停开关/安装/两段式卸载）。
+- `src/api/mock/scripts.ts` —— Mock 编排脚本（v1.1）：思考增量（thinking=off
+  跳过）→ 文本启发式 dispatch 专家（VQE/校准/回显）→ artifacts + DAG 推进。
 - 响应式：<1280px 检查器浮层化；<960px 侧栏抽屉化（`src/styles/layout.css`）。
 
 ### 运行
@@ -266,10 +306,13 @@ npm run dev            # 开发服务器（5173），连接 http://127.0.0.1:800
 VITE_USE_MOCK=1 npm run dev   # Mock 模式：后端未启动也可完整演示
 ```
 
-### 测试结果（S6 后 · 最终）
+### 测试结果（feat/frontend-v2 · 最终）
 
-`npm test`：17 个文件 80 个用例全绿。`npm run build`：零 TS 错误（JS 194 kB /
-gzip 62 kB）。
+`npm test`：24 个文件 **137 个用例全绿**（v1 的 91 条保持 + v2 新增 46 条：
+三主题 token 断言 5、i18n 字典/切换 6、ThemeProvider 4、TopBar 模型/思考
+联动与请求体 4、ReasoningBlock 折叠与 SSE 归并 6、admin 渠道/插件契约与编排流
+11、设置页四分区 9、DAG 232×76 几何更新 1 等）。`npm run build`：零 TS 错误
+（JS 238 kB / gzip 74 kB）。
 
 ### 非理想态与动效（S6）
 

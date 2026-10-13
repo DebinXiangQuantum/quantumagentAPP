@@ -1,5 +1,5 @@
 /**
- * InspectorPanel.tsx —— 360px 检查器面板（design.md §5/§6）。
+ * InspectorPanel.tsx —— 360px 检查器面板（design.md §5/§6，v1.1 i18n）。
  *
  * 职责：Tab 切换「硬件拓扑 / 任务 DAG」；
  *  - 硬件拓扑：HardwareTopology（store.hardwareNodes + 任务回溯 + 利用率历史）；
@@ -12,13 +12,15 @@ import { useAppStore } from '../../store/appStore';
 import { HardwareTopology } from '../viz/HardwareTopology';
 import { DagView } from '../viz/DagView';
 import { DagSkeleton, HwGridSkeleton } from '../common/Skeletons';
+import { useTranslate } from '../../i18n';
 
-const TABS: ReadonlyArray<{ id: InspectorTab; label: string }> = [
-  { id: 'hardware', label: '硬件拓扑' },
-  { id: 'dag', label: '任务 DAG' },
+const TABS: ReadonlyArray<{ id: InspectorTab; key: string }> = [
+  { id: 'hardware', key: 'inspector.tab.hardware' },
+  { id: 'dag', key: 'inspector.tab.dag' },
 ];
 
 export function InspectorPanel(): JSX.Element {
+  const t = useTranslate();
   const open = useUiStore((s) => s.inspectorOpen);
   const activeTab = useUiStore((s) => s.inspectorTab);
   const selectTab = useUiStore((s) => s.selectInspectorTab);
@@ -32,7 +34,7 @@ export function InspectorPanel(): JSX.Element {
 
   // 当前会话的任务优先；无则展示全部（跨会话可观察）
   const scopedTasks = activeCid
-    ? tasks.filter((t) => t.conversation_id === activeCid)
+    ? tasks.filter((tk) => tk.conversation_id === activeCid)
     : [];
   const visibleTasks = scopedTasks.length > 0 ? scopedTasks : tasks;
 
@@ -41,9 +43,9 @@ export function InspectorPanel(): JSX.Element {
       className="inspector-panel"
       data-testid="inspector-panel"
       data-collapsed={String(!open)}
-      aria-label="检查器"
+      aria-label={t('inspector.aria')}
     >
-      <div className="inspector-panel__tabs" role="tablist" aria-label="检查器视图">
+      <div className="inspector-panel__tabs" role="tablist" aria-label={t('inspector.tabs')}>
         {TABS.map((tab) => (
           <button
             key={tab.id}
@@ -53,7 +55,7 @@ export function InspectorPanel(): JSX.Element {
             aria-selected={activeTab === tab.id}
             onClick={() => selectTab(tab.id)}
           >
-            {tab.label}
+            {t(tab.key)}
           </button>
         ))}
       </div>

@@ -5,12 +5,14 @@
  * 契约：任何分支都不抛异常（渲染器内部自行降级），保证卡片永不白屏。
  */
 import type { JSX } from 'react';
+import { useTranslate } from '../../i18n';
 import { CircuitCanvas } from '../viz/CircuitCanvas';
 import { CountsHistogram } from '../viz/CountsHistogram';
 import { WaveformCanvas } from '../viz/WaveformCanvas';
 
 /** 原始 JSON 降级视图（含"原始数据"标记，供测试与用户识别）。 */
 export function JsonFallbackBody(props: { payload: unknown }): JSX.Element {
+  const t = useTranslate();
   let text: string;
   try {
     text = JSON.stringify(props.payload, null, 2) ?? String(props.payload);
@@ -19,7 +21,7 @@ export function JsonFallbackBody(props: { payload: unknown }): JSX.Element {
   }
   return (
     <div className="json-fallback">
-      <p className="json-fallback__hint text-faint">原始数据（未注册的渲染器）</p>
+      <p className="json-fallback__hint text-faint">{t('artifact.rawData')}</p>
       <pre className="artifact-json mono">{text}</pre>
     </div>
   );

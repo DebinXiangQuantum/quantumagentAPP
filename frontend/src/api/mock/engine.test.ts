@@ -56,22 +56,38 @@ describe('Mock 引擎脚本化运行', () => {
     return { convEvents, globalEvents, closeConv: conv.close, closeGlobal: global.close };
   }
 
-  it('事件顺序：先全部 delta，后 completed；completed 含 circuit+counts', () => {
+  it('事件顺序（v1.1）：先全部 reasoning，再全部 delta，后 completed（含 circuit+counts + reasoning 全文）', () => {
     const client = createMockClient();
     const { convEvents } = runScript(client, '请设计 VQE 线路');
     const kinds = convEvents.map((e) => e.event);
     const firstCompleted = kinds.indexOf('message.completed');
     expect(firstCompleted).toBeGreaterThan(0);
-    // completed 之前全部是 delta，之后没有 delta
-    for (let i = 0; i < firstCompleted; i += 1) expect(kinds[i]).toBe('message.delta');
+    // completed 之前只有 reasoning / delta，之后没有流式事件
+    for (let i = 0; i < firstCompleted; i += 1) {
+      expect(['message.reasoning', 'message.delta']).toContain(kinds[i]);
+    }
     for (let i = firstCompleted; i < kinds.length; i += 1) {
       expect(kinds[i]).toBe('message.completed');
     }
+    // 思考先于正文（契约 §7：reasoning 增量先于正文 delta 到达）
+    const firstReasoning = kinds.indexOf('message.reasoning');
+    const firstDelta = kinds.indexOf('message.delta');
+    expect(firstReasoning).toBeGreaterThanOrEqual(0);
+    expect(firstReasoning).toBeLessThan(firstDelta);
+    expect(kinds.lastIndexOf('message.reasoning')).toBeLessThan(firstDelta);
     const completed = convEvents[firstCompleted];
     expect(completed.event).toBe('message.completed');
     if (completed.event !== 'message.completed') throw new Error('unreachable');
     const types = completed.data.artifacts.map((a) => a.type).sort();
     expect(types).toEqual(['circuit', 'counts']);
+    // reasoning 增量拼接 == completed 的 reasoning 全文（归并不变量）
+    const joined = convEvents
+      .filter((e): e is Extract<ConversationStreamEvent, { event: 'message.reasoning' }> =>
+        e.event === 'message.reasoning')
+      .map((e) => e.data.delta)
+      .join('');
+    expect(completed.data.reasoning).toBe(joined);
+    expect(joined).toContain('dispatch_agent');
   });
 
   it('seq 严格单调递增（SSE mock 流）', () => {
@@ -212,10 +228,12 @@ describe('Mock 引擎脚本化运行', () => {
   it('GET 侧：fixtures 驱动 agents/conversations/hardware/tasks 全部面板', async () => {
     const client = createMockClient();
     const agents = await client.listAgents();
+    // v1.1：内置编排 Agent（orchestrator）也出现在注册表中
     expect(agents.map((a) => a.id).sort()).toEqual([
       'algorithm-designer',
       'calibration',
       'echo',
+      'orchestrator',
     ]);
     const { nodes } = await client.listHardware();
     expect(nodes.length).toBeGreaterThanOrEqual(4);

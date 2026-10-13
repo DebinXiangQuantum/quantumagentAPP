@@ -8,7 +8,14 @@
  *  4. buildTokenCss() 生成的 CSS 变量块包含全部变量且无重复。
  */
 import { describe, expect, it } from 'vitest';
-import { TOKENS, buildTokenCss, CSS_VARIABLES } from './tokens';
+import {
+  TOKENS,
+  buildTokenCss,
+  CSS_VARIABLES,
+  COLOR_VARIABLE_NAMES,
+  LIGHT_THEME,
+  SEPIA_THEME,
+} from './tokens';
 
 describe('design tokens（design.md §2–§4）', () => {
   it('色板：§2 的 16 个颜色 token 逐字一致', () => {
@@ -101,5 +108,87 @@ describe('design tokens（design.md §2–§4）', () => {
     expect(css).toContain('--accent-cyan:#4FD8EB');
     expect(css).toContain('--z-toast:200');
     expect(css.endsWith('}')).toBe(true);
+  });
+});
+
+describe('多主题（design.md §2.1：dark 默认 + light + sepia）', () => {
+  it('浅色主题色板 15 token 逐字一致', () => {
+    expect(LIGHT_THEME.color).toEqual({
+      bgBase: '#F5F7FA',
+      bgSurface: '#FFFFFF',
+      bgElevated: '#FFFFFF',
+      bgInset: '#EEF1F6',
+      borderDefault: '#D9DFEA',
+      borderStrong: '#C6CFDE',
+      textPrimary: '#1F2733',
+      textSecondary: '#5A6577',
+      textFaint: '#8B95A6',
+      accentCyan: '#0E8A9E',
+      accentViolet: '#6C5CE7',
+      success: '#1F9D66',
+      warning: '#C77F1D',
+      danger: '#D24E4E',
+      info: '#2E7CD6',
+    });
+  });
+
+  it('护眼（sepia）主题色板 15 token 逐字一致', () => {
+    expect(SEPIA_THEME.color).toEqual({
+      bgBase: '#F5F0E1',
+      bgSurface: '#FBF7EC',
+      bgElevated: '#FFFCF2',
+      bgInset: '#EFE7D2',
+      borderDefault: '#E0D5B8',
+      borderStrong: '#CBBE9C',
+      textPrimary: '#3E3A2F',
+      textSecondary: '#6E6753',
+      textFaint: '#998F76',
+      accentCyan: '#2A7F8F',
+      accentViolet: '#7B6FD0',
+      success: '#4E8A52',
+      warning: '#B07C28',
+      danger: '#B5544A',
+      info: '#3D6FA8',
+    });
+  });
+
+  it('浅色/护眼阴影降档为 rgba(15,23,42,.08) 档（--shadow-1/2 同名覆盖）', () => {
+    expect(LIGHT_THEME.shadow.s1).toBe('0 1px 2px rgba(15,23,42,.08)');
+    expect(SEPIA_THEME.shadow.s1).toBe('0 1px 2px rgba(15,23,42,.08)');
+    expect(LIGHT_THEME.shadow.s2).toContain('rgba(15,23,42,');
+    expect(SEPIA_THEME.shadow.s2).toContain('rgba(15,23,42,');
+  });
+
+  it('buildTokenCss 输出三块：:root(=dark) + [data-theme="light"] + [data-theme="sepia"]', () => {
+    const css = buildTokenCss();
+    expect(css.startsWith(':root{')).toBe(true);
+    // 深色 = :root 默认，且原生控件按深色渲染
+    expect(css).toContain('--bg-base:#0B0E14');
+    expect(css).toContain('color-scheme:dark');
+    // 两个覆盖块存在，且首个 token 即 --bg-base（色板逐字）
+    expect(css).toContain('[data-theme="light"]{--bg-base:#F5F7FA');
+    expect(css).toContain('[data-theme="sepia"]{--bg-base:#F5F0E1');
+  });
+
+  it('主题覆盖块只含颜色 + 阴影（几何/字号/间距 token 三主题共用）', () => {
+    const css = buildTokenCss();
+    const lightBlock = css.slice(
+      css.indexOf('[data-theme="light"]{'),
+      css.indexOf('[data-theme="sepia"]{'),
+    );
+    const sepiaBlock = css.slice(css.indexOf('[data-theme="sepia"]{'));
+    for (const block of [lightBlock, sepiaBlock]) {
+      expect(block).not.toContain('--radius-sm');
+      expect(block).not.toContain('--fs-body');
+      expect(block).not.toContain('--space-16');
+      expect(block).not.toContain('--sidebar-width');
+      // 15 个颜色 token + 阴影 2 个全部覆盖
+      for (const name of COLOR_VARIABLE_NAMES) {
+        expect(block).toContain(`--${name}:`);
+      }
+      expect(block).toContain('--shadow-1:');
+      expect(block).toContain('--shadow-2:');
+      expect(block).toContain('color-scheme:light');
+    }
   });
 });

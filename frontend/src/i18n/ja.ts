@@ -1,0 +1,198 @@
+/**
+ * ja.ts —— 日本語 UI 辞書（design.md §2.2）。
+ *
+ * 制約（zh.ts と同じ）：
+ *  - UI チャーム（chrome）のみ。ユーザー／エージェントが生成する内容は翻訳しない；
+ *  - zh/en/ja の key セットは完全一致（i18n.test.ts で検証）；
+ *  - パラメータは {name} プレースホルダで插值。
+ */
+export const ja: Record<string, string> = {
+  // —— トップバー ——
+  'topbar.product': 'QuantumAgent · ヘテロ量子エージェントプラットフォーム',
+  'topbar.toggleSidebar': 'セッションサイドバー切替',
+  'topbar.toggleInspector': 'インスペクター切替',
+  'topbar.model': 'モデル',
+  'topbar.thinking': '思考',
+  'topbar.modelLoading': '（読込中）',
+  'topbar.currentModel': '現在のモデル',
+  'topbar.currentThinking': '思考レベル',
+  'topbar.tenant': 'テナント：{name}',
+  'topbar.tenantUnknown': '不明',
+
+  // —— サイドバー ——
+  'sidebar.title': 'セッション',
+  'sidebar.new': '+ 新規',
+  'sidebar.newTitle': '新規セッション',
+  'sidebar.empty.title': 'セッションなし',
+  'sidebar.empty.hint': '最初のセッションを作成し、エージェントに作業を始めさせましょう。',
+  'sidebar.empty.action': '新規セッション',
+  'sidebar.settings': '設定',
+  'sidebar.aria': 'セッションサイドバー',
+
+  // —— 対話エリア ——
+  'chat.aria': '対話エリア',
+  'chat.error.clear': '閉じる',
+  'chat.emptyConv.title': 'セッションなし',
+  'chat.emptyConv.hint': '左側でセッションを作成するか、データの読み込みをお待ちください。',
+  'chat.emptyMsg.title': '対話は未開始',
+  'chat.emptyMsg.hint': '最初のメッセージを送信し、{scope}エージェントに作業を始めさせましょう。',
+  'chat.input.placeholder': 'メッセージを入力。Enter で送信、Shift+Enter で改行',
+  'chat.input.aria': 'メッセージ入力',
+  'chat.input.send': '送信 ⏎',
+  'chat.input.sendTitle': '送信（Enter）',
+
+  // —— 思考過程（v1.1）——
+  'reasoning.title': '思考過程',
+  'reasoning.thinking': '思考中…',
+  'reasoning.chars': '{n} 文字',
+  'reasoning.toggle': '思考過程を開く／閉じる',
+
+  // —— インスペクター ——
+  'inspector.aria': 'インスペクター',
+  'inspector.tabs': 'インスペクタービュー',
+  'inspector.tab.hardware': 'ハードウェアトポロジ',
+  'inspector.tab.dag': 'タスク DAG',
+
+  // —— DAG ——
+  'dag.empty.title': 'タスクなし',
+  'dag.empty.hint': 'メッセージを送信するとエージェントが DAG を提出します。状態遷移はここにリアルタイム表示されます。',
+  'dag.invalid': '依存関係に循環または異常があります。出現順の降格レイアウトで表示中。',
+  'dag.stepAria': 'ステップ {name}（{id}）',
+  'dag.detail.title': 'ステップ {id}',
+  'dag.detail.status': '状態',
+  'dag.detail.kind': '種別',
+  'dag.detail.node': 'ノード',
+  'dag.detail.nodeUnset': '（未スケジュール）',
+  'dag.detail.start': '開始',
+  'dag.detail.end': '終了',
+  'dag.detail.detail': '説明',
+  'dag.detail.none': '（なし）',
+  'dag.detail.error': 'エラー',
+
+  // —— ハードウェアトポロジ ——
+  'hw.empty.title': 'ハードウェアデータなし',
+  'hw.empty.hint': 'ハードウェア割当なし——メッセージを送信してエージェントに作業を始めさせましょう。',
+  'hw.status.online': 'オンライン',
+  'hw.status.offline': 'オフライン',
+  'hw.nodeAria': 'ノード {name}',
+  'hw.drawer.title': 'ノード {name}',
+  'hw.detail.id': 'ノード ID',
+  'hw.detail.kind': '種別',
+  'hw.detail.model': 'モデル',
+  'hw.detail.status': '状態',
+  'hw.detail.capacity': '容量 / 使用',
+  'hw.detail.util': '使用率',
+  'hw.detail.allocs': 'アクティブリース',
+  'hw.detail.allocsEmpty': '（アクティブリースなし）',
+  'hw.detail.history': 'このノードの履歴タスク',
+  'hw.detail.historyEmpty': '（実行履歴なし）',
+  'hw.capacity': '容量 {capacity}、使用 {leased}',
+
+  // —— Artifact ——
+  'artifact.type.circuit': '回路',
+  'artifact.type.counts': 'カウント',
+  'artifact.type.waveform': '波形',
+  'artifact.unnamed': '（無題のアーティファクト）',
+  'artifact.broken': '解析不能な Artifact',
+  'artifact.toggle': 'Artifact を開く／閉じる',
+
+  // —— ステータスバッジ ——
+  'status.pending': '待機中',
+  'status.running': '実行中',
+  'status.succeeded': '成功',
+  'status.failed': '失敗',
+  'status.cancelled': 'キャンセル済',
+
+  // —— 相対時間 ——
+  'time.justNow': 'たった今',
+  'time.minAgo': '{n} 分前',
+  'time.hourAgo': '{n} 時間前',
+  'time.dayAgo': '{n} 日前',
+
+  // —— 思考レベル／テーマ名 ——
+  'thinking.off': 'オフ',
+  'thinking.low': '低',
+  'thinking.high': '高',
+  'thinking.max': '最大',
+  'theme.dark': 'ダーク',
+  'theme.light': 'ライト',
+  'theme.sepia': 'セピア',
+  'theme.dark.desc': '深宇宙ダーク（既定）',
+  'theme.light.desc': '明るいホワイト',
+  'theme.sepia.desc': '暖かい紙色',
+
+  // —— 設定ページ（§5 の 4 セクション）——
+  'settings.title': '設定',
+  'settings.close': '設定を閉じる',
+  'settings.appearance': '外観',
+  'settings.appearance.theme': 'テーマ',
+  'settings.appearance.language': '言語',
+  'settings.appearance.themeAria': 'テーマを選択',
+  'settings.appearance.langAria': '言語を選択',
+  'settings.model': 'モデルと思考',
+  'settings.model.defaultModel': '既定モデル',
+  'settings.model.defaultThinking': '既定思考レベル',
+  'settings.model.followDefault': '（既定に従う）',
+  'settings.model.hint': 'このブラウザのローカル設定として保存されます。送信時にトップバーで上書き可能。',
+  'settings.model.modelAria': '既定モデル',
+  'settings.model.thinkingAria': '既定思考レベル',
+  'settings.channels': 'プロバイダチャネル',
+  'settings.channels.desc': 'チャネルプールは管理 API（GET /admin/models）から取得。編集はバックエンドの config.local.toml に永続化されます。',
+  'settings.channels.refresh': '更新',
+  'settings.channels.new': '新規チャネル',
+  'settings.channels.edit': '編集',
+  'settings.channels.delete': '削除',
+  'settings.channels.deleteConfirm': 'チャネル {ref} を削除しますか？取り消せません。',
+  'settings.channels.keySet': 'API キー設定済み',
+  'settings.channels.keyUnset': 'API キー未設定',
+  'settings.channels.empty': 'チャネルなし',
+  'settings.channels.loadError': 'チャネルの読み込みに失敗',
+  'settings.channels.col.ref': '参照',
+  'settings.channels.col.provider': 'プロバイダ',
+  'settings.channels.col.model': 'モデル',
+  'settings.channels.col.baseUrl': 'ベース URL',
+  'settings.channels.col.key': 'キー',
+  'settings.channels.col.thinking': '既定思考',
+  'settings.channels.col.actions': '操作',
+  'settings.plugins': 'プラグイン管理',
+  'settings.plugins.desc': '登録済みエージェントプラグイン（内蔵とインストール済み）。broken は読み込み失敗（プラットフォームには影響なし）。',
+  'settings.plugins.empty': 'プラグインなし',
+  'settings.plugins.install': 'プラグインをインストール',
+  'settings.plugins.installPath': 'ローカル source_path（plugin.json を含むディレクトリ）',
+  'settings.plugins.uninstall': 'アンインストール',
+  'settings.plugins.uninstallConfirm': 'プラグイン {name} をアンインストールしますか？',
+  'settings.plugins.source.builtin': '内蔵',
+  'settings.plugins.source.installed': 'インストール済み',
+  'settings.plugins.broken': '破損：{reason}',
+  'settings.plugins.toggle': '{name} を有効／無効化',
+  'settings.plugins.installError': 'インストール失敗：{message}',
+
+  // —— チャネルフォーム ——
+  'form.ref': 'チャネル ref（一意識別子、例 glm-5.3-flash）',
+  'form.provider': 'プロバイダ（openai / anthropic / mock）',
+  'form.model': 'モデル ID',
+  'form.baseUrl': 'ベース URL',
+  'form.apiKeyEnv': 'API キー環境変数名',
+  'form.apiKeyInline': 'API キー（書込専用、表示されません）',
+  'form.apiKeyInlineHint': '空欄 = 保存済みキーを変更しない',
+  'form.defaultThinking': '既定思考レベル',
+  'form.timeout': 'タイムアウト（秒）',
+  'form.save': '保存',
+  'form.cancel': 'キャンセル',
+  'form.saving': '保存中…',
+  'form.error.required': '必須項目が空です',
+  'form.error.provider': 'プロバイダは openai / anthropic / mock のいずれか',
+  'form.error.thinking': '思考レベルは off / low / high / max のいずれか',
+  'form.error.timeout': 'タイムアウトは正の整数',
+
+  // —— エラー文言（store 層）——
+  'error.boot': '初期化に失敗しました（不明なエラー）',
+  'error.messagesLoad': 'メッセージの読み込みに失敗',
+  'error.messagesLoadDetail': 'メッセージの読み込みに失敗：{message}',
+  // —— ドロワー／共通エラー ——
+  'drawer.aria': '詳細ドロワー',
+  'drawer.close': 'ドロワーを閉じる',
+  'drawer.closeTitle': 'ドロワーを閉じる（Esc）',
+  'error.retry': '再試行',
+  'artifact.rawData': '生データ（未登録のレンダラー）',
+};

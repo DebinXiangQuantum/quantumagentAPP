@@ -23,6 +23,9 @@
   gap: var(--space-8);
 }
 .dag-view__task-name {
+  /* §5.1：flex 子项 min-width:0 + 截断，防止长标题把徽标挤出/自身不可见 */
+  flex: 1;
+  min-width: 0;
   font-size: var(--fs-body);
   font-weight: 600;
 }
@@ -89,10 +92,12 @@
   border-left-color: var(--warning);
 }
 .dag-node__name {
+  min-width: 0; /* §5.1：2 行 line-clamp，flex 子项防压缩 */
   font-size: var(--fs-body);
   font-weight: 600;
 }
 .dag-node__meta {
+  min-width: 0; /* §5.1：id/节点号单行截断 */
   /* id/节点号是有效定位信息，secondary 保证可读（视觉评审修订） */
   color: var(--text-secondary);
   font-size: var(--fs-caption);

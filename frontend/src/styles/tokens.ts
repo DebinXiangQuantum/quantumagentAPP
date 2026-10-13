@@ -1,10 +1,12 @@
 /**
- * tokens.ts —— QuantumAgentApp 前端设计系统的**唯一来源**（design.md §2–§4、§5、§7）。
+ * tokens.ts —— QuantumAgentApp 前端设计系统的**唯一来源**（design.md §2–§4、§5、§7、§2.1）。
  *
  * 职责：
  *  - 以 TypeScript 常量定义全部颜色/字体/字号/间距/圆角/阴影/z-index/动效/布局尺寸；
- *  - `buildTokenCss()` 将其编译为 `:root { --* }` CSS 变量块，由 main.tsx 注入
- *    （保证 CSS 与 TS 永远同源，杜绝手抄漂移）；
+ *  - `buildTokenCss()` 将其编译为 `:root { --* }`（=dark，默认）+
+ *    `[data-theme="light"] { … }` + `[data-theme="sepia"] { … }` 三块 CSS 变量，
+ *    由 main.tsx 注入（保证 CSS 与 TS 永远同源，杜绝手抄漂移）；
+ *  - 浅色/护眼主题**只覆盖颜色与阴影 token**（§2.1），几何/字号/间距三主题共用；
  *  - SVG 等需要具体几何数值的场景引用 `TOKENS`（如线路格点 44×36），
  *    组件中**禁止**出现任何未走 token 的颜色/字号/间距字面量。
  *
@@ -12,6 +14,32 @@
  */
 
 /** §2 色板（深空暗色主题）。键名与 CSS 变量一一对应（camelCase ↔ kebab-case）。 */
+export interface ColorTokens {
+  bgBase: string;
+  bgSurface: string;
+  bgElevated: string;
+  bgInset: string;
+  borderDefault: string;
+  borderStrong: string;
+  textPrimary: string;
+  textSecondary: string;
+  textFaint: string;
+  accentCyan: string;
+  accentViolet: string;
+  success: string;
+  warning: string;
+  danger: string;
+  info: string;
+}
+
+/** §2.1 主题 = 色板 + 阴影（浅色/护眼阴影降档覆盖 --shadow-1/2）。 */
+export interface ThemePalette {
+  color: ColorTokens;
+  shadow: { s1: string; s2: string };
+}
+
+export type ThemeId = 'dark' | 'light' | 'sepia';
+
 export const TOKENS = {
   color: {
     bgBase: '#0B0E14',
@@ -29,7 +57,7 @@ export const TOKENS = {
     warning: '#F5B455',
     danger: '#F26D6D',
     info: '#5CA8FF',
-  },
+  } as ColorTokens,
   /** §3 字体栈（用户逐字指定；不引入 webfont 文件，纯系统字体栈）。 */
   font: {
     ui: '"Microsoft YaHei","微软雅黑","PingFang SC",Arial,"Helvetica Neue",sans-serif',
@@ -65,7 +93,7 @@ export const TOKENS = {
     md: '10px',
     lg: '14px',
   },
-  /** §4 双层低饱和阴影。 */
+  /** §4 双层低饱和阴影（dark）。 */
   shadow: {
     s1: '0 1px 2px rgba(0,0,0,.35), 0 0 0 1px rgba(255,255,255,.03)',
     s2: '0 8px 24px rgba(0,0,0,.45), 0 0 0 1px rgba(255,255,255,.04)',
@@ -104,24 +132,86 @@ export const TOKENS = {
   },
 } as const;
 
+/** §2.1 浅色主题（只覆盖颜色；阴影降为 rgba(15,23,42,.08) 档）。 */
+export const LIGHT_THEME: ThemePalette = {
+  color: {
+    bgBase: '#F5F7FA',
+    bgSurface: '#FFFFFF',
+    bgElevated: '#FFFFFF',
+    bgInset: '#EEF1F6',
+    borderDefault: '#D9DFEA',
+    borderStrong: '#C6CFDE',
+    textPrimary: '#1F2733',
+    textSecondary: '#5A6577',
+    textFaint: '#8B95A6',
+    accentCyan: '#0E8A9E',
+    accentViolet: '#6C5CE7',
+    success: '#1F9D66',
+    warning: '#C77F1D',
+    danger: '#D24E4E',
+    info: '#2E7CD6',
+  },
+  shadow: {
+    s1: '0 1px 2px rgba(15,23,42,.08)',
+    s2: '0 2px 8px rgba(15,23,42,.10)',
+  },
+};
+
+/** §2.1 护眼（sepia）主题（只覆盖颜色；阴影同浅色降档）。 */
+export const SEPIA_THEME: ThemePalette = {
+  color: {
+    bgBase: '#F5F0E1',
+    bgSurface: '#FBF7EC',
+    bgElevated: '#FFFCF2',
+    bgInset: '#EFE7D2',
+    borderDefault: '#E0D5B8',
+    borderStrong: '#CBBE9C',
+    textPrimary: '#3E3A2F',
+    textSecondary: '#6E6753',
+    textFaint: '#998F76',
+    accentCyan: '#2A7F8F',
+    accentViolet: '#7B6FD0',
+    success: '#4E8A52',
+    warning: '#B07C28',
+    danger: '#B5544A',
+    info: '#3D6FA8',
+  },
+  shadow: {
+    s1: '0 1px 2px rgba(15,23,42,.08)',
+    s2: '0 2px 8px rgba(15,23,42,.10)',
+  },
+};
+
+/** camelCase 色板键 → kebab-case CSS 变量名（15 个颜色 token 的权威顺序清单）。 */
+const COLOR_ENTRIES: ReadonlyArray<[keyof ColorTokens, string]> = [
+  ['bgBase', 'bg-base'],
+  ['bgSurface', 'bg-surface'],
+  ['bgElevated', 'bg-elevated'],
+  ['bgInset', 'bg-inset'],
+  ['borderDefault', 'border-default'],
+  ['borderStrong', 'border-strong'],
+  ['textPrimary', 'text-primary'],
+  ['textSecondary', 'text-secondary'],
+  ['textFaint', 'text-faint'],
+  ['accentCyan', 'accent-cyan'],
+  ['accentViolet', 'accent-violet'],
+  ['success', 'success'],
+  ['warning', 'warning'],
+  ['danger', 'danger'],
+  ['info', 'info'],
+];
+
+/** 颜色 token 的 CSS 变量名清单（测试与主题块生成共用）。 */
+export const COLOR_VARIABLE_NAMES: readonly string[] = COLOR_ENTRIES.map(
+  ([, cssName]) => cssName,
+);
+
 /** token 的 CSS 变量名（不含前缀 `--`）与值。生成 :root 块与测试均以此为权威清单。 */
 export const CSS_VARIABLES: ReadonlyArray<readonly [string, string]> = [
   // —— §2 色板 ——
-  ['bg-base', TOKENS.color.bgBase],
-  ['bg-surface', TOKENS.color.bgSurface],
-  ['bg-elevated', TOKENS.color.bgElevated],
-  ['bg-inset', TOKENS.color.bgInset],
-  ['border-default', TOKENS.color.borderDefault],
-  ['border-strong', TOKENS.color.borderStrong],
-  ['text-primary', TOKENS.color.textPrimary],
-  ['text-secondary', TOKENS.color.textSecondary],
-  ['text-faint', TOKENS.color.textFaint],
-  ['accent-cyan', TOKENS.color.accentCyan],
-  ['accent-violet', TOKENS.color.accentViolet],
-  ['success', TOKENS.color.success],
-  ['warning', TOKENS.color.warning],
-  ['danger', TOKENS.color.danger],
-  ['info', TOKENS.color.info],
+  ...COLOR_ENTRIES.map(
+    ([key, cssName]) => [cssName, TOKENS.color[key]] as const,
+  ),
   // —— §3 字体 / 字号 / 行高 ——
   ['font-ui', TOKENS.font.ui],
   ['font-data', TOKENS.font.data],
@@ -166,15 +256,33 @@ export const CSS_VARIABLES: ReadonlyArray<readonly [string, string]> = [
   ['chat-max-width', TOKENS.layout.chatMaxWidth],
 ];
 
+/** 主题覆盖块内容：15 个颜色 + 阴影 2 个（§2.1：几何/字号/间距三主题共用）。 */
+function themeBlock(theme: ThemePalette, scheme: 'dark' | 'light'): string {
+  const body = COLOR_ENTRIES.map(
+    ([key, cssName]) => `--${cssName}:${theme.color[key]}`,
+  )
+    .concat([`--shadow-1:${theme.shadow.s1}`, `--shadow-2:${theme.shadow.s2}`])
+    .concat([`color-scheme:${scheme}`])
+    .join(';');
+  return body;
+}
+
 /**
- * 生成 `:root{--token:value;…}` CSS 文本（紧凑单行，main.tsx 以 <style> 注入）。
+ * 生成三主题 CSS 文本（紧凑单行，main.tsx 以 <style> 注入）：
+ * `:root{…}`（=dark 全量 token）+ `[data-theme="light"]{…}` +
+ * `[data-theme="sepia"]{…}`（后两者仅覆盖颜色与阴影）。
  * 假设：仅在应用启动时调用一次；变量名与值均为受控字面量，无需转义。
  */
 export function buildTokenCss(): string {
-  const body = CSS_VARIABLES.map(([name, value]) => `--${name}:${value}`).join(';');
-  return `:root{${body}}`;
+  const rootBody = CSS_VARIABLES.map(([name, value]) => `--${name}:${value}`)
+    .concat(['color-scheme:dark'])
+    .join(';');
+  return (
+    `:root{${rootBody}}` +
+    `[data-theme="light"]{${themeBlock(LIGHT_THEME, 'light')}}` +
+    `[data-theme="sepia"]{${themeBlock(SEPIA_THEME, 'light')}}`
+  );
 }
-
 /** 将 token CSS 注入 document.head（幂等：重复调用不重复插入）。供 main.tsx 与测试使用。 */
 export function injectTokenStyles(documentRef: Document): void {
   const STYLE_ID = 'qap-design-tokens';

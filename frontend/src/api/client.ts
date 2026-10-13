@@ -17,7 +17,14 @@ import type {
   Conversation,
   ConversationDetail,
   HardwareResponse,
+  InstallPluginRequest,
+  ModelChannel,
+  ModelChannelInput,
+  ModelChannelList,
+  PluginInfo,
+  PluginList,
   SendMessageAck,
+  SendMessageRequest,
   Task,
   TenantInfo,
 } from '../types/domain';
@@ -85,11 +92,23 @@ export interface ApiClient {
   listAgents(): Promise<AgentInfo[]>;
   getTenant(): Promise<TenantInfo>;
   listConversations(limit?: number): Promise<Conversation[]>;
-  createConversation(req: { agent_id: string; title?: string }): Promise<Conversation>;
+  createConversation(req: { agent_id?: string; title?: string }): Promise<Conversation>;
   getConversation(cid: string): Promise<ConversationDetail>;
-  sendMessage(cid: string, content: string): Promise<SendMessageAck>;
+  /** v1.1：可选 model_ref/thinking_level 覆盖（ARCHITECTURE §5）。 */
+  sendMessage(cid: string, content: string, req?: Omit<SendMessageRequest, 'content'>): Promise<SendMessageAck>;
   listTasks(conversationId?: string | null): Promise<Task[]>;
   listHardware(): Promise<HardwareResponse>;
+  /** v1.1 管理平台：渠道池（§5）。 */
+  listAdminModels(): Promise<ModelChannelList>;
+  putAdminModel(input: ModelChannelInput): Promise<ModelChannel>;
+  /** 删除本地覆盖渠道；基底渠道不可删 → ApiError(409)。 */
+  deleteAdminModel(ref: string): Promise<void>;
+  /** v1.1 插件管理（§8）：列表含 builtin/installed/broken。 */
+  listAdminPlugins(): Promise<PluginList>;
+  installPlugin(req: InstallPluginRequest): Promise<PluginInfo>;
+  setPluginEnabled(id: string, enabled: boolean): Promise<PluginInfo>;
+  /** builtin 插件不可卸载 → ApiError(409)。 */
+  uninstallPlugin(id: string): Promise<void>;
   /** 订阅会话 SSE；after 为已知最大 seq（断线续传），首次传 null。 */
   openConversationStream(
     cid: string,
@@ -169,7 +188,7 @@ export class RestClient implements ApiClient {
     return this.request<Conversation[]>(`/api/v1/conversations${q}`);
   }
 
-  createConversation(req: { agent_id: string; title?: string }): Promise<Conversation> {
+  createConversation(req: { agent_id?: string; title?: string }): Promise<Conversation> {
     return this.request<Conversation>('/api/v1/conversations', {
       method: 'POST',
       body: JSON.stringify(req),
@@ -182,10 +201,17 @@ export class RestClient implements ApiClient {
     );
   }
 
-  sendMessage(cid: string, content: string): Promise<SendMessageAck> {
+  sendMessage(
+    cid: string,
+    content: string,
+    req?: Omit<SendMessageRequest, 'content'>,
+  ): Promise<SendMessageAck> {
     return this.request<SendMessageAck>(
       `/api/v1/conversations/${encodeURIComponent(cid)}/messages`,
-      { method: 'POST', body: JSON.stringify({ content }) },
+      {
+        method: 'POST',
+        body: JSON.stringify({ content, ...(req ?? {}) }),
+      },
     );
   }
 
@@ -198,6 +224,49 @@ export class RestClient implements ApiClient {
 
   listHardware(): Promise<HardwareResponse> {
     return this.request<HardwareResponse>('/api/v1/hardware');
+  }
+
+  listAdminModels(): Promise<ModelChannelList> {
+    return this.request<ModelChannelList>('/api/v1/admin/models');
+  }
+
+  putAdminModel(input: ModelChannelInput): Promise<ModelChannel> {
+    return this.request<ModelChannel>(
+      `/api/v1/admin/models/${encodeURIComponent(input.ref)}`,
+      { method: 'PUT', body: JSON.stringify(input) },
+    );
+  }
+
+  deleteAdminModel(ref: string): Promise<void> {
+    return this.request<void>(
+      `/api/v1/admin/models/${encodeURIComponent(ref)}`,
+      { method: 'DELETE' },
+    );
+  }
+
+  listAdminPlugins(): Promise<PluginList> {
+    return this.request<PluginList>('/api/v1/admin/plugins');
+  }
+
+  installPlugin(req: InstallPluginRequest): Promise<PluginInfo> {
+    return this.request<PluginInfo>('/api/v1/admin/plugins/install', {
+      method: 'POST',
+      body: JSON.stringify(req),
+    });
+  }
+
+  setPluginEnabled(id: string, enabled: boolean): Promise<PluginInfo> {
+    return this.request<PluginInfo>(
+      `/api/v1/admin/plugins/${encodeURIComponent(id)}`,
+      { method: 'PUT', body: JSON.stringify({ enabled }) },
+    );
+  }
+
+  uninstallPlugin(id: string): Promise<void> {
+    return this.request<void>(
+      `/api/v1/admin/plugins/${encodeURIComponent(id)}`,
+      { method: 'DELETE' },
+    );
   }
 
   openConversationStream(
@@ -266,10 +335,11 @@ class ReconnectingStream {
       es.addEventListener(name, (ev: MessageEvent) => {
         try {
           const data = JSON.parse((ev as MessageEvent<string>).data) as never;
-          if (name === 'message.delta') {
-            const delta = (data as unknown as { seq?: number }).seq;
-            if (typeof delta === 'number' && Number.isFinite(delta)) {
-              this.lastSeq = Math.max(this.lastSeq ?? 0, delta);
+          // 会话流按 seq 单调续传（§7）：delta 与 reasoning 增量都携带 seq
+          if (name === 'message.delta' || name === 'message.reasoning') {
+            const seq = (data as unknown as { seq?: number }).seq;
+            if (typeof seq === 'number' && Number.isFinite(seq)) {
+              this.lastSeq = Math.max(this.lastSeq ?? 0, seq);
             }
           }
           this.cb.onEvent({ event: name, data } as never);
@@ -303,7 +373,7 @@ class ConversationStream extends ReconnectingStream {
   ) {
     super(
       (seq) => buildStreamUrl(base, cid, seq, apiKey),
-      ['message.delta', 'message.completed', 'error'],
+      ['message.delta', 'message.reasoning', 'message.completed', 'error'],
       cb as StreamCallbacks<never>,
       after,
     );

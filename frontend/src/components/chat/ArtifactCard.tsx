@@ -11,14 +11,15 @@
  * 交互行为：头部整行按钮切换展开；focus-visible ring 全局生效。
  */
 import { useState } from 'react';
+import { useTranslate } from '../../i18n';
 import type { Artifact } from '../../types/domain';
 import { renderArtifactBody } from './renderers';
 
-/** 已知类型的中文徽标；未知类型回退为 type 本体（等宽展示）。 */
-export const ARTIFACT_TYPE_LABELS: Record<string, string> = {
-  circuit: '线路',
-  counts: '计数',
-  waveform: '波形',
+/** 已知类型的徽标 i18n key；未知类型回退为 type 本体（等宽展示）。 */
+export const ARTIFACT_TYPE_KEYS: Record<string, string> = {
+  circuit: 'artifact.type.circuit',
+  counts: 'artifact.type.counts',
+  waveform: 'artifact.type.waveform',
 };
 
 interface NormalizedArtifact {
@@ -51,16 +52,18 @@ function safeJson(value: unknown): string {
 }
 
 export function ArtifactCard(props: { artifact: Artifact }): JSX.Element {
+  const t = useTranslate();
   const [expanded, setExpanded] = useState(false);
   const a = normalizeArtifact(props.artifact);
-  const label = ARTIFACT_TYPE_LABELS[a.type] ?? a.type;
+  const labelKey = ARTIFACT_TYPE_KEYS[a.type];
+  const label = labelKey ? t(labelKey) : a.type;
 
   if (a.broken) {
     return (
       <div className="artifact-card card" data-artifact-type="broken">
         <div className="artifact-card__header">
           <span className="artifact-card__badge mono artifact-card__badge--unknown">
-            无法解析的 Artifact
+            {t('artifact.broken')}
           </span>
         </div>
         <div className="artifact-card__body">
@@ -76,14 +79,14 @@ export function ArtifactCard(props: { artifact: Artifact }): JSX.Element {
         type="button"
         className="artifact-card__header"
         aria-expanded={expanded}
-        aria-label="展开或收起 Artifact"
+        aria-label={t('artifact.toggle')}
         onClick={() => setExpanded((v) => !v)}
       >
-        <span className={`artifact-card__badge mono${ARTIFACT_TYPE_LABELS[a.type] ? '' : ' artifact-card__badge--unknown'}`}>
+        <span className={`artifact-card__badge mono${labelKey ? '' : ' artifact-card__badge--unknown'}`}>
           {label}
         </span>
         <span className="artifact-card__title truncate">
-          {a.title.length > 0 ? a.title : '（未命名产物）'}
+          {a.title.length > 0 ? a.title : t('artifact.unnamed')}
         </span>
         <span
           className={`artifact-card__chevron${expanded ? ' artifact-card__chevron--open' : ''}`}

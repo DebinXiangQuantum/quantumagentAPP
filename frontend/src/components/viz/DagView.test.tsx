@@ -77,17 +77,24 @@ describe('DagView', () => {
     expect(paths.length).toBe(2);
   });
 
-  it('纵向流水线布局：链式 3 层 → SVG 高 3×64+2×24=240、宽 200（适配 360px 检查器）', () => {
+  it('纵向流水线布局：链式 3 层 → SVG 高 3×76+2×24=276、宽 232（§5.1 节点 232×76）', () => {
     render(<DagView task={TASK} />);
     const svg = document.querySelector('svg.dag-view__edges') as SVGSVGElement | null;
     expect(svg).not.toBeNull();
     // 单节点/层的链：宽度收敛为单节点宽，高度按层堆叠（不再横向溢出面板）
-    expect(svg!.getAttribute('width')).toBe('200');
-    expect(svg!.getAttribute('height')).toBe('240');
+    expect(svg!.getAttribute('width')).toBe('232');
+    expect(svg!.getAttribute('height')).toBe('276');
     // 画布容器显式给出内容尺寸（绝对定位内容不再导致高度塌缩）
     const canvas = document.querySelector('.dag-view__canvas') as HTMLElement | null;
     expect(canvas).not.toBeNull();
-    expect(canvas!.style.height).toBe('248px'); // 240 + 8px 余量
+    expect(canvas!.style.height).toBe('284px'); // 276 + 8px 余量
+    // 节点按钮按 §5.1 几何定位：232×76
+    const node = screen.getByTestId('dag-node-s-0') as HTMLElement;
+    expect(node.style.width).toBe('232px');
+    expect(node.style.height).toBe('76px');
+    // 名称 2 行截断 + id 单行截断（§5.1）
+    expect(node.querySelector('.dag-node__name')).toHaveClass('clamp-2');
+    expect(node.querySelector('.dag-node__meta')).toHaveClass('truncate');
   });
 
   it('运行中节点带呼吸光晕类', () => {

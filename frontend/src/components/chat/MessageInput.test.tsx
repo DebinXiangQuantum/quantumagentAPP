@@ -5,12 +5,12 @@
  *  1. Enter（无 Shift）发送并清空；
  *  2. Shift+Enter 换行不发送；
  *  3. 纯空白不发送；
- *  4. Agent 快捷切换写入 store。
+ *  4. v1.1：输入区不再渲染 Agent 快捷切换（编排 Agent 自动调度，
+ *     模型/思考选择器移至顶栏，见 TopBar.test.tsx）。
  */
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { MessageInput } from './MessageInput';
-import { useAppStore } from '../../store/appStore';
 
 describe('MessageInput', () => {
   it('Enter 发送并清空输入', () => {
@@ -41,32 +41,9 @@ describe('MessageInput', () => {
     expect(onSend).not.toHaveBeenCalled();
   });
 
-  it('Agent 快捷切换写入 store.currentAgentId', () => {
-    useAppStore.setState({
-      agents: [
-        {
-          id: 'algorithm-designer',
-          name: '算法',
-          description: '',
-          capabilities: [],
-          model_ref: 'default',
-          builtin: true,
-        },
-        {
-          id: 'calibration',
-          name: '校准',
-          description: '',
-          capabilities: [],
-          model_ref: 'default',
-          builtin: true,
-        },
-      ],
-      currentAgentId: 'algorithm-designer',
-    });
+  it('v1.1：输入区无 Agent 选择器（无 select，无 Agent 标签）', () => {
     render(<MessageInput onSend={vi.fn()} />);
-    fireEvent.change(screen.getByLabelText('快捷切换 Agent'), {
-      target: { value: 'calibration' },
-    });
-    expect(useAppStore.getState().currentAgentId).toBe('calibration');
+    expect(screen.queryByRole('combobox')).toBeNull();
+    expect(screen.queryByText(/^Agent$/)).toBeNull();
   });
 });
