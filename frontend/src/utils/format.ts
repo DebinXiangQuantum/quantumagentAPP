@@ -1,17 +1,19 @@
 /**
  * format.ts —— 展示层格式化工具（纯函数，全部类型注解 + 防御式）。
+ * 相对时间文案经 i18n（读当前语言；展示处由语言订阅组件重渲染时重新调用）。
  */
+import { t } from '../i18n';
 
-/** 相对时间：xx 分钟/小时/天前；异常输入返回 '—'。 */
+/** 相对时间：xx 分钟/小时/天前（i18n）；异常输入返回 '—'。 */
 export function formatRelativeTime(iso: string | null | undefined, now: Date = new Date()): string {
   if (typeof iso !== 'string' || iso.length === 0) return '—';
-  const t = Date.parse(iso);
-  if (Number.isNaN(t)) return '—';
-  const diffSec = Math.max(0, Math.floor((now.getTime() - t) / 1000));
-  if (diffSec < 60) return '刚刚';
-  if (diffSec < 3600) return `${Math.floor(diffSec / 60)} 分钟前`;
-  if (diffSec < 86_400) return `${Math.floor(diffSec / 3600)} 小时前`;
-  return `${Math.floor(diffSec / 86_400)} 天前`;
+  const parsed = Date.parse(iso);
+  if (Number.isNaN(parsed)) return '—';
+  const diffSec = Math.max(0, Math.floor((now.getTime() - parsed) / 1000));
+  if (diffSec < 60) return t('time.justNow');
+  if (diffSec < 3600) return t('time.minAgo', { n: Math.floor(diffSec / 60) });
+  if (diffSec < 86_400) return t('time.hourAgo', { n: Math.floor(diffSec / 3600) });
+  return t('time.dayAgo', { n: Math.floor(diffSec / 86_400) });
 }
 
 /** 本地时间 HH:MM:SS（等宽场景）；异常输入返回 '—'。 */

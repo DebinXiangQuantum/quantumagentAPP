@@ -1,0 +1,247 @@
+/**
+ * SettingsPage.test.tsx —— 设置页四分区测试（design.md §5 v1.1）。
+ *
+ * 覆盖：
+ *  1. 外观：主题三选一卡片即时切换（<html data-theme> + localStorage）；
+ *     语言三选即时生效（分区标题重渲染）；
+ *  2. 模型与思考：默认模型/默认思考写入本地偏好并持久化；
+ *  3. 提供商渠道：列表展示（密钥√/default_thinking）；表单校验（必填/
+ *     非法值内联错误）；api_key 仅写入不回显（编辑态输入框为空 + password）；
+ *     保存调 PUT 并刷新；删除两段式确认；
+ *  4. 插件管理：列表（来源徽标/broken 原因）；启停开关调 PUT；
+ *     安装（source_path）；卸载两段式确认；
+ *  5. 入口/关闭：侧栏齿轮打开设置页（覆盖侧栏+对话区、检查器保留），
+ *     关闭按钮返回。
+ */
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { SettingsPage } from './SettingsPage';
+import { AppShell } from '../layout/AppShell';
+import { useUiStore } from '../../store/uiStore';
+import { useAppStore } from '../../store/appStore';
+import { setApi } from '../../api';
+import { createMockClient, type MockClient } from '../../api/mock/engine';
+
+describe('SettingsPage 四分区', () => {
+  let client: MockClient;
+
+  beforeEach(() => {
+    client = createMockClient();
+    setApi(client);
+    useUiStore.getState().resetForTest();
+    useAppStore.getState().resetForTest();
+  });
+  afterEach(() => {
+    client.dispose();
+  });
+
+  it('外观：主题卡片三选一切换即时生效 + 持久化', () => {
+    render(<SettingsPage />);
+    expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
+    act(() => {
+      fireEvent.click(screen.getByTestId('theme-card-light'));
+    });
+    expect(document.documentElement.getAttribute('data-theme')).toBe('light');
+    expect(localStorage.getItem('qap.theme')).toBe('light');
+    expect(screen.getByTestId('theme-card-light')).toHaveAttribute('aria-pressed', 'true');
+    act(() => {
+      fireEvent.click(screen.getByTestId('theme-card-sepia'));
+    });
+    expect(document.documentElement.getAttribute('data-theme')).toBe('sepia');
+  });
+
+  it('外观：语言切换即时生效（分区标题重渲染为 EN）', () => {
+    render(<SettingsPage />);
+    expect(screen.getByText('外观')).toBeInTheDocument();
+    act(() => {
+      fireEvent.click(screen.getByTestId('lang-btn-en'));
+    });
+    expect(screen.getByText('Appearance')).toBeInTheDocument();
+    expect(localStorage.getItem('qap.language')).toBe('en');
+  });
+
+  it('模型与思考：默认模型/默认思考写入本地偏好', async () => {
+    useAppStore.setState({
+      modelChannels: [
+        {
+          ref: 'glm-5.3',
+          provider: 'openai',
+          model: 'glm-5.3',
+          base_url: '',
+          api_key_env: '',
+          has_api_key: true,
+          default_thinking: 'max',
+          timeout_seconds: 120,
+        },
+      ],
+    });
+    render(<SettingsPage />);
+    const model = (await screen.findByTestId('pref-default-model')) as HTMLSelectElement;
+    act(() => {
+      fireEvent.change(model, { target: { value: 'glm-5.3' } });
+    });
+    expect(useUiStore.getState().defaultModelRef).toBe('glm-5.3');
+    expect(localStorage.getItem('qap.defaultModelRef')).toBe('glm-5.3');
+
+    const thinking = screen.getByTestId('pref-default-thinking') as HTMLSelectElement;
+    act(() => {
+      fireEvent.change(thinking, { target: { value: 'low' } });
+    });
+    expect(useUiStore.getState().defaultThinking).toBe('low');
+    expect(localStorage.getItem('qap.defaultThinking')).toBe('low');
+  });
+
+  it('渠道：列表渲染（密钥√ + default_thinking 文案）；表单校验内联错误', async () => {
+    render(<SettingsPage />);
+    // 列表来自 mock fixtures（三渠道）
+    const row = await screen.findByTestId('channel-row-glm-5.3-flash');
+    expect(row.textContent).toContain('glm-5.3-flash');
+    expect(row.textContent).toContain('未设置密钥');
+    expect(row.textContent).toContain('高'); // default_thinking=high
+
+    // 新建表单：ref/model 留空提交 → 内联必填错误，不调 PUT
+    act(() => {
+      fireEvent.click(screen.getByTestId('channel-new'));
+    });
+    act(() => {
+      fireEvent.click(screen.getByTestId('channel-form-save'));
+    });
+    // ref 与 model 两个必填错误同时内联展示
+    expect((await screen.findAllByText(/必填项不能为空/)).length).toBe(2);
+
+    // 超时非法
+    const timeout = screen.getByTestId('channel-form-timeout') as HTMLInputElement;
+    act(() => {
+      fireEvent.change(timeout, { target: { value: '-5' } });
+    });
+    act(() => {
+      fireEvent.click(screen.getByTestId('channel-form-save'));
+    });
+    expect(await screen.findByText(/超时必须为正整数/)).toBeInTheDocument();
+  });
+
+  it('渠道：编辑态 api_key 输入框为空（永不回显）且 type=password；保存调 PUT + has_api_key', async () => {
+    const putSpy = vi.spyOn(client, 'putAdminModel');
+    render(<SettingsPage />);
+    await screen.findByTestId('channel-row-glm-5.3-flash');
+    act(() => {
+      fireEvent.click(screen.getAllByText('编辑')[1]); // glm-5.3-flash 行
+    });
+    const apiKey = (await screen.findByTestId('channel-form-api-key')) as HTMLInputElement;
+    expect(apiKey.value).toBe('');
+    expect(apiKey.type).toBe('password');
+    // ref 为主键：编辑态禁用改名
+    expect((screen.getByTestId('channel-form-ref') as HTMLInputElement).disabled).toBe(true);
+
+    act(() => {
+      fireEvent.change(apiKey, { target: { value: 'sk-inline-secret' } });
+    });
+    act(() => {
+      fireEvent.click(screen.getByTestId('channel-form-save'));
+    });
+    await waitFor(() => {
+      expect(putSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ ref: 'glm-5.3-flash', api_key_inline: 'sk-inline-secret' }),
+      );
+    });
+    // 保存后：渠道表 has_api_key 变为 √；表单已收起
+    await waitFor(() => {
+      expect(screen.getByTestId('channel-row-glm-5.3-flash').textContent).toContain(
+        '密钥已设置',
+      );
+    });
+    expect(screen.queryByTestId('channel-form')).toBeNull();
+  });
+
+  it('渠道：删除两段式确认；基底渠道 409 错误内联展示', async () => {
+    render(<SettingsPage />);
+    await screen.findByTestId('channel-row-glm-5.3');
+    const rowDeleteBtns = screen.getAllByText('删除');
+    act(() => {
+      fireEvent.click(rowDeleteBtns[0]); // glm-5.3（基底）
+    });
+    const confirm = screen.getByTestId('channel-delete-confirm-glm-5.3');
+    expect(confirm).toBeInTheDocument();
+    act(() => {
+      fireEvent.click(confirm);
+    });
+    // mock：基底渠道 → 409，错误内联
+    await waitFor(() => {
+      expect(screen.getByRole('alert').textContent).toContain('基底渠道');
+    });
+  });
+
+  it('插件：列表（来源徽标 + broken 原因）；启停调 PUT；卸载两段确认', async () => {
+    const enableSpy = vi.spyOn(client, 'setPluginEnabled');
+    const uninstallSpy = vi.spyOn(client, 'uninstallPlugin');
+    render(<SettingsPage />);
+    const broken = await screen.findByTestId('plugin-item-legacy-noise-model');
+    expect(broken.textContent).toContain('已安装');
+    expect(broken.textContent).toContain('plugin.json');
+
+    // 启停：关掉 echo
+    const toggle = screen.getByTestId('plugin-toggle-echo') as HTMLInputElement;
+    act(() => {
+      fireEvent.click(toggle);
+    });
+    await waitFor(() => {
+      expect(enableSpy).toHaveBeenCalledWith('echo', false);
+    });
+
+    // 卸载：两段确认 installed 插件
+    const item = screen.getByTestId('plugin-item-pulse-seq-compiler');
+    act(() => {
+      fireEvent.click(item.querySelector('button') as HTMLButtonElement);
+    });
+    act(() => {
+      fireEvent.click(
+        screen.getByTestId('plugin-uninstall-confirm-pulse-seq-compiler'),
+      );
+    });
+    await waitFor(() => {
+      expect(uninstallSpy).toHaveBeenCalledWith('pulse-seq-compiler');
+    });
+    await waitFor(() => {
+      expect(screen.queryByTestId('plugin-item-pulse-seq-compiler')).toBeNull();
+    });
+  });
+
+  it('插件：安装（source_path）成功入列；空路径不触发', async () => {
+    const installSpy = vi.spyOn(client, 'installPlugin');
+    render(<SettingsPage />);
+    await screen.findByTestId('plugin-list');
+    const input = screen.getByTestId('plugin-source-path') as HTMLInputElement;
+    const btn = screen.getByTestId('plugin-install-btn') as HTMLButtonElement;
+    expect(btn.disabled).toBe(true); // 空路径禁用
+    act(() => {
+      fireEvent.change(input, { target: { value: './vendor/ftqe-analyzer' } });
+    });
+    expect(btn.disabled).toBe(false);
+    act(() => {
+      fireEvent.click(btn);
+    });
+    await waitFor(() => {
+      expect(installSpy).toHaveBeenCalledWith({ source_path: './vendor/ftqe-analyzer' });
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('plugin-item-ftqe-analyzer')).toBeInTheDocument();
+    });
+  });
+
+  it('入口与关闭：AppShell 中设置页覆盖侧栏+对话区，检查器保留', async () => {
+    render(<AppShell />);
+    expect(screen.getByTestId('session-sidebar')).toBeInTheDocument();
+    act(() => {
+      useUiStore.getState().openSettings();
+    });
+    expect(screen.queryByTestId('session-sidebar')).toBeNull();
+    expect(screen.queryByTestId('chat-panel')).toBeNull();
+    expect(screen.getByTestId('settings-page')).toBeInTheDocument();
+    expect(screen.getByTestId('inspector-panel')).toBeInTheDocument(); // 检查器保留
+    act(() => {
+      fireEvent.click(screen.getByTestId('close-settings'));
+    });
+    expect(screen.getByTestId('session-sidebar')).toBeInTheDocument();
+    expect(screen.getByTestId('chat-panel')).toBeInTheDocument();
+  });
+});

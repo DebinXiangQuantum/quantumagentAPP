@@ -97,10 +97,81 @@
   word-break: break-word;
   line-height: var(--lh-body);
 }
+/* 流式期间正文未到：思考中的微光标态（v1.1 §5） */
+.message__thinking {
+  color: var(--text-secondary);
+  font-size: var(--fs-caption);
+}
 .message__artifacts {
   display: flex;
   flex-direction: column;
   gap: var(--space-12);
+}
+
+/* ============ 思考过程折叠块（design.md §5 v1.1） ============ */
+.reasoning {
+  align-self: flex-start;
+  max-width: 100%;
+  background: var(--bg-inset);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.reasoning__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  width: 100%;
+  min-width: 0;
+  padding: var(--space-4) var(--space-12);
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-size: var(--fs-caption);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-out);
+}
+.reasoning__header:hover {
+  background: var(--bg-elevated);
+}
+.reasoning__header:active {
+  background: var(--bg-surface);
+}
+.reasoning__title {
+  flex-shrink: 0;
+  font-weight: 600;
+}
+.reasoning__summary {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-faint);
+  font-size: var(--fs-caption);
+  text-align: right;
+}
+.reasoning__chevron {
+  flex-shrink: 0;
+  color: var(--text-faint);
+  font-size: var(--fs-caption);
+  transition: transform var(--motion-fast) var(--ease-out);
+}
+.reasoning__chevron--open {
+  transform: rotate(90deg);
+}
+.reasoning__body {
+  max-height: 240px; /* §5：展开后 240px 内滚动 */
+  overflow-y: auto;
+  padding: var(--space-8) var(--space-12);
+  border-top: 1px solid var(--border-default);
+}
+.reasoning__text {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-data);
+  color: var(--text-secondary);
 }
 
 /* ============ Artifact 卡片 ============ */

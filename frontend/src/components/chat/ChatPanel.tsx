@@ -1,11 +1,13 @@
 /**
- * ChatPanel.tsx —— 对话区容器（design.md §5）。
+ * ChatPanel.tsx —— 对话区容器（design.md §5，v1.1 增思考过程流式态）。
  *
  * 职责：
  *  - 居中流体列（max 820px）：消息流（分组规则：连续 assistant 为一组，
  *    组首带头像，角色切换处细分隔线）+ 流式消息（带闪烁光标）；
+ *  - 流式期间：思考增量先于正文（契约 §7）——正文未到时显示
+ *    「思考中…」微光标态；思考折叠块（ReasoningBlock）实时累加摘要；
  *  - 新内容自动滚动到底部（用户主动上滚超过阈值时暂停跟随）；
- *  - 空态：无会话 / 无消息两种插画式文案；
+ *  - 空态：无会话 / 无消息两种插画式文案（i18n）；
  *  - SSE error 事件 → 内联警示条（可清除；流自动重连无需手动重试）。
  * Props 契约：无 props（数据来自 useAppStore）。
  * 交互行为：输入区见 MessageInput；卡片展开见 ArtifactCard。
@@ -16,7 +18,9 @@ import type { Message } from '../../types/domain';
 import { MessageBubble } from './MessageBubble';
 import { MessageInput } from './MessageInput';
 import { StreamingCursor } from './StreamingCursor';
+import { ReasoningBlock } from './ReasoningBlock';
 import { MessageListSkeleton } from '../common/Skeletons';
+import { useTranslate } from '../../i18n';
 
 /** 用户上滚超过该像素值时停止自动跟随（避免打断回看）。 */
 const FOLLOW_THRESHOLD_PX = 80;
@@ -25,6 +29,7 @@ const FOLLOW_THRESHOLD_PX = 80;
 const CURSOR_FADE_MS = 220;
 
 export function ChatPanel(): JSX.Element {
+  const t = useTranslate();
   const activeCid = useAppStore((s) => s.activeConversationId);
   const conversations = useAppStore((s) => s.conversations);
   const messagesByCid = useAppStore((s) => s.messagesByCid);
@@ -46,8 +51,8 @@ export function ChatPanel(): JSX.Element {
     prevStreamingId.current = currentId;
     if (wasStreaming && currentId === null) {
       setCursorFading(true);
-      const t = setTimeout(() => setCursorFading(false), CURSOR_FADE_MS);
-      return () => clearTimeout(t);
+      const timer = setTimeout(() => setCursorFading(false), CURSOR_FADE_MS);
+      return () => clearTimeout(timer);
     }
     return undefined;
   }, [streamingByCid, activeCid]);
@@ -59,11 +64,13 @@ export function ChatPanel(): JSX.Element {
     activeCid !== null && !loadedCids[activeCid] && !streaming;
 
   // 自动跟随：新消息/流式增量到达时滚到底（用户上滚则暂停）
+  const streamedText = streaming?.text ?? '';
+  const streamedReasoning = streaming?.reasoning ?? '';
   useEffect(() => {
     const el = flowRef.current;
     if (!el || !followRef.current) return;
     el.scrollTop = el.scrollHeight;
-  }, [messages.length, streaming?.text, activeCid]);
+  }, [messages.length, streamedText, streamedReasoning, activeCid]);
 
   const handleScroll = (): void => {
     const el = flowRef.current;
@@ -73,13 +80,13 @@ export function ChatPanel(): JSX.Element {
   };
 
   return (
-    <section className="chat-panel" data-testid="chat-panel" aria-label="对话区">
+    <section className="chat-panel" data-testid="chat-panel" aria-label={t('chat.aria')}>
       <div className="chat-panel__inner">
         {streamError ? (
           <div className="error-bar chat-panel__error" role="alert">
             <span className="truncate">{streamError}</span>
             <button type="button" className="btn btn--sm" onClick={clearStreamError}>
-              清除
+              {t('chat.error.clear')}
             </button>
           </div>
         ) : null}
@@ -92,18 +99,18 @@ export function ChatPanel(): JSX.Element {
         >
           {activeCid === null ? (
             <div className="empty-state">
-              <p className="empty-state__title">暂无会话</p>
-              <p className="empty-state__hint">
-                在左侧新建一个会话，或等待数据加载完成。
-              </p>
+              <p className="empty-state__title">{t('chat.emptyConv.title')}</p>
+              <p className="empty-state__hint">{t('chat.emptyConv.hint')}</p>
             </div>
           ) : messagesLoading ? (
             <MessageListSkeleton count={2} />
           ) : messages.length === 0 && !streaming ? (
             <div className="empty-state">
-              <p className="empty-state__title">对话尚未开始</p>
+              <p className="empty-state__title">{t('chat.emptyMsg.title')}</p>
               <p className="empty-state__hint">
-                发送第一条消息，让 {conv ? `${conv.title} · ` : ''}Agent 开始工作。
+                {t('chat.emptyMsg.hint', {
+                  scope: conv ? `${conv.title} · ` : '',
+                })}
               </p>
             </div>
           ) : (
@@ -124,8 +131,18 @@ export function ChatPanel(): JSX.Element {
                     Q
                   </span>
                   <div className="message__body">
+                    {streaming.reasoning ? (
+                      <ReasoningBlock
+                        reasoning={streaming.reasoning}
+                        active={streaming.text.length === 0}
+                      />
+                    ) : null}
                     <div className="message__text">
-                      {streaming.text}
+                      {streaming.text.length > 0 ? (
+                        streaming.text
+                      ) : (
+                        <span className="message__thinking">{t('reasoning.thinking')}</span>
+                      )}
                       <StreamingCursor />
                     </div>
                   </div>

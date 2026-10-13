@@ -29,15 +29,88 @@ export interface Conversation {
 /** §4 Message.role */
 export type MessageRole = 'user' | 'assistant';
 
-/** §4 Message（artifacts 仅 assistant 消息通常携带，但契约上两角色均可能有） */
+/** §4 Message（artifacts 仅 assistant 消息通常携带，但契约上两角色均可能有）。
+ * v1.1：reasoning 承载思考过程全文（可为空串）；TS 侧可选以容错旧数据/畸形包。 */
 export interface Message {
   id: string;
   conversation_id: string;
   role: MessageRole;
   content: string;
+  /** v1.1：思考过程全文（后端契约必有该键；缺省按 '' 降级） */
+  reasoning?: string;
   agent_id: string;
   artifacts: Artifact[];
   created_at: string;
+}
+
+/** §4 ThinkingLevel（v1.1）——思考程度归一化枚举。 */
+export type ThinkingLevel = 'off' | 'low' | 'high' | 'max';
+
+/** 合法思考程度清单（UI 选择器与校验共用；顺序即展示顺序）。 */
+export const THINKING_LEVELS: readonly ThinkingLevel[] = [
+  'off',
+  'low',
+  'high',
+  'max',
+];
+
+/** 防御式解析：未知值降级为 'high'（契约缺省值）。 */
+export function parseThinkingLevel(raw: unknown): ThinkingLevel {
+  return raw === 'off' || raw === 'low' || raw === 'max' ? raw : 'high';
+}
+
+/** §5 v1.1 ModelChannel —— 管理平台渠道池条目（GET /admin/models 返回形状，密钥脱敏）。 */
+export interface ModelChannel {
+  ref: string;
+  provider: 'openai' | 'anthropic' | 'mock';
+  model: string;
+  base_url: string;
+  /** 密钥来源二选一：环境变量名 / 本地内联（GET 只报 has_api_key，不回明文） */
+  api_key_env: string;
+  /** env 已解析到非空值，或本地文件内联了密钥 */
+  has_api_key: boolean;
+  default_thinking: ThinkingLevel;
+  timeout_seconds: number;
+}
+
+/** §5 v1.1 ModelChannelInput —— PUT /admin/models/{ref} 请求体。 */
+export interface ModelChannelInput {
+  ref: string;
+  provider: 'openai' | 'anthropic' | 'mock';
+  model: string;
+  base_url: string;
+  api_key_env: string;
+  default_thinking: ThinkingLevel;
+  timeout_seconds: number;
+  /** 只写入不回显的明文密钥（落 config.local.toml，gitignored） */
+  api_key_inline?: string;
+}
+
+/** §5 v1.1 ModelChannelList —— GET /admin/models 响应信封。 */
+export interface ModelChannelList {
+  models: ModelChannel[];
+}
+
+/** §8 v1.1 PluginInfo —— 已注册插件（builtin 与 installed，含 broken 原因）。 */
+export interface PluginInfo {
+  id: string;
+  name: string;
+  version: string;
+  description: string;
+  enabled: boolean;
+  source: 'builtin' | 'installed';
+  /** 非空 = 插件加载失败被注册为 broken（不拖垮平台） */
+  broken_reason: string | null;
+}
+
+/** GET /admin/plugins 响应信封。 */
+export interface PluginList {
+  plugins: PluginInfo[];
+}
+
+/** POST /admin/plugins/install 请求体。 */
+export interface InstallPluginRequest {
+  source_path: string;
 }
 
 /** §6 Artifact 统一信封；type 开放（未知类型必须降级为 JSON 卡片） */
@@ -149,6 +222,13 @@ export interface TenantInfo {
     max_concurrent_tasks: number;
     max_messages_per_day: number;
   };
+}
+
+/** POST /api/v1/conversations/{cid}/messages 请求体（v1.1：model_ref/thinking_level 可选覆盖）。 */
+export interface SendMessageRequest {
+  content: string;
+  model_ref?: string;
+  thinking_level?: ThinkingLevel;
 }
 
 /** POST /api/v1/conversations/{cid}/messages 的 202 响应 */

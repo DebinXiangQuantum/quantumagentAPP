@@ -1,5 +1,5 @@
 /**
- * DagView.tsx —— 任务 DAG 视图（design.md §6.3）。
+ * DagView.tsx —— 任务 DAG 视图（design.md §6.3，§5.1 v1.1 几何修订）。
  *
  * 职责：
  *  - 节点 = Step：kind 色（quantum=violet/classical=info/agent=warning 左色条）+
@@ -8,6 +8,8 @@
  *  - 运行中节点呼吸光晕（CSS 2s；reduced-motion 降级实线描边）；
  *  - 点击节点 → 右侧 Drawer 详情（node_id、起止时间、detail/error）；
  *  - 环/未知依赖/畸形任务防御式降级（invalid 提示），不崩溃。
+ * 几何（§5.1 v1.1）：节点 232×76；名称 2 行 line-clamp、id 单行截断、
+ *  任务标题 min-width:0 截断——修复"长文本把 flex 子项压缩到 0 宽"。
  * Props 契约：{ task: Task | null }——steps 空或畸形 → 空态文案。
  */
 import { useMemo, useState } from 'react';
@@ -16,17 +18,18 @@ import { StatusBadge } from '../common/StatusBadge';
 import { Drawer } from '../common/Drawer';
 import { formatClock } from '../../utils/format';
 import type { Step, Task } from '../../types/domain';
+import { useTranslate } from '../../i18n';
 
-// 布局几何（px；§6.3 修订：**纵向流水线**——依赖层自上而下堆叠、同层并排，
-// 适配 360px 检查器宽度。横向布局在窄面板上会溢出到 744px 且画布高度塌缩）
-const NODE_W = 200;
-const NODE_H = 64;
+// 布局几何（px；§6.3 纵向流水线 + §5.1 节点 232×76）
+const NODE_W = 232;
+const NODE_H = 76;
 const GAP_X = 16;
 const GAP_Y = 24;
 /** 画布在内容尺寸外的余量（px），保证边缘节点/箭头不被裁切 */
 const CANVAS_MARGIN = 8;
 
 export function DagView(props: { task: Task | null }): JSX.Element {
+  const t = useTranslate();
   const [selected, setSelected] = useState<Step | null>(null);
   const task = props.task;
 
@@ -38,10 +41,8 @@ export function DagView(props: { task: Task | null }): JSX.Element {
   if (!task || typeof task !== 'object' || model.nodes.length === 0) {
     return (
       <div className="empty-state">
-        <p className="empty-state__title">暂无任务</p>
-        <p className="empty-state__hint">
-          发送一条消息让 Agent 提交 DAG，状态迁移将实时出现在这里。
-        </p>
+        <p className="empty-state__title">{t('dag.empty.title')}</p>
+        <p className="empty-state__hint">{t('dag.empty.hint')}</p>
       </div>
     );
   }
@@ -66,7 +67,7 @@ export function DagView(props: { task: Task | null }): JSX.Element {
       </div>
       {model.invalid ? (
         <p className="viz-note viz-note--error" role="note">
-          依赖存在环或异常，已按出现顺序降级布局。
+          {t('dag.invalid')}
         </p>
       ) : null}
       {/* 画布显式给内容尺寸：绝对定位的节点/SVG 不贡献流内高度，否则容器塌缩 */}
@@ -128,9 +129,9 @@ export function DagView(props: { task: Task | null }): JSX.Element {
               .join(' ')}
             style={{ left: xOf(indexInLayer), top: yOf(layer), width: NODE_W, height: NODE_H }}
             onClick={() => setSelected(step)}
-            aria-label={`步骤 ${step.name}（${step.id}）`}
+            aria-label={t('dag.stepAria', { name: step.name, id: step.id })}
           >
-            <span className="dag-node__name truncate">{step.name}</span>
+            <span className="dag-node__name clamp-2">{step.name}</span>
             <span className="dag-node__meta mono truncate">{step.id}{step.node_id ? ` · ${step.node_id}` : ''}</span>
             <StatusBadge status={step.status} />
           </button>
@@ -140,37 +141,37 @@ export function DagView(props: { task: Task | null }): JSX.Element {
       <Drawer
         open={selected !== null}
         onClose={() => setSelected(null)}
-        title={selected ? `步骤 ${selected.id}` : ''}
+        title={selected ? t('dag.detail.title', { id: selected.id }) : ''}
       >
         {selected ? (
           <dl className="detail-list">
             <div className="detail-list__row">
-              <dt>状态</dt>
+              <dt>{t('dag.detail.status')}</dt>
               <dd><StatusBadge status={selected.status} /></dd>
             </div>
             <div className="detail-list__row">
-              <dt>类型</dt>
+              <dt>{t('dag.detail.kind')}</dt>
               <dd className="mono">{selected.kind}</dd>
             </div>
             <div className="detail-list__row">
-              <dt>节点</dt>
-              <dd className="mono">{selected.node_id ?? '（未调度）'}</dd>
+              <dt>{t('dag.detail.node')}</dt>
+              <dd className="mono">{selected.node_id ?? t('dag.detail.nodeUnset')}</dd>
             </div>
             <div className="detail-list__row">
-              <dt>开始</dt>
+              <dt>{t('dag.detail.start')}</dt>
               <dd className="mono">{formatClock(selected.started_at)}</dd>
             </div>
             <div className="detail-list__row">
-              <dt>结束</dt>
+              <dt>{t('dag.detail.end')}</dt>
               <dd className="mono">{formatClock(selected.finished_at)}</dd>
             </div>
             <div className="detail-list__row">
-              <dt>说明</dt>
-              <dd>{selected.detail || '（无）'}</dd>
+              <dt>{t('dag.detail.detail')}</dt>
+              <dd>{selected.detail || t('dag.detail.none')}</dd>
             </div>
             {selected.error ? (
               <div className="detail-list__row detail-list__row--error">
-                <dt>错误</dt>
+                <dt>{t('dag.detail.error')}</dt>
                 <dd>{selected.error}</dd>
               </div>
             ) : null}

@@ -14,10 +14,20 @@ export interface MessageDeltaData {
   seq: number;
 }
 
+/** §7 v1.1：思考过程增量（先于正文 delta 到达；seq 与 delta 同源单调）。 */
+export interface MessageReasoningData {
+  conversation_id: string;
+  message_id: string;
+  delta: string;
+  seq: number;
+}
+
 export interface MessageCompletedData {
   conversation_id: string;
   message_id: string;
   artifacts: import('./domain').Artifact[];
+  /** v1.1：思考全文（可为空串；畸形缺省按 '' 降级） */
+  reasoning?: string;
 }
 
 export interface TaskUpdatedData {
@@ -38,6 +48,7 @@ export interface ErrorEventData {
 /** 会话流事件（event name → data） */
 export type ConversationStreamEvent =
   | { event: 'message.delta'; data: MessageDeltaData }
+  | { event: 'message.reasoning'; data: MessageReasoningData }
   | { event: 'message.completed'; data: MessageCompletedData }
   | { event: 'error'; data: ErrorEventData };
 

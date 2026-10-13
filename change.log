@@ -5,6 +5,81 @@ Validation（本切片测试结论）+ Known defects（已知缺陷，无则写�
 scope 与流程见 docs/DEVELOPMENT.md §2。
 
 
+## 2026-10-13 `frontend: v2 全栈切片（F1–F6）——三主题/三语言/顶栏模型与思考/设置页四分区/思考过程/截断与 Mock 全链路`
+
+### Added
+- **F1 三主题**（design.md §2.1）：`tokens.ts` 新增 `LIGHT_THEME`/`SEPIA_THEME`
+  色板（逐字对齐文档表）与降档阴影；`buildTokenCss()` 输出 `:root`(=dark) +
+  `[data-theme="light"]` + `[data-theme="sepia"]` 三块（后两者仅覆盖 15 颜色 +
+  `--shadow-1/2` + `color-scheme:light`；几何/字号/间距三主题共用）；
+  `ThemeProvider` 挂 `<html data-theme>`；localStorage（`qap.theme`）持久化，
+  畸形持久化值回退 dark。
+- **F2 三语言**（§2.2）：自研 `src/i18n/`（zh/en/ja 字典 + `translate`/`t`/
+  `useTranslate`，零重依赖）；界面 chrome 全量迁移（顶栏/侧栏/检查器 Tab/
+  设置页/空态/按钮/占位/状态徽标/主题名/思考程度名/相对时间/错误文案）；
+  语言存 uiStore + localStorage（`qap.language`），切换即时生效；用户与
+  Agent 内容不翻译。
+- **F3 顶栏改造**（§5 v1.1）：移除 Agent 选择器（顶栏+输入区两处）；新增
+  模型选择器（数据源 `GET /admin/models` 渠道池）与思考程度选择器
+  （off/low/high/max）；切模型默认跟随渠道 `default_thinking`，手动改过
+  （thinkingTouched）本会话保持；选择随消息发送（POST body
+  `model_ref`/`thinking_level`）。
+- **F4 设置页四分区**（§5）：侧栏底部齿轮「设置」→ 设置页覆盖侧栏+对话区
+  （检查器保留）：外观（主题三选一卡片即时预览 + 语言三选）/模型与思考
+  （默认模型、默认思考程度，本地偏好持久化）/提供商渠道（列表 ref/provider/
+  model/base_url/密钥已设置√/default_thinking + 新建/编辑表单——api_key
+  仅写入（type=password、留空不改、保存后永不回显）、校验内联、PUT 保存、
+  两段式删除确认、409/422 错误内联）/插件管理（名称/版本/启用开关/来源徽标/
+  broken 原因 + source_path 安装 + 两段式卸载确认）。
+- **F5 思考过程展示**（§7 v1.1）：`message.reasoning` SSE 事件契约 +
+  store 独立缓冲归并（与 message.delta 同模式，seq 同源单调；completed
+  的 reasoning 全文并入 `Message.reasoning`）；`ReasoningBlock` 折叠块
+  （默认收起+字数摘要+chevron 旋转；展开 mono/caption/--text-secondary/
+  max-height 240px 滚动）；流式期间正文未到显示「思考中…」微光标态。
+- **F6 Mock 全链路**：admin models fixtures（glm-5.3(default_thinking=max)/
+  glm-5.3-flash(high、密钥未设置演示)/mock(high)）+ 插件 fixtures（builtin×4 +
+  installed×2 含 broken 示例）+ orchestrator 编排流（buildOrchestratorScript：
+  思考增量→文本启发式 dispatch 专家→产物/DAG/硬件推进；thinking=off 跳过
+  reasoning）+ 历史消息 reasoning 演示；引擎新增 admin 端点实现（PUT/DELETE
+  渠道 422/409 语义、插件安装/启停/卸载）。
+
+### Changed
+- `ApiClient` 契约扩展（§5/§8 v1.1）：`sendMessage(cid, content, {model_ref?,
+  thinking_level?})`、`createConversation({title})`（agent_id 缺省 orchestrator）、
+  `listAdminModels`/`putAdminModel`/`deleteAdminModel`/`listAdminPlugins`/
+  `installPlugin`/`setPluginEnabled`/`uninstallPlugin`；会话流监听
+  `message.reasoning` 并参与 ?after= seq 续传。
+- `appStore`：bootstrap 并行拉取渠道池（失败不阻断启动）并以本地偏好初始
+  化模型/思考选择；`selectModel`/`selectThinking`/`refreshModelChannels`；
+  `streamingByCid` 缓冲增加 reasoning；移除 `currentAgentId`。
+- DagView 几何（§5.1）：节点 232×76（原 200×64）、名称 2 行 line-clamp、
+  id 单行截断、任务标题 min-width:0 + 截断。
+- 侧栏会话条目标题/副行 min-width:0（修复"标题被压缩看不见"）。
+- `global.css`：`color-scheme` 移入 tokens 主题块（浅色/护眼下原生控件按
+  light 渲染）；新增 `.clamp-2` 工具类。
+
+### Fixed
+- Mock 脚本时序改为绝对时刻拼装 + 统一转增量调度（修复编排重定位导致
+  reasoning/正文交错与首正文延迟）。
+
+### Validation
+- TDD（先红后绿）：三主题 token 断言 5 用例、ThemeProvider 4、i18n 字典
+  key 集合一致/插值/回退/组件切换 6、TopBar 联动与请求体 4、ReasoningBlock
+  折叠 + Mock 驱动 SSE 归并（先思考后正文、增量==全文）6、admin 渠道/插件
+  契约 + 编排流（校准→waveform、回显、thinking=off）11、设置页四分区 9
+  （主题/语言/偏好/渠道校验与 api_key 不回显/两段删除/插件启停安装卸载/
+  入口覆盖关系）。
+- 全量 `npm test` **137 passed**（24 文件；v1 91 条保持，其中 2 处断言按
+  v1.1 契约更新：engine 事件顺序允许 message.reasoning、agents 列表含
+  orchestrator；MessageInput Agent 快捷切换用例改为断言已移除）；
+  `npm run build` 零 TS 错误；`VITE_USE_MOCK=1 npm run dev` 冒烟通过
+  （dev server 正常供页）。
+
+### Known defects
+- 浅色/护眼主题的截图走查未在本轮执行（jsdom 无法断言渲染像素）；三主题
+  均通过 token 契约测试锁定，建议合并前人工浏览三主题各一屏。
+- 设置页渠道表在超窄视口（<960px）依赖横向滚动兜底，未做卡片式降级。
+
 ## 2026-10-13 `backend: 真实 GLM 冒烟驱动的契约修正与两处潜伏缺陷修复`
 
 ### Changed（doc-first：先改 ARCHITECTURE §3/§9 再改代码）
@@ -181,6 +256,7 @@ scope 与流程见 docs/DEVELOPMENT.md §2。
 ### Known defects
 - LocalConfigStore 重写整份 config.local.toml 会丢失手写注释与键序
   （值语义保留；原型接受，见模块 docstring）。
+
 
 
 ## 2026-10-13 `frontend: 真实浏览器视觉走查修复（DAG 纵向布局/时间戳/对比度/原生控件）`

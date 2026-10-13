@@ -2,8 +2,11 @@
  * fixtures.ts —— Mock 模式内置演示数据（驱动全部面板）。
  *
  * 目的：后端未启动时（VITE_USE_MOCK=1）UI 完整可演示：
- *  3 个 Agent、2 个含历史的会话（含 circuit/counts/waveform/未知类型 artifact）、
- *  成功与运行中各一个任务、5 个硬件节点（含 1 个 offline 演示斜纹降饱和）。
+ *  4 个 Agent（v1.1 含 orchestrator 编排入口）、2 个含历史的会话
+ *  （含 circuit/counts/waveform/未知类型 artifact + 历史思考过程）、
+ *  成功与运行中各一个任务、5 个硬件节点（含 1 个 offline 演示斜纹降饱和）、
+ *  管理平台数据：渠道池（glm-5.3/glm-5.3-flash/mock + default_thinking）与
+ *  插件注册表（含一个 broken 示例）。
  * 假设：数据形态严格满足 ARCHITECTURE §4 不变量（counts 守恒、容量不超限、
  *  utilization ∈ [0,1]），供硬件面板映射测试直接消费。
  * 失败行为：纯常量，无失败路径；消费方必须 clone 后再修改。
@@ -13,6 +16,8 @@ import type {
   Conversation,
   HardwareNode,
   Message,
+  ModelChannel,
+  PluginInfo,
   Task,
   TenantInfo,
 } from '../../types/domain';
@@ -27,11 +32,19 @@ export const TENANT: TenantInfo = {
 
 export const AGENTS: AgentInfo[] = [
   {
+    id: 'orchestrator',
+    name: '编排调度',
+    description: 'v1.1 内置编排 Agent：按任务自主决定调用哪个专家（dispatch_agent）。',
+    capabilities: ['dispatch', 'orchestration'],
+    model_ref: 'glm-5.3',
+    builtin: true,
+  },
+  {
     id: 'algorithm-designer',
     name: '量子算法设计',
     description: '问题建模 → 线路合成 → VQE/QAOA 全流程，产出线路与计数可视化。',
     capabilities: ['problem-modeling', 'circuit-synthesis', 'vqe-pipeline'],
-    model_ref: 'default',
+    model_ref: 'glm-5.3-flash',
     builtin: true,
   },
   {
@@ -39,7 +52,7 @@ export const AGENTS: AgentInfo[] = [
     name: '量子校准 / 波形',
     description: '单/双比特校准脉冲合成与 RB 表征，产出波形 artifact。',
     capabilities: ['pulse-calibration', 'rb-characterization'],
-    model_ref: 'default',
+    model_ref: 'glm-5.3-flash',
     builtin: true,
   },
   {
@@ -96,6 +109,11 @@ export const MESSAGES_BY_CID: Record<string, Message[]> = {
         '已完成 H2 STO-3G 在 0.735Å 键长下的 VQE 估算：' +
         'Ansatz 采用硬件高效形式，测量基组旋转后能量收敛至 -1.1372 Ha。\n' +
         '线路与 1024 shots 计数如下；末尾附带一份未注册类型的产物用于演示降级渲染。',
+      reasoning:
+        '用户要估算 H2 基态能量并查看线路与测量结果——属于量子算法设计任务。\n' +
+        '计划：dispatch_agent("algorithm-designer")，专家将以 STO-3G 基组建模、' +
+        '合成硬件高效 Ansatz（RY/RZ + CNOT），并在 QPU 上执行 1024 shots 采样。\n' +
+        '预期产物：circuit + counts 两个 artifact；能量收敛判据 1e-4 Ha。',
       agent_id: 'algorithm-designer',
       artifacts: [
         {
@@ -333,5 +351,100 @@ export const HARDWARE_NODES: HardwareNode[] = [
     utilization: 0.37,
     capacity: 4,
     allocations: [],
+  },
+];
+
+/** §5 v1.1 管理平台渠道池（GLM 实测渠道 + mock；密钥脱敏，只报 has_api_key）。 */
+export const ADMIN_MODELS: ModelChannel[] = [
+  {
+    ref: 'glm-5.3',
+    provider: 'openai',
+    model: 'glm-5.3',
+    base_url: 'https://open.bigmodel.cn/api/paas/v4',
+    api_key_env: 'GLM_API_KEY',
+    has_api_key: true,
+    default_thinking: 'max',
+    timeout_seconds: 120,
+  },
+  {
+    ref: 'glm-5.3-flash',
+    provider: 'openai',
+    model: 'glm-5.3-flash',
+    base_url: 'https://open.bigmodel.cn/api/paas/v4',
+    api_key_env: 'GLM_API_KEY',
+    has_api_key: false,
+    default_thinking: 'high',
+    timeout_seconds: 120,
+  },
+  {
+    ref: 'mock',
+    provider: 'mock',
+    model: 'mock-llm',
+    base_url: '',
+    api_key_env: '',
+    has_api_key: true,
+    default_thinking: 'high',
+    timeout_seconds: 30,
+  },
+];
+
+/** 基底渠道（config.toml 提交入库）——DELETE 不可删（409），仅本地覆盖渠道可删。 */
+export const BASE_CHANNEL_REFS: readonly string[] = ['glm-5.3', 'glm-5.3-flash', 'mock'];
+
+/** §8 v1.1 插件注册表：builtin + installed（含一个 broken 演示条目）。 */
+export const ADMIN_PLUGINS: PluginInfo[] = [
+  {
+    id: 'orchestrator',
+    name: '编排调度',
+    version: '1.0.0',
+    description: '内置编排 Agent：自主决定调用哪个专家。',
+    enabled: true,
+    source: 'builtin',
+    broken_reason: null,
+  },
+  {
+    id: 'algorithm-designer',
+    name: '量子算法设计',
+    version: '1.2.0',
+    description: '问题建模 → 线路合成 → VQE 全流程。',
+    enabled: true,
+    source: 'builtin',
+    broken_reason: null,
+  },
+  {
+    id: 'calibration',
+    name: '量子校准 / 波形',
+    version: '1.1.0',
+    description: '校准脉冲合成与 RB 表征。',
+    enabled: true,
+    source: 'builtin',
+    broken_reason: null,
+  },
+  {
+    id: 'echo',
+    name: '回显测试',
+    version: '1.0.0',
+    description: '最小演示插件：流式回显。',
+    enabled: true,
+    source: 'builtin',
+    broken_reason: null,
+  },
+  {
+    id: 'pulse-seq-compiler',
+    name: '脉冲序列编译器',
+    version: '0.3.1',
+    description: '外部安装示例：把脉冲 DAG 编译为硬件指令序列。',
+    enabled: true,
+    source: 'installed',
+    broken_reason: null,
+  },
+  {
+    id: 'legacy-noise-model',
+    name: '旧版噪声模型',
+    version: '0.9.7',
+    description: '外部安装示例：加载失败被注册为 broken，不影响平台其他插件。',
+    enabled: false,
+    source: 'installed',
+    broken_reason: 'plugin.json 缺少 qap.entry 键（422 语义）',
   },
 ];

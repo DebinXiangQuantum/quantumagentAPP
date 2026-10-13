@@ -9,6 +9,7 @@
  * 失败行为：title 畸形按空串渲染；children 可为任意节点。
  */
 import { useEffect, type ReactNode } from 'react';
+import { useTranslate } from '../../i18n';
 
 export function Drawer(props: {
   open: boolean;
@@ -16,6 +17,7 @@ export function Drawer(props: {
   title: string;
   children: ReactNode;
 }): JSX.Element {
+  const t = useTranslate();
   const { open, onClose } = props;
   const title = typeof props.title === 'string' ? props.title : '';
 
@@ -39,7 +41,7 @@ export function Drawer(props: {
         data-testid="drawer"
         role="dialog"
         aria-modal="false"
-        aria-label={title || '详情抽屉'}
+        aria-label={title || t('drawer.aria')}
       >
         <div className="drawer__header">
           <span className="drawer__title truncate">{title}</span>
@@ -48,8 +50,8 @@ export function Drawer(props: {
             className="icon-btn"
             data-testid="drawer-close"
             onClick={onClose}
-            aria-label="关闭抽屉"
-            title="关闭抽屉（Esc）"
+            aria-label={t('drawer.close')}
+            title={t('drawer.closeTitle')}
           >
             <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
               <line x1="2" y1="2" x2="12" y2="12" strokeWidth="1.6" className="svg-stroke-current" />

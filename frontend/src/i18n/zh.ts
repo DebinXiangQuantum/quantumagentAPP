@@ -1,0 +1,201 @@
+/**
+ * zh.ts —— 中文界面字典（默认语言，design.md §2.2）。
+ *
+ * 约束：
+ *  - 只覆盖**界面 chrome** 文案（顶栏/侧栏/检查器/设置页/空态/按钮/占位/
+ *    状态徽标/主题名/思考程度名）；用户与 Agent 内容（消息、任务名、
+ *    Artifact 标题）不翻译；
+ *  - 三个字典（zh/en/ja）key 集合必须完全一致（i18n.test.ts 断言）；
+ *  - 参数插值用 {name} 占位。
+ */
+export const zh: Record<string, string> = {
+  // —— 顶栏 ——
+  'topbar.product': 'QuantumAgent · 异构量子智能体平台',
+  'topbar.toggleSidebar': '切换会话侧栏',
+  'topbar.toggleInspector': '切换检查器面板',
+  'topbar.model': '模型',
+  'topbar.thinking': '思考',
+  'topbar.modelLoading': '（加载中）',
+  'topbar.currentModel': '当前模型',
+  'topbar.currentThinking': '思考程度',
+  'topbar.tenant': '租户：{name}',
+  'topbar.tenantUnknown': '未知',
+
+  // —— 侧栏 ——
+  'sidebar.title': '会话',
+  'sidebar.new': '+ 新建',
+  'sidebar.newTitle': '新建会话',
+  'sidebar.empty.title': '暂无会话',
+  'sidebar.empty.hint': '创建第一个会话，让 Agent 开始为你工作。',
+  'sidebar.empty.action': '新建会话',
+  'sidebar.settings': '设置',
+  'sidebar.aria': '会话侧栏',
+
+  // —— 对话区 ——
+  'chat.aria': '对话区',
+  'chat.error.clear': '清除',
+  'chat.emptyConv.title': '暂无会话',
+  'chat.emptyConv.hint': '在左侧新建一个会话，或等待数据加载完成。',
+  'chat.emptyMsg.title': '对话尚未开始',
+  'chat.emptyMsg.hint': '发送第一条消息，让{scope} Agent 开始工作。',
+  'chat.input.placeholder': '输入消息，Enter 发送，Shift+Enter 换行',
+  'chat.input.aria': '消息输入',
+  'chat.input.send': '发送 ⏎',
+  'chat.input.sendTitle': '发送（Enter）',
+
+  // —— 思考过程（v1.1）——
+  'reasoning.title': '思考过程',
+  'reasoning.thinking': '思考中…',
+  'reasoning.chars': '{n} 字',
+  'reasoning.toggle': '展开或收起思考过程',
+
+  // —— 检查器 ——
+  'inspector.aria': '检查器',
+  'inspector.tabs': '检查器视图',
+  'inspector.tab.hardware': '硬件拓扑',
+  'inspector.tab.dag': '任务 DAG',
+
+  // —— DAG ——
+  'dag.empty.title': '暂无任务',
+  'dag.empty.hint': '发送一条消息让 Agent 提交 DAG，状态迁移将实时出现在这里。',
+  'dag.invalid': '依赖存在环或异常，已按出现顺序降级布局。',
+  'dag.stepAria': '步骤 {name}（{id}）',
+  'dag.detail.title': '步骤 {id}',
+  'dag.detail.status': '状态',
+  'dag.detail.kind': '类型',
+  'dag.detail.node': '节点',
+  'dag.detail.nodeUnset': '（未调度）',
+  'dag.detail.start': '开始',
+  'dag.detail.end': '结束',
+  'dag.detail.detail': '说明',
+  'dag.detail.none': '（无）',
+  'dag.detail.error': '错误',
+
+  // —— 硬件拓扑 ——
+  'hw.empty.title': '暂无硬件数据',
+  'hw.empty.hint': '暂无硬件分配——发送一条消息让 Agent 开始工作。',
+  'hw.status.online': '在线',
+  'hw.status.offline': '离线',
+  'hw.nodeAria': '节点 {name}',
+  'hw.drawer.title': '节点 {name}',
+  'hw.detail.id': '节点 ID',
+  'hw.detail.kind': '类型',
+  'hw.detail.model': '型号',
+  'hw.detail.status': '状态',
+  'hw.detail.capacity': '容量 / 占用',
+  'hw.detail.util': '利用率',
+  'hw.detail.allocs': '当前租约',
+  'hw.detail.allocsEmpty': '（无活动租约）',
+  'hw.detail.history': '该节点历史任务',
+  'hw.detail.historyEmpty': '（暂无执行记录）',
+  'hw.capacity': '容量 {capacity}，占用 {leased}',
+
+  // —— Artifact ——
+  'artifact.type.circuit': '线路',
+  'artifact.type.counts': '计数',
+  'artifact.type.waveform': '波形',
+  'artifact.unnamed': '（未命名产物）',
+  'artifact.broken': '无法解析的 Artifact',
+  'artifact.toggle': '展开或收起 Artifact',
+
+  // —— 状态徽标 ——
+  'status.pending': '等待中',
+  'status.running': '运行中',
+  'status.succeeded': '已成功',
+  'status.failed': '已失败',
+  'status.cancelled': '已取消',
+
+  // —— 相对时间 ——
+  'time.justNow': '刚刚',
+  'time.minAgo': '{n} 分钟前',
+  'time.hourAgo': '{n} 小时前',
+  'time.dayAgo': '{n} 天前',
+
+  // —— 思考程度 / 主题名 ——
+  'thinking.off': '关闭',
+  'thinking.low': '低',
+  'thinking.high': '高',
+  'thinking.max': '最大',
+  'theme.dark': '深色',
+  'theme.light': '浅色',
+  'theme.sepia': '护眼',
+  'theme.dark.desc': '深空暗色（默认）',
+  'theme.light.desc': '明亮白底',
+  'theme.sepia.desc': '暖黄纸感',
+
+  // —— 设置页（§5 四分区）——
+  'settings.title': '设置',
+  'settings.close': '关闭设置',
+  'settings.appearance': '外观',
+  'settings.appearance.theme': '主题',
+  'settings.appearance.language': '语言',
+  'settings.appearance.themeAria': '选择主题',
+  'settings.appearance.langAria': '选择语言',
+  'settings.model': '模型与思考',
+  'settings.model.defaultModel': '默认模型',
+  'settings.model.defaultThinking': '默认思考程度',
+  'settings.model.followDefault': '（跟随默认）',
+  'settings.model.hint': '仅写入本浏览器偏好；发送消息时可在顶栏临时覆盖。',
+  'settings.model.modelAria': '默认模型',
+  'settings.model.thinkingAria': '默认思考程度',
+  'settings.channels': '提供商渠道',
+  'settings.channels.desc': '渠道池来自管理 API（GET /admin/models）；编辑写回后端 config.local.toml。',
+  'settings.channels.refresh': '刷新',
+  'settings.channels.new': '新建渠道',
+  'settings.channels.edit': '编辑',
+  'settings.channels.delete': '删除',
+  'settings.channels.deleteConfirm': '确认删除渠道 {ref}？该操作不可撤销。',
+  'settings.channels.keySet': '密钥已设置',
+  'settings.channels.keyUnset': '未设置密钥',
+  'settings.channels.empty': '暂无渠道',
+  'settings.channels.loadError': '渠道加载失败',
+  'settings.channels.col.ref': '引用',
+  'settings.channels.col.provider': '提供商',
+  'settings.channels.col.model': '模型',
+  'settings.channels.col.baseUrl': 'Base URL',
+  'settings.channels.col.key': '密钥',
+  'settings.channels.col.thinking': '默认思考',
+  'settings.channels.col.actions': '操作',
+  'settings.plugins': '插件管理',
+  'settings.plugins.desc': '已注册 Agent 插件（内置与已安装）；broken 表示加载失败但不影响平台。',
+  'settings.plugins.empty': '暂无插件',
+  'settings.plugins.install': '安装插件',
+  'settings.plugins.installPath': '本地 source_path（目录含 plugin.json）',
+  'settings.plugins.uninstall': '卸载',
+  'settings.plugins.uninstallConfirm': '确认卸载插件 {name}？',
+  'settings.plugins.source.builtin': '内置',
+  'settings.plugins.source.installed': '已安装',
+  'settings.plugins.broken': '损坏：{reason}',
+  'settings.plugins.toggle': '启用或停用 {name}',
+  'settings.plugins.installError': '安装失败：{message}',
+
+  // —— 渠道表单 ——
+  'form.ref': '渠道 ref（唯一标识，如 glm-5.3-flash）',
+  'form.provider': '提供商（openai / anthropic / mock）',
+  'form.model': '模型 ID',
+  'form.baseUrl': 'Base URL',
+  'form.apiKeyEnv': 'API Key 环境变量名',
+  'form.apiKeyInline': 'API Key（仅写入，永不回显）',
+  'form.apiKeyInlineHint': '留空 = 不修改已保存的密钥',
+  'form.defaultThinking': '默认思考程度',
+  'form.timeout': '超时（秒）',
+  'form.save': '保存',
+  'form.cancel': '取消',
+  'form.saving': '保存中…',
+  'form.error.required': '必填项不能为空',
+  'form.error.provider': '提供商必须是 openai / anthropic / mock',
+  'form.error.thinking': '思考程度必须是 off / low / high / max',
+  'form.error.timeout': '超时必须为正整数',
+
+  'task.syntheticName': '任务 {id}',
+  // —— 错误文案（store 层）——
+  'error.boot': '初始化失败（未知错误）',
+  'error.messagesLoad': '消息加载失败',
+  'error.messagesLoadDetail': '消息加载失败：{message}',
+  // —— 抽屉 / 通用错误 ——
+  'drawer.aria': '详情抽屉',
+  'drawer.close': '关闭抽屉',
+  'drawer.closeTitle': '关闭抽屉（Esc）',
+  'error.retry': '重试',
+  'artifact.rawData': '原始数据（未注册的渲染器）',
+};

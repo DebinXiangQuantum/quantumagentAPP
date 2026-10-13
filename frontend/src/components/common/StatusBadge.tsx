@@ -7,13 +7,15 @@
  * 交互行为：纯展示。
  */
 import type { TaskStatus } from '../../types/domain';
+import { useTranslate } from '../../i18n';
 
-const STATUS_LABELS: Record<TaskStatus, string> = {
-  pending: '等待中',
-  running: '运行中',
-  succeeded: '已成功',
-  failed: '已失败',
-  cancelled: '已取消',
+/** 状态 → i18n key（全组件统一复用同一徽标文案）。 */
+const STATUS_KEYS: Record<TaskStatus, string> = {
+  pending: 'status.pending',
+  running: 'status.running',
+  succeeded: 'status.succeeded',
+  failed: 'status.failed',
+  cancelled: 'status.cancelled',
 };
 
 export function parseTaskStatus(raw: unknown): TaskStatus {
@@ -26,11 +28,12 @@ export function parseTaskStatus(raw: unknown): TaskStatus {
 }
 
 export function StatusBadge(props: { status: TaskStatus }): JSX.Element {
+  const t = useTranslate();
   const status = parseTaskStatus(props.status);
   return (
     <span className={`status-badge status-badge--${status}`} title={status}>
       <span className="status-badge__dot" aria-hidden="true" />
-      {STATUS_LABELS[status]}
+      {t(STATUS_KEYS[status])}
     </span>
   );
 }

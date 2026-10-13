@@ -14,6 +14,7 @@
  * 失败行为：空数组 → 插画式空态；全部防御式，不崩溃。
  */
 import { useState } from 'react';
+import { useTranslate } from '../../i18n';
 import { Drawer } from '../common/Drawer';
 import { StatusBadge } from '../common/StatusBadge';
 import { formatPercent } from '../../utils/format';
@@ -66,15 +67,16 @@ export function HardwareTopology(props: {
   tasks: Task[];
   history: Record<string, number[]>;
 }): JSX.Element {
+  const t = useTranslate();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const nodes = (Array.isArray(props.nodes) ? props.nodes : []).filter(isNode);
 
   if (nodes.length === 0) {
     return (
       <div className="empty-state">
-        <p className="empty-state__title">暂无硬件数据</p>
+        <p className="empty-state__title">{t('hw.empty.title')}</p>
         <p className="empty-state__hint">
-          暂无硬件分配——发送一条消息让 Agent 开始工作。
+          {t('hw.empty.hint')}
         </p>
       </div>
     );
@@ -119,14 +121,14 @@ export function HardwareTopology(props: {
                       .filter(Boolean)
                       .join(' ')}
                     onClick={() => setSelectedId(node.id)}
-                    aria-label={`节点 ${node.name}`}
+                    aria-label={t('hw.nodeAria', { name: node.name })}
                   >
                     <span className="hw-card__head">
                       <span className="hw-card__name truncate">{node.name}</span>
                       <span
                         className={`hw-card__status hw-card__status--${node.status === 'offline' ? 'offline' : 'online'}`}
                       >
-                        {node.status === 'offline' ? '离线' : '在线'}
+                        {node.status === 'offline' ? t('hw.status.offline') : t('hw.status.online')}
                       </span>
                     </span>
                     <span className="hw-card__model mono truncate">{node.model}</span>
@@ -142,8 +144,8 @@ export function HardwareTopology(props: {
                     </span>
                     <span
                       className="hw-card__dots"
-                      aria-label={`容量 ${capacity}，占用 ${leased}`}
-                      title={`容量 ${capacity}，占用 ${leased}（黄点 = 已租出）`}
+                      aria-label={t('hw.capacity', { capacity, leased })}
+                      title={t('hw.capacity', { capacity, leased })}
                     >
                       {Array.from({ length: Math.min(capacity, 16) }, (_, i) => (
                         <span
@@ -172,41 +174,41 @@ export function HardwareTopology(props: {
       <Drawer
         open={selected !== null}
         onClose={() => setSelectedId(null)}
-        title={selected ? `节点 ${selected.name}` : ''}
+        title={selected ? t('hw.drawer.title', { name: selected.name }) : ''}
       >
         {selected ? (
           <div className="hw-detail">
             <dl className="detail-list">
               <div className="detail-list__row">
-                <dt>节点 ID</dt>
+                <dt>{t('hw.detail.id')}</dt>
                 <dd className="mono">{selected.id}</dd>
               </div>
               <div className="detail-list__row">
-                <dt>类型</dt>
+                <dt>{t('hw.detail.kind')}</dt>
                 <dd className="mono">{selected.kind}</dd>
               </div>
               <div className="detail-list__row">
-                <dt>型号</dt>
+                <dt>{t('hw.detail.model')}</dt>
                 <dd className="mono">{selected.model}</dd>
               </div>
               <div className="detail-list__row">
-                <dt>状态</dt>
-                <dd>{selected.status === 'offline' ? '离线' : '在线'}</dd>
+                <dt>{t('hw.detail.status')}</dt>
+                <dd>{selected.status === 'offline' ? t('hw.status.offline') : t('hw.status.online')}</dd>
               </div>
               <div className="detail-list__row">
-                <dt>容量 / 占用</dt>
+                <dt>{t('hw.detail.capacity')}</dt>
                 <dd className="mono">
                   {selected.capacity} / {selected.allocations.length}
                 </dd>
               </div>
               <div className="detail-list__row">
-                <dt>利用率</dt>
+                <dt>{t('hw.detail.util')}</dt>
                 <dd className="mono">{formatPercent(selected.utilization)}</dd>
               </div>
             </dl>
-            <h4 className="hw-detail__section">当前租约</h4>
+            <h4 className="hw-detail__section">{t('hw.detail.allocs')}</h4>
             {selected.allocations.length === 0 ? (
-              <p className="text-faint hw-detail__empty">（无活动租约）</p>
+              <p className="text-faint hw-detail__empty">{t('hw.detail.allocsEmpty')}</p>
             ) : (
               <ul className="hw-detail__allocs">
                 {selected.allocations.map((a) => (
@@ -216,9 +218,9 @@ export function HardwareTopology(props: {
                 ))}
               </ul>
             )}
-            <h4 className="hw-detail__section">该节点历史任务</h4>
+            <h4 className="hw-detail__section">{t('hw.detail.history')}</h4>
             {nodeHistoryTasks(selected.id, props.tasks).length === 0 ? (
-              <p className="text-faint hw-detail__empty">（暂无执行记录）</p>
+              <p className="text-faint hw-detail__empty">{t('hw.detail.historyEmpty')}</p>
             ) : (
               <ul className="hw-detail__history">
                 {nodeHistoryTasks(selected.id, props.tasks).map((h) => (

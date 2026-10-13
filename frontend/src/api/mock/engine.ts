@@ -1,29 +1,37 @@
 /**
- * engine.ts —— Mock 引擎：以脚本化事件驱动完整演示链路（ARCHITECTURE §10）。
+ * engine.ts —— Mock 引擎：以脚本化事件驱动完整演示链路（ARCHITECTURE §10 + v1.1）。
  *
  * 职责：
- *  - 实现 ApiClient 同一契约（fixtures 初始状态 + 内存可变状态）；
- *  - sendMessage 触发脚本：流式 delta → message.completed(circuit+counts) →
- *    三步 DAG 依序迁移（cpu→qpu→cpu，§10 映射）→ hardware allocation 变化，
- *    尾声在 gpu-a800-1 上留一个运行中步骤（回答"哪个 Agent 在用哪块 GPU"）；
- *  - 会话流带 seq 单调递增 + 事件日志（cap 1024）支持 ?after= 重放；
+ *  - 实现 ApiClient 同一契约（fixtures 初始状态 + 内存可变状态），含 v1.1
+ *    管理平台端点（admin models 渠道池 PUT/DELETE、plugins 安装/启停/卸载）；
+ *  - sendMessage 触发编排脚本（scripts.ts）：思考增量（message.reasoning，
+ *    thinking=off 跳过）→ dispatch 专家 → 流式正文 → completed（含
+ *    reasoning 全文 + artifacts）→ DAG 推进 → hardware allocation 变化；
+ *  - 会话流带 seq 单调递增（delta 与 reasoning 同源）+ 事件日志（cap 1024）
+ *    支持 ?after= 重放；
  *  - 硬件利用率模拟：2s tick 随机游走（对齐 config.toml tick_seconds=2.0）。
- * 失败行为：无网络依赖；畸形输入（未知会话）按 404 语义抛 ApiError。
+ * 失败行为：无网络依赖；畸形输入按 404/409/422 语义抛 ApiError。
  */
 import { ApiError, type ApiClient } from '../client';
 import type {
   AgentInfo,
-  Artifact,
   Conversation,
   ConversationDetail,
   HardwareNode,
   HardwareResponse,
+  InstallPluginRequest,
   Message,
+  ModelChannel,
+  ModelChannelInput,
+  ModelChannelList,
+  PluginInfo,
+  PluginList,
   SendMessageAck,
-  Step,
   Task,
   TenantInfo,
+  ThinkingLevel,
 } from '../../types/domain';
+import { parseThinkingLevel } from '../../types/domain';
 import type {
   ConversationStreamEvent,
   GlobalStreamEvent,
@@ -31,23 +39,26 @@ import type {
   StreamHandle,
 } from '../../types/events';
 import {
+  ADMIN_MODELS,
+  ADMIN_PLUGINS,
   AGENTS,
+  BASE_CHANNEL_REFS,
   CONVERSATIONS,
   HARDWARE_NODES,
   MESSAGES_BY_CID,
   TASKS,
   TENANT,
 } from './fixtures';
+import {
+  buildOrchestratorScript,
+  type MockScriptContext,
+  type TimedAction,
+} from './scripts';
 
-/** 会话流日志条目：logSeq 为内部单调序号（delta 的 data.seq 与之同源）。 */
+/** 会话流日志条目：logSeq 为内部单调序号（delta/reasoning 的 data.seq 与之同源）。 */
 interface LoggedEvent {
   logSeq: number;
   evt: ConversationStreamEvent;
-}
-
-interface TimedAction {
-  atMs: number;
-  run: () => void;
 }
 
 const EVENT_LOG_CAP = 1024;
@@ -60,16 +71,6 @@ function nowIso(): string {
 /** 深拷贝（structuredClone 在 Node18+/现代浏览器均可用）。 */
 function clone<T>(value: T): T {
   return structuredClone(value);
-}
-
-/** 把回复文本等分为 n 段（code point 安全），用于流式 delta。 */
-export function chunkText(text: string, n: number): string[] {
-  const chars = Array.from(text);
-  if (n <= 1 || chars.length === 0) return [chars.join('')];
-  const size = Math.ceil(chars.length / n);
-  const out: string[] = [];
-  for (let i = 0; i < chars.length; i += size) out.push(chars.slice(i, i + size).join(''));
-  return out;
 }
 
 export interface MockClient extends ApiClient {
@@ -85,6 +86,8 @@ export function createMockClient(): MockClient {
   );
   const tasks: Task[] = clone(TASKS);
   const nodes: HardwareNode[] = clone(HARDWARE_NODES);
+  const channels: ModelChannel[] = clone(ADMIN_MODELS);
+  const plugins: PluginInfo[] = clone(ADMIN_PLUGINS);
 
   const convSeq = new Map<string, number>();
   const convLog = new Map<string, LoggedEvent[]>();
@@ -121,10 +124,13 @@ export function createMockClient(): MockClient {
 
   function emitConv(cid: string, evt: ConversationStreamEvent): void {
     const logSeq = nextSeq(cid);
-    // delta 的 data.seq 与内部 logSeq 同源分配（§7 seq 单调契约）
+    // delta / reasoning 的 data.seq 与内部 logSeq 同源分配（§7 seq 单调契约）
     const normalized: ConversationStreamEvent =
-      evt.event === 'message.delta'
-        ? { event: 'message.delta', data: { ...evt.data, seq: logSeq } }
+      evt.event === 'message.delta' || evt.event === 'message.reasoning'
+        ? {
+            event: evt.event,
+            data: { ...evt.data, seq: logSeq },
+          }
         : evt;
     const log = convLog.get(cid) ?? [];
     log.push({ logSeq, evt: normalized });
@@ -166,6 +172,41 @@ export function createMockClient(): MockClient {
     node.allocations = node.allocations.filter((a) => a.step_id !== stepId);
   }
 
+  /** completed 后写会话历史（GET /conversations/{cid} 可回看 reasoning/artifacts）。 */
+  function storeMessage(cid: string, message: Message): void {
+    messagesByCid.set(cid, [...(messagesByCid.get(cid) ?? []), message]);
+  }
+
+  // —— 利用率模拟：2s 随机游走（offline 恒 0；持租约节点维持高负载）——
+  const tick = setInterval(() => {
+    for (const node of nodes) {
+      if (node.status === 'offline') {
+        node.utilization = 0;
+        continue;
+      }
+      const base = node.allocations.length > 0 ? 0.75 : 0.15;
+      const drift = (Math.random() - 0.5) * 0.12;
+      node.utilization = Math.min(0.97, Math.max(0.02, base + drift));
+    }
+    emitHardware();
+  }, TICK_MS);
+  intervals.add(tick);
+
+  // —— 脚本上下文（scripts.ts 触碰引擎状态的唯一入口）——
+  const scriptCtx: MockScriptContext = {
+    emitConv,
+    emitGlobal,
+    emitTask,
+    emitHardware,
+    lease,
+    releaseStep,
+    nextId,
+    nowIso,
+    tasks,
+    nodes,
+    storeMessage,
+  };
+
   /** 新脚本开始前：取消所有遗留 running 任务并释放租约（保持容量不超限）。 */
   function cancelLingeringTasks(atMs: number): void {
     for (const task of tasks) {
@@ -184,321 +225,29 @@ export function createMockClient(): MockClient {
     }
   }
 
-  // —— 利用率模拟：2s 随机游走（offline 恒 0；持租约节点维持高负载）——
-  const tick = setInterval(() => {
-    for (const node of nodes) {
-      if (node.status === 'offline') {
-        node.utilization = 0;
-        continue;
-      }
-      const base = node.allocations.length > 0 ? 0.75 : 0.15;
-      const drift = (Math.random() - 0.5) * 0.12;
-      node.utilization = Math.min(0.97, Math.max(0.02, base + drift));
-    }
-    emitHardware();
-  }, TICK_MS);
-  intervals.add(tick);
-
-  // —— 脚本：按 agent 分发 ——
-  function runAssistantScript(cid: string, agentId: string, atBase: number, assistantMsgId: string): void {
-    const script =
-      agentId === 'calibration'
-        ? calibrationScript(cid, assistantMsgId)
-        : agentId === 'echo'
-          ? echoScript(cid, assistantMsgId)
-          : vqeScript(cid, assistantMsgId);
+  function runScript(actions: TimedAction[], atBase: number): void {
     let t = atBase;
-    for (const action of script) {
+    for (const action of actions) {
       t += action.atMs;
       const fireAt = t;
       schedule(fireAt, action.run);
     }
   }
 
-  /** 生成 VQE 演示脚本（ARCHITECTURE §10 完整链路）。返回相对动作序列。 */
-  function vqeScript(cid: string, msgId: string): TimedAction[] {
-    const agentId = 'algorithm-designer';
-    const text =
-      '收到。正在为该问题启动 VQE 流水线：\n' +
-      '1. 分子积分计算（经典 CPU）\n' +
-      '2. VQE 线路执行（QPU · QuANTA 20Q）\n' +
-      '3. 结果后处理（经典 CPU）\n\n' +
-      'Ansatz 线路与测量计数即将输出；三步 DAG 任务已提交调度，可在右侧任务 DAG 面板观察状态迁移。';
-    const chunks = chunkText(text, 10);
-    const actions: TimedAction[] = chunks.map((delta, i) => ({
-      atMs: i === 0 ? 300 : 90,
-      run: () =>
-        emitConv(cid, {
-          event: 'message.delta',
-          data: { conversation_id: cid, message_id: msgId, delta, seq: 0 },
-        }),
-    }));
-    // completed 事件中的 delta seq 由 emitConv 统一分配（此处 data.seq 仅占位）
+  // —— 管理端校验辅助 ——
+  const VALID_PROVIDERS = new Set(['openai', 'anthropic', 'mock']);
+  const VALID_THINKING = new Set(['off', 'low', 'high', 'max']);
 
-    const artCircuit: Artifact = {
-      id: nextId('a-'),
-      type: 'circuit',
-      title: '硬件高效 Ansatz（2 qubits）',
-      payload: {
-        qubits: 2,
-        operations: [
-          { id: 'op-0', gate: 'RY', targets: [0] },
-          { id: 'op-1', gate: 'RZ', targets: [1] },
-          { id: 'op-2', gate: 'CNOT', controls: [0], targets: [1] },
-          { id: 'op-3', gate: 'RZ', targets: [1] },
-          { id: 'op-4', gate: 'CNOT', controls: [0], targets: [1] },
-          { id: 'op-5', gate: 'MEASURE', targets: [0, 1] },
-        ],
-      },
-    };
-    const artCounts: Artifact = {
-      id: nextId('a-'),
-      type: 'counts',
-      title: '测量计数（1024 shots）',
-      payload: {
-        shots: 1024,
-        qubits: 2,
-        counts: { '00': 486, '11': 508, '01': 18, '10': 12 },
-      },
-    };
-    const fullText = text;
-    actions.push({
-      atMs: 300,
-      run: () => {
-        emitConv(cid, {
-          event: 'message.completed',
-          data: { conversation_id: cid, message_id: msgId, artifacts: [artCircuit, artCounts] },
-        });
-        messagesByCid.set(cid, [
-          ...(messagesByCid.get(cid) ?? []),
-          {
-            id: msgId,
-            conversation_id: cid,
-            role: 'assistant',
-            content: fullText,
-            agent_id: agentId,
-            artifacts: [clone(artCircuit), clone(artCounts)],
-            created_at: nowIso(),
-          },
-        ]);
-      },
-    });
-
-    // —— 三步 DAG（§10：classical→cpu-node-0，quantum→qpu，classical→cpu）——
-    const taskId = nextId('t-');
-    const steps: Step[] = [
-      stepOf(nextId('s-'), '分子积分计算', 'classical', 'cpu-node-0', []),
-      stepOf(nextId('s-'), 'VQE 线路执行', 'quantum', 'qpu-quanta-20q', []),
-      stepOf(nextId('s-'), '结果后处理', 'classical', 'cpu-node-0', []),
-    ];
-    steps[1].depends_on = [steps[0].id];
-    steps[2].depends_on = [steps[1].id];
-    const task: Task = {
-      id: taskId,
-      conversation_id: cid,
-      tenant_id: 'demo',
-      name: 'VQE 全流程',
-      status: 'pending',
-      steps,
-      created_at: nowIso(),
-    };
-    tasks.push(task);
-    actions.push({ atMs: 300, run: () => emitTask(task) });
-
-    const stepRun = (i: number, durationMs: number, nodeName: string | null): void => {
-      actions.push({
-        atMs: 300,
-        run: () => {
-          task.status = 'running';
-          steps[i].status = 'running';
-          steps[i].node_id = nodeName;
-          steps[i].started_at = nowIso();
-          if (nodeName) lease(nodeName, taskId, steps[i].id, agentId);
-          emitTask(task);
-          emitHardware();
-        },
-      });
-      actions.push({
-        atMs: durationMs,
-        run: () => {
-          steps[i].status = 'succeeded';
-          steps[i].finished_at = nowIso();
-          if (steps[i].node_id) releaseStep(steps[i].node_id, steps[i].id);
-          const allDone = steps.every((s) => s.status === 'succeeded');
-          if (allDone) task.status = 'succeeded';
-          emitTask(task);
-          emitHardware();
-        },
-      });
-    };
-    stepRun(0, 1200, 'cpu-node-0');
-    stepRun(1, 1200, 'qpu-quanta-20q');
-    stepRun(2, 1200, 'cpu-node-0');
-
-    // —— 尾声：GPU 演示任务（持续运行，回答"哪个 Agent 在用哪块 GPU"）——
-    const gpuTaskId = nextId('t-');
-    const gpuSteps: Step[] = [
-      stepOf(nextId('s-'), '读出噪声批量拟合', 'classical', 'gpu-a800-1', []),
-    ];
-    const gpuTask: Task = {
-      id: gpuTaskId,
-      conversation_id: cid,
-      tenant_id: 'demo',
-      name: '读出矩阵噪声表征（GPU）',
-      status: 'running',
-      steps: gpuSteps,
-      created_at: nowIso(),
-    };
-    tasks.push(gpuTask);
-    actions.push({
-      atMs: 600,
-      run: () => {
-        gpuSteps[0].status = 'running';
-        gpuSteps[0].started_at = nowIso();
-        lease('gpu-a800-1', gpuTaskId, gpuSteps[0].id, agentId);
-        emitTask(gpuTask);
-        emitHardware();
-      },
-    });
-    return actions;
-  }
-
-  function calibrationScript(cid: string, msgId: string): TimedAction[] {
-    const text =
-      '收到校准请求。合成 DRAG 脉冲（σ=20ns，α=-0.32）并执行 RB 序列：' +
-      '波形已输出，任务将先在 GPU 上完成批量预拟合，再上 QPU 执行随机编译序列。';
-    const chunks = chunkText(text, 8);
-    const actions: TimedAction[] = chunks.map((delta, i) => ({
-      atMs: i === 0 ? 300 : 90,
-      run: () =>
-        emitConv(cid, {
-          event: 'message.delta',
-          data: { conversation_id: cid, message_id: msgId, delta, seq: 0 },
-        }),
-    }));
-    const artWave: Artifact = {
-      id: nextId('a-'),
-      type: 'waveform',
-      title: 'DRAG X π 脉冲（I/Q）',
-      payload: {
-        sample_rate_ns: 1.0,
-        unit: 'mV',
-        channels: [
-          {
-            label: 'I',
-            samples: Array.from({ length: 96 }, (_, i) =>
-              Number((300 * Math.exp(-((i - 48) ** 2) / (2 * 15 ** 2))).toFixed(3)),
-            ),
-          },
-          {
-            label: 'Q',
-            samples: Array.from({ length: 96 }, (_, i) =>
-              Number(
-                (
-                  300 *
-                  Math.exp(-((i - 48) ** 2) / (2 * 15 ** 2)) *
-                  -0.32 *
-                  ((i - 48) / 15 ** 2)
-                ).toFixed(3),
-              ),
-            ),
-          },
-        ],
-      },
-    };
-    actions.push({
-      atMs: 300,
-      run: () => {
-        emitConv(cid, {
-          event: 'message.completed',
-          data: { conversation_id: cid, message_id: msgId, artifacts: [artWave] },
-        });
-        messagesByCid.set(cid, [
-          ...(messagesByCid.get(cid) ?? []),
-          {
-            id: msgId,
-            conversation_id: cid,
-            role: 'assistant',
-            content: text,
-            agent_id: 'calibration',
-            artifacts: [clone(artWave)],
-            created_at: nowIso(),
-          },
-        ]);
-      },
-    });
-    const taskId = nextId('t-');
-    const steps: Step[] = [
-      stepOf(nextId('s-'), '脉冲批量预拟合', 'classical', 'gpu-a800-1', []),
-      stepOf(nextId('s-'), 'RB 序列执行', 'quantum', 'qpu-quanta-20q', []),
-    ];
-    steps[1].depends_on = [steps[0].id];
-    const task: Task = { id: taskId, conversation_id: cid, tenant_id: 'demo', name: '校准任务', status: 'pending', steps, created_at: nowIso() };
-    tasks.push(task);
-    actions.push({ atMs: 300, run: () => emitTask(task) });
-    const stepRun = (i: number, durationMs: number, nodeName: string): void => {
-      actions.push({
-        atMs: 300,
-        run: () => {
-          task.status = 'running';
-          steps[i].status = 'running';
-          steps[i].node_id = nodeName;
-          steps[i].started_at = nowIso();
-          lease(nodeName, taskId, steps[i].id, 'calibration');
-          emitTask(task);
-          emitHardware();
-        },
-      });
-      actions.push({
-        atMs: durationMs,
-        run: () => {
-          steps[i].status = 'succeeded';
-          steps[i].finished_at = nowIso();
-          releaseStep(nodeName, steps[i].id);
-          if (steps.every((s) => s.status === 'succeeded')) task.status = 'succeeded';
-          emitTask(task);
-          emitHardware();
-        },
-      });
-    };
-    stepRun(0, 1000, 'gpu-a800-1');
-    stepRun(1, 1000, 'qpu-quanta-20q');
-    return actions;
-  }
-
-  function echoScript(cid: string, msgId: string): TimedAction[] {
-    const text = '（echo）已收到你的消息。当前为 Mock 回显：无 artifact、无任务。';
-    const chunks = chunkText(text, 5);
-    const actions: TimedAction[] = chunks.map((delta, i) => ({
-      atMs: i === 0 ? 200 : 90,
-      run: () =>
-        emitConv(cid, {
-          event: 'message.delta',
-          data: { conversation_id: cid, message_id: msgId, delta, seq: 0 },
-        }),
-    }));
-    actions.push({
-      atMs: 250,
-      run: () => {
-        emitConv(cid, {
-          event: 'message.completed',
-          data: { conversation_id: cid, message_id: msgId, artifacts: [] },
-        });
-        messagesByCid.set(cid, [
-          ...(messagesByCid.get(cid) ?? []),
-          {
-            id: msgId,
-            conversation_id: cid,
-            role: 'assistant',
-            content: text,
-            agent_id: 'echo',
-            artifacts: [],
-            created_at: nowIso(),
-          },
-        ]);
-      },
-    });
-    return actions;
+  function validateChannelInput(input: ModelChannelInput): void {
+    if (!input || typeof input.ref !== 'string' || input.ref.trim().length === 0) {
+      throw new ApiError(422, '渠道 ref 不能为空', null);
+    }
+    if (!VALID_PROVIDERS.has(input.provider)) {
+      throw new ApiError(422, `未知 provider：${String(input.provider)}`, null);
+    }
+    if (!VALID_THINKING.has(input.default_thinking)) {
+      throw new ApiError(422, `非法 default_thinking：${String(input.default_thinking)}`, null);
+    }
   }
 
   // —— ApiClient 实现 ——
@@ -512,11 +261,12 @@ export function createMockClient(): MockClient {
     async listConversations(): Promise<Conversation[]> {
       return clone(conversations);
     },
-    async createConversation(req: { agent_id: string; title?: string }): Promise<Conversation> {
+    async createConversation(req: { agent_id?: string; title?: string }): Promise<Conversation> {
       const conv: Conversation = {
         id: nextId('c-'),
         title: req.title?.trim() || '新会话',
-        agent_id: req.agent_id,
+        // v1.1：agent_id 缺省 = orchestrator（编排入口）
+        agent_id: req.agent_id ?? 'orchestrator',
         tenant_id: 'demo',
         created_at: nowIso(),
       };
@@ -528,7 +278,11 @@ export function createMockClient(): MockClient {
       const conv = requireConversation(cid);
       return { ...clone(conv), messages: clone(messagesByCid.get(cid) ?? []) };
     },
-    async sendMessage(cid: string, content: string): Promise<SendMessageAck> {
+    async sendMessage(
+      cid: string,
+      content: string,
+      req?: { model_ref?: string; thinking_level?: ThinkingLevel },
+    ): Promise<SendMessageAck> {
       const conv = requireConversation(cid);
       const userId = nextId('m-');
       messagesByCid.set(cid, [
@@ -538,6 +292,7 @@ export function createMockClient(): MockClient {
           conversation_id: cid,
           role: 'user',
           content,
+          reasoning: '',
           agent_id: conv.agent_id,
           artifacts: [],
           created_at: nowIso(),
@@ -546,19 +301,90 @@ export function createMockClient(): MockClient {
       // 202 语义对齐后端：预创建 assistant 消息 id 并作为 message_id 返回
       // （SSE 增量/完成事件归属它），脚本以该 id 流式输出。
       const assistantId = nextId('m-');
-      // 先取消遗留 running 任务（释放容量），再启动新脚本
+      // 思考程度：消息级覆盖 > 缺省 high（契约 §9 取值优先级，Mock 无渠道状态）
+      const thinking = parseThinkingLevel(req?.thinking_level ?? 'high');
+      // 先取消遗留 running 任务（释放容量），再启动编排脚本（atMs 已含全部时序）
       cancelLingeringTasks(80);
-      runAssistantScript(cid, conv.agent_id, 150, assistantId);
+      const actions = buildOrchestratorScript(cid, content, assistantId, thinking, scriptCtx);
+      runScript(actions, 0);
       return { message_id: assistantId, run_id: nextId('r-') };
     },
     async listTasks(conversationId?: string | null): Promise<Task[]> {
       const list = conversationId
-        ? tasks.filter((t) => t.conversation_id === conversationId)
+        ? tasks.filter((tk) => tk.conversation_id === conversationId)
         : tasks;
       return clone(list);
     },
     async listHardware(): Promise<HardwareResponse> {
       return { nodes: clone(nodes) };
+    },
+    async listAdminModels(): Promise<ModelChannelList> {
+      return { models: clone(channels) };
+    },
+    async putAdminModel(input: ModelChannelInput): Promise<ModelChannel> {
+      validateChannelInput(input);
+      const idx = channels.findIndex((c) => c.ref === input.ref);
+      // api_key_inline 只写入不回显（契约 §5：响应只体现 has_api_key）
+      const hadKey = idx >= 0 ? channels[idx].has_api_key : false;
+      const entry: ModelChannel = {
+        ref: input.ref,
+        provider: input.provider,
+        model: input.model,
+        base_url: input.base_url,
+        api_key_env: input.api_key_env,
+        has_api_key: hadKey || (input.api_key_inline ?? '').length > 0,
+        default_thinking: input.default_thinking,
+        timeout_seconds: input.timeout_seconds,
+      };
+      if (idx >= 0) channels[idx] = entry;
+      else channels.push(entry);
+      return clone(entry);
+    },
+    async deleteAdminModel(ref: string): Promise<void> {
+      if (BASE_CHANNEL_REFS.includes(ref)) {
+        throw new ApiError(409, `渠道 ${ref} 为基底渠道（config.toml），不可删除`, null);
+      }
+      const idx = channels.findIndex((c) => c.ref === ref);
+      if (idx < 0) throw new ApiError(404, `渠道 ${ref} 不存在`, null);
+      channels.splice(idx, 1);
+    },
+    async listAdminPlugins(): Promise<PluginList> {
+      return { plugins: clone(plugins) };
+    },
+    async installPlugin(req: InstallPluginRequest): Promise<PluginInfo> {
+      const source = typeof req?.source_path === 'string' ? req.source_path.trim() : '';
+      if (source.length === 0) {
+        throw new ApiError(422, 'source_path 不能为空', null);
+      }
+      const name = source.replace(/\/+$/, '').split(/[\\/]/).pop() ?? source;
+      if (plugins.some((p) => p.id === name)) {
+        throw new ApiError(409, `插件 ${name} 已存在（重名）`, null);
+      }
+      const info: PluginInfo = {
+        id: name,
+        name,
+        version: '0.1.0',
+        description: `从本地目录 ${source} 安装`,
+        enabled: true,
+        source: 'installed',
+        broken_reason: null,
+      };
+      plugins.push(info);
+      return clone(info);
+    },
+    async setPluginEnabled(id: string, enabled: boolean): Promise<PluginInfo> {
+      const plugin = plugins.find((p) => p.id === id);
+      if (!plugin) throw new ApiError(404, `插件 ${id} 不存在`, null);
+      plugin.enabled = enabled === true;
+      return clone(plugin);
+    },
+    async uninstallPlugin(id: string): Promise<void> {
+      const idx = plugins.findIndex((p) => p.id === id);
+      if (idx < 0) throw new ApiError(404, `插件 ${id} 不存在`, null);
+      if (plugins[idx].source === 'builtin') {
+        throw new ApiError(409, '内置插件不可卸载', null);
+      }
+      plugins.splice(idx, 1);
     },
     openConversationStream(
       cid: string,
@@ -604,25 +430,4 @@ export function createMockClient(): MockClient {
   };
 
   return client;
-}
-
-function stepOf(
-  id: string,
-  name: string,
-  kind: Step['kind'],
-  nodeId: string | null,
-  dependsOn: string[],
-): Step {
-  return {
-    id,
-    name,
-    kind,
-    status: 'pending',
-    node_id: nodeId,
-    depends_on: dependsOn,
-    started_at: null,
-    finished_at: null,
-    detail: '',
-    error: null,
-  };
 }
