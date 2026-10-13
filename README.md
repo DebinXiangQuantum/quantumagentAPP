@@ -189,7 +189,77 @@ curl 走通 §10 链路——health 返回 `{"status":"ok"}`；创建会话+发�
 
 *本节由 `feat/frontend` 分支的开发切片维护更新：组件清单、页面说明、测试结果。*
 
-（基线：尚未实现——见 `docs/design.md` 的目标设计。）
+技术栈：React 18 + TypeScript(strict) + Vite + zustand + vitest；**无 UI 组件库、
+无 Tailwind、无图表库、无 webfont**（依赖白名单见 docs/DEVELOPMENT.md 与
+frontend/package.json）。
+
+### 组件清单（随切片增长）
+
+- `src/styles/tokens.ts` —— 设计系统唯一来源：全部色板/字体栈/字号/间距/圆角/
+  阴影/z-index/动效/布局尺寸，编译为 `:root` CSS 变量注入（逐字对齐
+  docs/design.md §2–§5、§7）。
+- `src/styles/global.css` —— reset、五态按钮/输入、focus-visible ring、滚动条、
+  流式光标闪烁(530ms)、呼吸光晕(2s)、条形生长(160ms)、
+  `prefers-reduced-motion` 全量降级；`src/styles/states.css` —— 卡片/Tab、
+  状态徽标、警示条、同构骨架屏（shimmer 1.2s）、全局错误条。
+- `src/components/layout/` —— `AppShell`（三栏 Grid：264px 会话侧栏 · 流体对话区
+  max 820px · 360px 检查器）、`TopBar`（56px：产品名 / Agent 选择器 / 租户徽标 /
+  SSE 连接灯）、`SessionSidebar`（会话列表/新建/切换）、`InspectorPanel`
+  （硬件拓扑｜任务 DAG Tab）、`ConnectionLight`（绿/黄/红）。
+- `src/types/` —— 领域模型与 SSE 事件契约（逐字段对齐 docs/ARCHITECTURE.md §4/§7）。
+- `src/api/client.ts` —— REST（Bearer/JSON/ApiError 含 Retry-After）+ EventSource
+  流封装（断线指数退避 1s→30s 封顶，会话流 `?after=<seq>` 续传）。
+- `src/api/mock/` —— Mock 引擎：fixtures 驱动全部面板；sendMessage 触发脚本
+  演示链路（流式 delta → circuit+counts artifacts → 三步 DAG 推进 →
+  hardware allocation 变化，对齐 ARCHITECTURE §10）；2s 利用率随机游走 tick。
+- `src/store/` —— `uiStore`（布局折叠状态）+ `appStore`（bootstrap / 会话切换 /
+  消息发送 / SSE 事件归并：流式累积、task upsert、硬件节点与 60s 利用率历史）。
+- `src/components/chat/` —— 对话区：`ChatPanel`（消息流分组/自动跟随滚动/空态/
+  错误警示条）、`MessageBubble`（用户右对齐气泡、助手左对齐头像分组+分隔线）、
+  `MessageInput`（Enter 发送 / Shift+Enter 换行 / Agent 快捷切换）、
+  `StreamingCursor`（530ms 闪烁光标）、`ArtifactCard`（类型徽标+展开收起，
+  未知/畸形 type 降级为原始 JSON 视图，永不崩溃）。
+- `src/components/viz/` —— 可视化渲染器（全部手写 SVG，禁图表库）：
+  `CircuitCanvas`（qubit 横线等距编号、格点门 44×36、CNOT 控制点+⊕、MEASURE
+  表针、悬停 tooltip、列压缩无空列、>32 qubits 截断）、`CountsHistogram`
+  （归一化不变量 max 条高==绘图高、160ms 条形生长、hover 计数/占比、降序排列、
+  空/畸形降级）、`WaveformCanvas`（I/Q 多通道折线 + 图例）、
+  `DagView`（kind 色节点 + 统一状态徽标 + 贝塞尔依赖箭头 + 运行呼吸光晕 +
+  点击节点 Drawer 详情 + 环/未知依赖降级）、`HardwareTopology`（kind 分组卡片
+  网格、型号/容量点/利用率迷你条与 60s sparkline、allocation 徽标
+  "agent · task/step"、offline 降饱和斜纹、点击开 Drawer 全量信息+历史任务）。
+- `src/components/common/` —— `StatusBadge`（五状态统一徽标：pending 空心/
+  running warning 呼吸/succeeded/failed/cancelled faint）、`Drawer`
+  （右滑详情抽屉，Esc/遮罩关闭，z-drawer）。
+- 响应式：<1280px 检查器浮层化；<960px 侧栏抽屉化（`src/styles/layout.css`）。
+
+### 运行
+
+```bash
+cd frontend && npm install
+npm run build          # tsc -b && vite build
+npm test               # vitest run
+npm run dev            # 开发服务器（5173），连接 http://127.0.0.1:8000
+VITE_USE_MOCK=1 npm run dev   # Mock 模式：后端未启动也可完整演示
+```
+
+### 测试结果（S6 后 · 最终）
+
+`npm test`：17 个文件 80 个用例全绿。`npm run build`：零 TS 错误（JS 194 kB /
+gzip 62 kB）。
+
+### 非理想态与动效（S6）
+
+- loading：同构骨架屏（会话项/消息流/硬件卡片/DAG 节点，shimmer 1.2s），
+  bootstrap 完成前各面板呈现；
+- empty：无会话/无消息/无任务/无硬件四类插画式空态 + 行动按钮；
+- error：bootstrap 失败 → 顶栏下全局警示条 + 重试；SSE error → 消息区内联
+  警示条（流自动指数退避重连，无需手动重试）；
+- 动效全部 ≤200ms（折叠/淡入/条形生长 160ms），循环类（光标 530ms/骨架
+  1.2s/呼吸 2s）在 `prefers-reduced-motion` 下全部停用并降级为实线描边；
+- 光标完成淡出（120ms 过渡，220ms 后卸载）。
+
+（全部切片完成：S1 骨架 / S2 数据 / S3 对话 / S4 可视化 / S5 检查器 / S6 打磨。）
 
 ## References
 

@@ -1,0 +1,382 @@
+/**
+ * inspector.css —— 检查器内容样式：DAG 视图 / 硬件拓扑 / Drawer / 详情列表。
+ * 语义色映射（design.md §2）：step kind quantum=violet classical=info agent=warning；
+ * node kind gpu=accent-cyan qpu=accent-violet cpu=text-secondary。
+ */
+
+.inspector-panel__dags {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-24);
+}
+
+/* ============ DAG ============ */
+.dag-view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-12);
+}
+.dag-view__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-8);
+}
+.dag-view__task-name {
+  font-size: var(--fs-body);
+  font-weight: 600;
+}
+.dag-view__canvas {
+  position: relative;
+  overflow: auto;
+  padding: var(--space-4);
+}
+.dag-view__edges {
+  position: absolute;
+  left: var(--space-4);
+  top: var(--space-4);
+  z-index: var(--z-base);
+}
+.dag-edge {
+  fill: none;
+  stroke: var(--border-strong);
+  stroke-width: 1.4;
+}
+.dag-arrow-fill {
+  fill: var(--border-strong);
+}
+
+/* DAG 节点：绝对定位按钮 + kind 左色条 */
+.dag-node {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--space-4);
+  padding: var(--space-8) var(--space-12) var(--space-8) var(--space-16);
+  text-align: left;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-left-width: 3px;
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: var(--fs-caption);
+  cursor: pointer;
+  z-index: var(--z-sticky);
+  box-shadow: var(--shadow-1);
+  transition:
+    border-color var(--motion-fast) var(--ease-out),
+    background var(--motion-fast) var(--ease-out);
+}
+.dag-node:hover {
+  background: var(--bg-elevated);
+  border-color: var(--border-strong);
+}
+.dag-node:active {
+  border-color: var(--accent-cyan);
+}
+.dag-node--quantum {
+  border-left-color: var(--accent-violet);
+}
+.dag-node--classical {
+  border-left-color: var(--info);
+}
+.dag-node--agent {
+  border-left-color: var(--warning);
+}
+.dag-node__name {
+  font-size: var(--fs-body);
+  font-weight: 600;
+}
+.dag-node__meta {
+  color: var(--text-faint);
+  font-size: var(--fs-caption);
+}
+/* 运行中：呼吸光晕（reduced-motion → 实线描边，见 global.css） */
+.dag-node--running {
+  border-color: var(--warning);
+}
+.dag-node--running .status-badge--running {
+  animation: qap-badge-breathe var(--motion-glow-breath) var(--ease-out) infinite;
+}
+
+/* ============ 硬件拓扑 ============ */
+.hw-topo {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-24);
+}
+.hw-group__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  margin-bottom: var(--space-8);
+}
+.hw-group__kind {
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+.hw-group__kind--qpu {
+  color: var(--accent-violet);
+}
+.hw-group__kind--gpu {
+  color: var(--accent-cyan);
+}
+.hw-group__kind--cpu {
+  color: var(--text-secondary);
+}
+.hw-group__count {
+  font-size: var(--fs-caption);
+  color: var(--text-faint);
+}
+.hw-group__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(224px, 1fr));
+  gap: var(--space-12);
+}
+
+/* 硬件卡片 */
+.hw-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  padding: var(--space-12);
+  text-align: left;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-top-width: 2px;
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  cursor: pointer;
+  overflow: hidden;
+  transition:
+    border-color var(--motion-fast) var(--ease-out),
+    background var(--motion-fast) var(--ease-out);
+}
+.hw-card:hover {
+  background: var(--bg-elevated);
+  border-color: var(--border-strong);
+}
+.hw-card:active {
+  border-color: var(--accent-cyan);
+}
+.hw-card--qpu {
+  border-top-color: var(--accent-violet);
+}
+.hw-card--gpu {
+  border-top-color: var(--accent-cyan);
+}
+.hw-card--cpu {
+  border-top-color: var(--text-secondary);
+}
+.hw-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-8);
+}
+.hw-card__name {
+  font-size: var(--fs-body);
+  font-weight: 600;
+}
+.hw-card__status {
+  flex-shrink: 0;
+  font-size: var(--fs-caption);
+  padding: var(--space-4) var(--space-8);
+  border-radius: var(--radius-sm);
+}
+.hw-card__status--online {
+  color: var(--success);
+  background: var(--bg-inset);
+  border: 1px solid var(--success);
+}
+.hw-card__status--offline {
+  color: var(--text-faint);
+  background: var(--bg-inset);
+  border: 1px solid var(--border-default);
+}
+.hw-card__model {
+  font-size: var(--fs-caption);
+  color: var(--text-secondary);
+}
+.hw-card__util {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+}
+.hw-card__util-bar {
+  position: relative;
+  flex: 1;
+  height: 6px;
+  background: var(--bg-inset);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.hw-card__util-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--accent-cyan);
+  transition: width var(--motion-panel) var(--ease-out);
+}
+.hw-card__util-num {
+  flex-shrink: 0;
+  font-size: var(--fs-caption);
+  color: var(--text-secondary);
+  min-width: 34px;
+  text-align: right;
+}
+.hw-spark-line {
+  stroke: var(--text-faint);
+}
+.hw-card__dots {
+  display: flex;
+  gap: var(--space-4);
+}
+.hw-card__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+.hw-card__dot--leased {
+  background: var(--warning);
+}
+.hw-card__dot--free {
+  background: transparent;
+  border: 1px solid var(--border-strong);
+}
+.hw-card__allocs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+}
+.hw-alloc {
+  padding: var(--space-4) var(--space-8);
+  font-size: var(--fs-caption);
+  color: var(--warning);
+  background: var(--bg-inset);
+  border: 1px solid var(--warning);
+  border-radius: var(--radius-sm);
+}
+
+/* offline：降饱和 + 斜纹 */
+.hw-card--offline {
+  filter: saturate(0.35) brightness(0.85);
+}
+.hw-card--offline::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    -45deg,
+    transparent 0 6px,
+    var(--border-default) 6px 7px
+  );
+  pointer-events: none;
+  opacity: 0.5;
+}
+
+/* ============ Drawer ============ */
+.drawer-root {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-drawer);
+}
+.drawer-backdrop {
+  position: absolute;
+  inset: 0;
+  /* 遮罩 = --bg-base 半透明（token 派生，避免字面色值） */
+  background: var(--bg-base);
+  opacity: 0.55;
+}
+.drawer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(420px, 92vw);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-elevated);
+  border-left: 1px solid var(--border-default);
+}
+.drawer__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-8);
+  padding: var(--space-16);
+  border-bottom: 1px solid var(--border-default);
+}
+.drawer__title {
+  font-size: var(--fs-body-lg);
+  font-weight: 600;
+}
+.drawer__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-16);
+}
+
+/* ============ 详情列表（Drawer 内复用） ============ */
+.detail-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  margin: 0;
+}
+.detail-list__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-12);
+  padding: var(--space-8) 0;
+  border-bottom: 1px solid var(--border-default);
+}
+.detail-list__row dt {
+  flex-shrink: 0;
+  font-size: var(--fs-caption);
+  color: var(--text-faint);
+}
+.detail-list__row dd {
+  margin: 0;
+  text-align: right;
+  word-break: break-all;
+}
+.detail-list__row--error dd {
+  color: var(--danger);
+}
+
+/* 硬件详情补充 */
+.hw-detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-16);
+}
+.hw-detail__section {
+  font-size: var(--fs-body);
+  font-weight: 600;
+}
+.hw-detail__empty {
+  font-size: var(--fs-caption);
+}
+.hw-detail__allocs,
+.hw-detail__history {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+}
+.hw-detail__history li {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-8);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+}
