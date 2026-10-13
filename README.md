@@ -105,7 +105,14 @@ frontend/package.json）。
   `CircuitCanvas`（qubit 横线等距编号、格点门 44×36、CNOT 控制点+⊕、MEASURE
   表针、悬停 tooltip、列压缩无空列、>32 qubits 截断）、`CountsHistogram`
   （归一化不变量 max 条高==绘图高、160ms 条形生长、hover 计数/占比、降序排列、
-  空/畸形降级）、`WaveformCanvas`（I/Q 多通道折线 + 图例）。
+  空/畸形降级）、`WaveformCanvas`（I/Q 多通道折线 + 图例）、
+  `DagView`（kind 色节点 + 统一状态徽标 + 贝塞尔依赖箭头 + 运行呼吸光晕 +
+  点击节点 Drawer 详情 + 环/未知依赖降级）、`HardwareTopology`（kind 分组卡片
+  网格、型号/容量点/利用率迷你条与 60s sparkline、allocation 徽标
+  "agent · task/step"、offline 降饱和斜纹、点击开 Drawer 全量信息+历史任务）。
+- `src/components/common/` —— `StatusBadge`（五状态统一徽标：pending 空心/
+  running warning 呼吸/succeeded/failed/cancelled faint）、`Drawer`
+  （右滑详情抽屉，Esc/遮罩关闭，z-drawer）。
 - 响应式：<1280px 检查器浮层化；<960px 侧栏抽屉化（`src/styles/layout.css`）。
 
 ### 运行
@@ -118,12 +125,12 @@ npm run dev            # 开发服务器（5173），连接 http://127.0.0.1:800
 VITE_USE_MOCK=1 npm run dev   # Mock 模式：后端未启动也可完整演示
 ```
 
-### 测试结果（S4 后）
+### 测试结果（S5 后）
 
-`npm test`：11 个文件 54 个用例全绿（+12：线路 6 / 直方图 4 / 波形 2）。
-`npm run build`：零 TS 错误。
+`npm test`：15 个文件 75 个用例全绿（+21：DAG 纯函数 5 / DagView 5 /
+HardwareTopology 5 / StatusBadge 6）。`npm run build`：零 TS 错误。
 
-（进行中：S5 DAG 与硬件拓扑 / S6 打磨。）
+（进行中：S6 打磨——骨架/空态/错误态/响应式细节/reduced-motion 复核。）
 
 ## References
 

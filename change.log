@@ -3,6 +3,34 @@
 格式：新条目置顶。每次切片提交必须更新（Added / Changed / Fixed + Validation +
 Known defects）。scope 见 docs/DEVELOPMENT.md §2。
 
+## 2026-10-13 `frontend: 任务 DAG、硬件拓扑与详情抽屉（S5）`
+
+### Added
+
+- `utils/dag.ts`：DAG 布局纯函数——依赖边生成（未知 id 丢弃）、最长路径层级
+  （迭代松弛）、环检测（invalid 标记 + 出现顺序降级布局）、畸形 steps 空模型。
+- `DagView`：节点 = Step（kind 色左条 quantum=violet/classical=info/agent=
+  warning + 统一 StatusBadge + 等宽 id）；SVG 贝塞尔依赖箭头（marker）；
+  运行节点呼吸光晕（2s，reduced-motion 实线描边）；点击 → Drawer 详情
+  （node_id/起止时间/detail/error）；环/空任务降级空态。
+- `HardwareTopology`：按 kind 分组卡片网格（qpu/gpu/cpu）；卡片含型号（等宽）、
+  容量点（租约实心 warning）、利用率迷你条 + 60s sparkline + 数值、
+  allocation 徽标 "agent · task/step"；点击 → Drawer 全量信息 + 该节点历史
+  任务回溯（跨 tasks 按 node_id 匹配）；offline 降饱和 + 斜纹叠加。
+- `common/StatusBadge`（五状态统一）与 `common/Drawer`（右滑 + Esc/遮罩关闭，
+  z-drawer 层）；`InspectorPanel` 接入两视图（DAG 按当前会话过滤、无则全量）。
+- `src/styles/inspector.css`。
+
+### Validation
+
+- `npm test`：75 用例全绿（新增 21：DAG 纯函数 5、DagView 5、
+  HardwareTopology 5、StatusBadge 6）。
+- `npm run build`：零 TS 错误。
+
+### Known defects
+
+- 首屏各数据区域尚无 loading 骨架（S6 补齐）。
+
 ## 2026-10-13 `frontend: 量子线路、测量直方图与波形渲染器（S4）`
 
 ### Added

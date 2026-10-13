@@ -13,6 +13,7 @@ import './styles/global.css';
 import './styles/layout.css';
 import './styles/chat.css';
 import './styles/viz.css';
+import './styles/inspector.css';
 import { App } from './App';
 
 injectTokenStyles(document);
