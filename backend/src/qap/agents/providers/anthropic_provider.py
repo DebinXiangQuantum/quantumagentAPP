@@ -32,11 +32,12 @@ from qap.agents.providers.base import (
     ProviderErrorEvent,
     ProviderEvent,
     TextDelta,
+    ThoughtDelta,
     ToolCall,
     TurnCompleted,
 )
 from qap.agents.providers.sse import iter_sse_events
-from qap.core.config import ModelConfig
+from qap.core.config import ModelConfig, ThinkingLevel
 
 #: anthropic-version 头的固定值（契约 §9）
 ANTHROPIC_VERSION = "2023-06-01"
@@ -44,6 +45,20 @@ ANTHROPIC_VERSION = "2023-06-01"
 DEFAULT_MAX_TOKENS = 4096
 #: 流式读超时下限（秒），与 openai provider 同理
 _STREAM_READ_TIMEOUT_FLOOR = 5.0
+
+#: §9 v1.1 映射表：ThinkingLevel → anthropic thinking.budget_tokens
+#:（off 不发送 thinking 块，故不在表内）
+_BUDGET_TOKENS_BY_LEVEL: dict[str, int] = {"low": 2048, "high": 8192, "max": 16384}
+
+
+def thinking_block_for(level: ThinkingLevel) -> dict[str, object] | None:
+    """思考程度 → anthropic ``thinking`` 块；off / None → 不发送（None）。"""
+    if level in (None, "off"):
+        return None
+    budget = _BUDGET_TOKENS_BY_LEVEL.get(level)
+    if budget is None:
+        raise ValueError(f"unknown thinking level {level!r}")
+    return {"type": "enabled", "budget_tokens": budget}
 
 
 class _ToolAccumulator:
@@ -107,12 +122,17 @@ class AnthropicProvider:
                 messages.append(
                     {"role": role, "content": [{"type": "text", "text": message.get("content", "")}]}
                 )
+        thinking = thinking_block_for(request.thinking_level)  # type: ignore[arg-type]
         payload: dict[str, Any] = {
             "model": self._config.model,
-            "max_tokens": DEFAULT_MAX_TOKENS,
+            # API 要求 max_tokens > budget_tokens：启用思考时按预算加成，
+            # 否则 max(16384) 思考会因 4096 上限被服务端拒绝（工程约束）。
+            "max_tokens": DEFAULT_MAX_TOKENS + (int(thinking["budget_tokens"]) if thinking else 0),
             "stream": True,
             "messages": messages,
         }
+        if thinking is not None:
+            payload["thinking"] = thinking
         if request.system:
             payload["system"] = request.system
         if request.tools:
@@ -185,7 +205,10 @@ class AnthropicProvider:
                     saw_tool_use = True
             elif kind == "content_block_delta":
                 delta = payload.get("delta") or {}
-                if delta.get("type") == "text_delta" and delta.get("text"):
+                if delta.get("type") == "thinking_delta" and delta.get("thinking"):
+                    # v1.1：思考增量 → ThoughtDelta（先于正文到达）
+                    yield ThoughtDelta(delta["thinking"])
+                elif delta.get("type") == "text_delta" and delta.get("text"):
                     yield TextDelta(delta["text"])
                 elif delta.get("type") == "input_json_delta" and current_tool is not None:
                     current_tool.partial_json += delta.get("partial_json", "")

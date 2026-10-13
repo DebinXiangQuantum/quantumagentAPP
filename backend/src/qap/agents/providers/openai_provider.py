@@ -29,15 +29,36 @@ from qap.agents.providers.base import (
     ProviderErrorEvent,
     ProviderEvent,
     TextDelta,
+    ThoughtDelta,
     ToolCall,
     TurnCompleted,
 )
 from qap.agents.providers.sse import iter_sse_events
-from qap.core.config import ModelConfig
+from qap.core.config import ModelConfig, ThinkingLevel
 
 #: 流式读超时下限（秒）：外层总超时由 ModelConfig.timeout_seconds 控制，
 #: 但读间隙不应小于该值，避免长思考模型被误判断流。
 _STREAM_READ_TIMEOUT_FLOOR = 5.0
+
+#: §9 v1.1 映射表：ThinkingLevel → openai 兼容渠道 thinking.type
+_THINKING_TYPE_BY_LEVEL: dict[str, str] = {
+    "off": "disabled",
+    "low": "low",
+    "high": "high",
+    "max": "max",
+}
+
+
+def thinking_type_for(level: ThinkingLevel) -> str:
+    """思考程度 → openai 请求体 ``thinking.type``（GLM 实测 2026-10-13）。
+
+    注意：glm-5.3 系列不接受 ``disabled``（服务端错误码 1210 会作为
+    error 事件透传）——这是渠道侧行为，由调用方选择 off 时自担。
+    """
+    mapped = _THINKING_TYPE_BY_LEVEL.get(level)
+    if mapped is None:
+        raise ValueError(f"unknown thinking level {level!r}")
+    return mapped
 
 
 class _AccumulatingToolCall:
@@ -117,6 +138,10 @@ class OpenAIProvider:
                 }
                 for tool in request.tools
             ]
+        # v1.1 §9：思考程度 → thinking.type（off→disabled，其余同名）；
+        # 未指定（None）则完全省略（向后兼容非思考渠道）。
+        if request.thinking_level is not None:
+            payload["thinking"] = {"type": thinking_type_for(request.thinking_level)}
         return payload
 
     # ---------- 流式主流程 ----------
@@ -172,6 +197,10 @@ class OpenAIProvider:
                 continue  # 心跳/usage 帧
             choice = choices[0]
             delta = choice.get("delta") or {}
+            # v1.1：GLM/DeepSeek 式思考增量（先于正文到达）→ ThoughtDelta
+            reasoning = delta.get("reasoning_content")
+            if reasoning:
+                yield ThoughtDelta(reasoning)
             content = delta.get("content")
             if content:
                 yield TextDelta(content)

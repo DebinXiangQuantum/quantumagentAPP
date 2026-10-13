@@ -42,12 +42,26 @@ class AppState:
     scheduler: Scheduler
     simulator: UtilizationSimulator
     runtime: AgentRuntime
+    #: model_ref → provider 实例（admin 渠道编辑后原地增删改，v1.1 §5）
+    providers: dict[str, LLMProvider] = field(default_factory=dict)
     #: 进行中的 Agent 运行（run_id -> asyncio.Task；关闭时兜底取消）
     runs: dict[str, object] = field(default_factory=dict)
 
     def spawn_run(self, run_id: str, coroutine) -> None:
         """登记并启动一次后台 Agent 运行。"""
         self.runs[run_id] = _spawn(coroutine)
+
+    def provider_for(self, model_ref: str) -> LLMProvider:
+        """取该渠道的 provider；未配置的 ref 是编程错误（入口已校验）。"""
+        try:
+            return self.providers[model_ref]
+        except KeyError:
+            raise NotFoundError("model channel", model_ref) from None
+
+    def default_thinking_for(self, model_ref: str) -> str:
+        """渠道默认思考程度（契约 §9 优先级中段；未知 ref 缺省 high）。"""
+        entry = self.config.models.get(model_ref)
+        return entry.default_thinking if entry is not None else "high"
 
     # ---------- 领域对象工厂（路由层共用，保证 id/时间戳一致） ----------
 
@@ -120,11 +134,21 @@ def build_app_state(config: AppConfig) -> AppState:
     simulator = UtilizationSimulator(nodes, events, config.hardware.tick_seconds)
     tools = PlatformTools(idgen, tenants, scheduler, tasks, nodes.snapshot)
 
-    # Provider 表：model_ref → provider 实例（mock 共享剧本游标，天然单例）
+    # Provider 表：model_ref → provider 实例（mock 共享剧本游标，天然单例）。
+    # 存于 providers dict 并挂到 state：admin 渠道编辑（v1.1 §5）原地增删改。
     providers: dict[str, LLMProvider] = {
         ref: create_provider(entry) for ref, entry in config.models.items()
     }
-    runtime = AgentRuntime(plugins, lambda model_ref: providers[model_ref], tools, events)
+    runtime = AgentRuntime(
+        plugins,
+        # 闭包与 state.providers 共享同一 dict：admin 渠道增删改即时生效
+        lambda model_ref: providers[model_ref],
+        tools,
+        events,
+        default_thinking_for=lambda ref: config.models[ref].default_thinking
+        if ref in config.models
+        else "high",
+    )
     return AppState(
         config=config,
         idgen=idgen,
@@ -139,4 +163,5 @@ def build_app_state(config: AppConfig) -> AppState:
         scheduler=scheduler,
         simulator=simulator,
         runtime=runtime,
+        providers=providers,
     )

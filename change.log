@@ -5,6 +5,43 @@ Validation（本切片测试结论）+ Known defects（已知缺陷，无则写�
 scope 与流程见 docs/DEVELOPMENT.md §2。
 
 
+## 2026-10-13 `backend: B2 思考程度与思考流——thinking_level 映射、thought_delta 与 message.reasoning`
+
+### Added
+- `CompletionRequest.thinking_level`（v1.1 §9 归一化枚举 off/low/high/max）
+  与 provider 侧映射：openai 兼容渠道请求体 `thinking:{"type":...}`
+  （off→disabled，其余同名；未指定则整个键省略，向后兼容）；anthropic
+  off 不发 thinking 块，low/high/max → enabled + budget_tokens
+  2048/8192/16384（启用思考时 max_tokens 按预算加成，满足 API 的
+  max_tokens > budget 约束——max 档 16384 超过原固定 4096 会被服务端拒）。
+- `ProviderEvent ThoughtDelta{text}`：openai 解析 `delta.reasoning_content`
+  （GLM/DeepSeek 式思考增量，实测 2026-10-13），anthropic 解析
+  `thinking_delta`；mock 剧本新增 `("thought", str)` 脚本项并在
+  `request_log` 记录每次请求的 thinking_level（忽略但记录）。
+- `Message.reasoning` 字段（默认空串）与 SSE `message.reasoning` 事件
+  （载荷含 conversation_id/message_id/delta/seq，EventBus 注入 seq）；
+  `message.completed` 载荷新增 `reasoning` 全文；思考增量先于正文发布。
+- `POST …/messages` 请求体扩展 `model_ref?`/`thinking_level?`：model_ref
+  未知 → 422；thinking_level 非法 → 422；取值优先级 消息级 > 渠道
+  default_thinking（AgentRuntime 统一解析，`default_thinking_for` 注入）。
+- `tests/test_thinking.py`：19 用例（TDD 先红后绿；httpx MockTransport
+  回放，零真实网络请求）。
+
+### Changed
+- `qap/api/state.py`：providers 表挂到 `AppState.providers`（与 Runtime
+  闭包共享同一 dict，为 B4 admin 渠道热编辑铺路）。
+- mock 默认剧本（algorithm-designer）前置两条 thought 项，驱动
+  message.reasoning 端到端可观察。
+
+### Validation
+- 全量 `pytest` **266 passed**（247 保持 + 新增 19）。
+
+### Known defects
+- glm-5.3 系列对 `thinking.type=disabled` 返回服务端错误 1210——按契约
+  作为 error 事件透传，由调用方对 glm-5.3 渠道避免 off 档（渠道
+  default_thinking 配置已避开）。
+
+
 ## 2026-10-13 `backend: B1 渠道池与配置覆盖层（config.local.toml 深合并 + default_thinking）`
 
 ### Added

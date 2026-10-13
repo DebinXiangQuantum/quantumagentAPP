@@ -84,7 +84,11 @@ class Artifact(BaseModel):
 
 
 class Message(BaseModel):
-    """会话内一条消息（契约 §4 Message）。"""
+    """会话内一条消息（契约 §4 Message）。
+
+    ``reasoning``（v1.1）：assistant 消息的思考过程全文（ ThoughtDelta
+    增量在 Runtime 侧累加），可为空串；user 消息恒为空串。
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -92,6 +96,7 @@ class Message(BaseModel):
     conversation_id: str = Field(pattern=r"^c-\d+$")
     role: Literal["user", "assistant"]
     content: str
+    reasoning: str = ""
     agent_id: str = Field(min_length=1)
     artifacts: list[Artifact] = Field(default_factory=list)
     created_at: str

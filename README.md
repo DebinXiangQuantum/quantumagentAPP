@@ -213,6 +213,25 @@ curl 走通 §10 链路——health 返回 `{"status":"ok"}`；创建会话+发�
   default_thinking 枚举拒绝/内联密钥优先级/本地坏文件 fail-fast/
   LocalConfigStore 读写回环），全量 **247 passed**。
 
+**B2（v1.1 思考程度与思考流）**：
+- `CompletionRequest.thinking_level`（`off|low|high|max`）+ §9 映射：openai
+  兼容渠道 → 请求体 `thinking:{"type":...}`（off→disabled，其余同名，GLM
+  实测形状）；anthropic → off 不发 thinking 块，low/high/max →
+  `{"type":"enabled","budget_tokens":2048/8192/16384}`，且启用思考时
+  `max_tokens` 按预算加成（API 要求 max_tokens > budget）；mock 忽略但记录
+  进 `request_log`（可观察）。
+- 新 `ProviderEvent ThoughtDelta{text}`：openai 解析 `delta.reasoning_content`
+  （GLM/DeepSeek 式思考增量），anthropic 解析 `thinking_delta`；Runtime 转发为
+  SSE `message.reasoning`（载荷 `{conversation_id,message_id,delta,seq}`，
+  总线注入 seq）并累加进新 `Message.reasoning` 字段（默认空串）；
+  `message.completed` 载荷新增 `reasoning` 全文。
+- `POST …/messages` 请求体扩展 `{"content","model_ref"?,"thinking_level"?}`：
+  model_ref 须在渠道池（未知 → 422），thinking_level 非法 → 422（Literal）；
+  取值优先级：消息级 > 渠道 default_thinking（Runtime 统一解析）。
+- 测试：`tests/test_thinking.py` 19 用例（§9 映射表参数化/GLM 形状流
+  增量拼接==全文与思考在前正文在后/anthropic 预算与 max_tokens/api 422 与
+  优先级经 mock request_log 断言/SSE reasoning 帧序），全量 **266 passed**。
+
 ## 前端 (Frontend)
 
 *本节由 `feat/frontend` 分支的开发切片维护更新：组件清单、页面说明、测试结果。*

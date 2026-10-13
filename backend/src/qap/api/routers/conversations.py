@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from typing import Literal
+
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
@@ -16,26 +18,38 @@ from pydantic import BaseModel, ConfigDict, Field
 from qap.api.deps import get_state, require_tenant
 from qap.api.sse import event_stream
 from qap.api.state import AppState
+from qap.core.errors import ValidationFailed
 from qap.tenancy.service import TenantContext
 
 router = APIRouter(tags=["conversations"], dependencies=[Depends(require_tenant)])
 
 
 class CreateConversationRequest(BaseModel):
-    """POST /conversations 请求体。"""
+    """POST /conversations 请求体。
+
+    ``agent_id``（v1.1 §4）可选：缺省绑定内置编排 Agent ``orchestrator``，
+    由其按任务自主 dispatch_agent 到领域专家。
+    """
 
     model_config = ConfigDict(extra="forbid")
 
-    agent_id: str = Field(min_length=1)
+    agent_id: str | None = Field(default=None, min_length=1)
     title: str = ""
 
 
 class PostMessageRequest(BaseModel):
-    """POST …/messages 请求体（畸形体由 FastAPI 转 422）。"""
+    """POST …/messages 请求体（畸形体由 FastAPI 转 422）。
+
+    v1.1（契约 §5）：``model_ref`` 覆盖本条消息使用的渠道（须存在于渠道
+    池，未知值在路由层 422）；``thinking_level`` 覆盖思考程度（枚举校验
+    交给 Literal → FastAPI 422）。两者优先级高于渠道 default_thinking。
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     content: str = Field(min_length=1)
+    model_ref: str | None = Field(default=None, min_length=1)
+    thinking_level: Literal["off", "low", "high", "max"] | None = None
 
 
 @router.get("/conversations")
@@ -55,9 +69,10 @@ async def create_conversation(
     tenant: TenantContext = Depends(require_tenant),
     state: AppState = Depends(get_state),
 ) -> dict:
-    """创建会话；agent_id 未注册 → 404（契约 §5 资源不存在语义）。"""
-    state.plugins.get(payload.agent_id)  # 未知 agent → NotFoundError → 404
-    conversation = state.new_conversation(payload.agent_id, payload.title, tenant.tenant_id)
+    """创建会话；agent_id 缺省 = orchestrator（v1.1），未知值 → 404。"""
+    agent_id = payload.agent_id or "orchestrator"
+    state.plugins.get(agent_id)  # 未知 agent → NotFoundError → 404
+    conversation = state.new_conversation(agent_id, payload.title, tenant.tenant_id)
     state.conversations.add(conversation)
     return conversation.model_dump()
 
@@ -83,8 +98,17 @@ async def post_message(
     tenant: TenantContext = Depends(require_tenant),
     state: AppState = Depends(get_state),
 ) -> dict:
-    """落库用户消息并异步启动 Agent 运行（配额超限 → 429 + Retry-After）。"""
+    """落库用户消息并异步启动 Agent 运行（配额超限 → 429 + Retry-After）。
+
+    v1.1：``model_ref`` 必须存在于渠道池（未知 → 422，契约 §5）；
+    ``thinking_level`` 枚举校验由请求模型完成（非法 → 422）。
+    """
     conversation = state.conversations.get(conversation_id, tenant.tenant_id)
+    if payload.model_ref is not None and payload.model_ref not in state.config.models:
+        raise ValidationFailed(
+            f"unknown model_ref {payload.model_ref!r}; "
+            f"available: {sorted(state.config.models)}"
+        )
     state.tenants.check_message_quota(tenant.tenant_id)
     state.tenants.record_message(tenant.tenant_id)
 
@@ -99,7 +123,13 @@ async def post_message(
     history = [m for m in state.messages.list(conversation.id) if m.id != assistant.id]
     state.spawn_run(
         run_id,
-        state.runtime.run(conversation, history, assistant),
+        state.runtime.run(
+            conversation,
+            history,
+            assistant,
+            model_ref=payload.model_ref,
+            thinking_level=payload.thinking_level,
+        ),
     )
     return {"message_id": assistant.id, "run_id": run_id}
 

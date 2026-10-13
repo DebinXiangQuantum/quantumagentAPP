@@ -7,8 +7,11 @@
 各 Provider 负责把该中间表示翻译成自家 wire format（openai 原生接近；
 anthropic 需转 tool_use/tool_result 块）。
 
-事件流约定（契约 §9：text_delta | tool_call | error）：
-- ``TextDelta``：一段增量文本（Runtime 直接进 SSE message.delta）；
+事件流约定（契约 §9：text_delta | thought_delta | tool_call | error）：
+- ``TextDelta``：一段正文增量文本（Runtime 直接进 SSE message.delta）；
+- ``ThoughtDelta``：一段**思考过程**增量（v1.1：openai 的
+  ``delta.reasoning_content``（GLM/DeepSeek 式）与 anthropic 的
+  ``thinking_delta`` 归一化；Runtime 进 SSE message.reasoning）；
 - ``ToolCall``：一次完整的工具调用（name + arguments **JSON 字符串**，
   增量拼接由 Provider 内部完成后才发出）；
 - ``ProviderErrorEvent``：Provider 侧故障（非 200、流中断、密钥缺失……），
@@ -23,6 +26,8 @@ from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
+from qap.core.config import ThinkingLevel
+
 
 @dataclass(frozen=True)
 class CompletionRequest:
@@ -30,6 +35,9 @@ class CompletionRequest:
 
     ``metadata`` 携带运行上下文（run_key / agent_id / conversation_id）：
     mock provider 用 run_key 推进脚本游标，openai/anthropic 忽略之。
+    ``thinking_level``（v1.1 §9）：归一化思考程度，由 Runtime 按优先级
+    解析（消息级 > 渠道 default_thinking）；None 表示"未指定"——provider
+    不发送任何思考参数（向后兼容，仅单元测试/子运行直达路径会出现）。
     """
 
     model: str
@@ -37,11 +45,19 @@ class CompletionRequest:
     system: str | None = None
     tools: Sequence[Any] | None = None  # ToolSpec 序列（agents.plugins）
     metadata: dict[str, Any] = field(default_factory=dict)
+    thinking_level: ThinkingLevel | None = None
 
 
 @dataclass(frozen=True)
 class TextDelta:
     """文本增量事件（契约 §9 text_delta）。"""
+
+    text: str
+
+
+@dataclass(frozen=True)
+class ThoughtDelta:
+    """思考过程增量事件（契约 §9 v1.1 thought_delta）；思考先于正文。"""
 
     text: str
 
@@ -73,7 +89,7 @@ class TurnCompleted:
 
 
 #: Provider 事件联合类型（供类型注解使用）
-ProviderEvent = TextDelta | ToolCall | ProviderErrorEvent | TurnCompleted
+ProviderEvent = TextDelta | ThoughtDelta | ToolCall | ProviderErrorEvent | TurnCompleted
 
 
 @dataclass(frozen=True)
