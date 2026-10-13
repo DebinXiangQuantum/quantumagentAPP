@@ -96,6 +96,11 @@ frontend/package.json）。
   hardware allocation 变化，对齐 ARCHITECTURE §10）；2s 利用率随机游走 tick。
 - `src/store/` —— `uiStore`（布局折叠状态）+ `appStore`（bootstrap / 会话切换 /
   消息发送 / SSE 事件归并：流式累积、task upsert、硬件节点与 60s 利用率历史）。
+- `src/components/chat/` —— 对话区：`ChatPanel`（消息流分组/自动跟随滚动/空态/
+  错误警示条）、`MessageBubble`（用户右对齐气泡、助手左对齐头像分组+分隔线）、
+  `MessageInput`（Enter 发送 / Shift+Enter 换行 / Agent 快捷切换）、
+  `StreamingCursor`（530ms 闪烁光标）、`ArtifactCard`（类型徽标+展开收起，
+  未知/畸形 type 降级为原始 JSON 视图，永不崩溃）。
 - 响应式：<1280px 检查器浮层化；<960px 侧栏抽屉化（`src/styles/layout.css`）。
 
 ### 运行
@@ -108,12 +113,12 @@ npm run dev            # 开发服务器（5173），连接 http://127.0.0.1:800
 VITE_USE_MOCK=1 npm run dev   # Mock 模式：后端未启动也可完整演示
 ```
 
-### 测试结果（S2 后）
+### 测试结果（S3 后）
 
-`npm test`：5 个文件 29 个用例全绿（tokens 7 + 布局 4 + client 6 + Mock 引擎 8 +
-store 4）。`npm run build`：零 TS 错误。
+`npm test`：8 个文件 42 个用例全绿（+13：Artifact 降级 5 / 输入键盘 4 / 对话区 4）。
+`npm run build`：零 TS 错误。
 
-（进行中：S3 对话区 / S4 线路与直方图 / S5 DAG 与硬件拓扑。）
+（进行中：S4 线路与直方图渲染器 / S5 DAG 与硬件拓扑。）
 
 ## References
 

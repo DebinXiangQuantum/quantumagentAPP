@@ -3,6 +3,32 @@
 格式：新条目置顶。每次切片提交必须更新（Added / Changed / Fixed + Validation +
 Known defects）。scope 见 docs/DEVELOPMENT.md §2。
 
+## 2026-10-13 `frontend: 对话区——消息流、流式光标与 Artifact 卡片（S3）`
+
+### Added
+
+- `ChatPanel`：消息流（连续 assistant 分组：组首头像 + 角色切换分隔线）、
+  流式消息 + 闪烁光标、新内容自动跟随滚动（用户上滚 80px 内暂停跟随）、
+  无会话/无消息两种插画式空态、SSE error 内联警示条（可清除）。
+- `MessageBubble`：用户右对齐 `--bg-elevated` 气泡；助手左对齐无底色；
+  artifacts 通栏渲染；畸形字段（content 非串/artifacts 非数组）降级不崩溃。
+- `MessageInput`：textarea 自适应增高（cap 8 行）、Enter 发送/Shift+Enter 换行/
+  纯空白不发送/输入法合成态不误发、Agent 快捷切换（写 store）。
+- `ArtifactCard` + `renderers.tsx`：类型徽标（线路/计数/波形，未知显示原始
+  type）、默认收起可展开；未知 type 与畸形 envelope（非对象/缺字段/循环载荷）
+  一律降级原始 JSON 视图，safeJson 防循环异常。
+- `src/styles/chat.css`（全部 token 化）。
+
+### Validation
+
+- `npm test`：42 用例全绿（新增 13：畸形 artifact 降级 5、输入键盘 4、
+  消息分组/流式光标/空态 4）。
+- `npm run build`：零 TS 错误。
+
+### Known defects
+
+- circuit/counts/waveform 正文暂走 JSON 视图（S4 接入专用渲染器）。
+
 ## 2026-10-13 `frontend: 数据接入层——REST/SSE client、Mock 引擎与应用 store（S2）`
 
 ### Added

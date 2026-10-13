@@ -11,6 +11,7 @@ import { createRoot } from 'react-dom/client';
 import { injectTokenStyles } from './styles/tokens';
 import './styles/global.css';
 import './styles/layout.css';
+import './styles/chat.css';
 import { App } from './App';
 
 injectTokenStyles(document);
