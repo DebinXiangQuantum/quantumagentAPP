@@ -157,6 +157,22 @@ GET /tenants/me 的用量视图。测试 15 用例（含时钟注入的跨日重
 - 测试 18 用例（演示链路可观察行为、配额/坏载荷/坏 DAG 结构化错误、
   provider 故障收束、轮次上限、SSE 顺序）。
 
+**S8（全部路由 + SSE + 端到端集成）**：
+- `qap/api/`：state.py 组装根（AppConfig → 全部服务，任务终态回调释放租户
+  并发额度）；deps.py Bearer 鉴权依赖；errors.py QapError→HTTP 映射
+  （401/403/404/422/429+Retry-After，统一 `{"error":{code,message}}` 体）；
+  sse.py 帧构造（id=seq / event / data）+ 流生成器（回放去重、15s ping、
+  断开注销订阅）。
+- `qap/api/routers/`：契约 §5 全部端点——health（免鉴权）、agents、
+  tenants/me、conversations（创建 201/列表 ?limit/详情含 messages/
+  POST messages 202+异步运行/SSE 流 ?after=）、tasks（?conversation_id=）、
+  hardware、events（全局 SSE）。
+- `qap/main.py`：create_app（lifespan 启停模拟器、CORS 白名单、异常
+  处理器）；模块级 `app` 供 `uvicorn qap.main:app`。
+- 集成测试 21 用例（§10 五步断言 + 401/403/404/422/429 负样本 + 跨租户
+  隔离 + ?after= 续传 + 全局流过滤；SSE 读取走原生 ASGI——httpx 0.28
+  ASGITransport 不支持无限流，测试 helper 已注明）。
+
 ## 前端 (Frontend)
 
 *本节由 `feat/frontend` 分支的开发切片维护更新：组件清单、页面说明、测试结果。*

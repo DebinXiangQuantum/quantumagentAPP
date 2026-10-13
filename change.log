@@ -4,6 +4,38 @@
 Removed + Validation（本切片测试结论）+ Known defects（已知缺陷）。
 日期为提交日（ISO 8601）。
 
+## 2026-10-13 S8 REST+SSE 全端点与端到端集成测试 (backend)
+
+### Added
+- `qap/api/state.py`：组装根 build_app_state（构造顺序即依赖顺序；
+  任务终态回调释放租户并发额度；new_conversation/new_message 工厂；
+  spawn_run/shutdown 生命周期）。
+- `qap/api/deps.py`：get_state + require_tenant（Bearer 解析，401/403
+  语义落在 TenantService）。
+- `qap/api/errors.py`：QapError→HTTP 映射（unauthorized→401、
+  tenant_disabled→403、not_found→404、quota_exceeded→429+Retry-After、
+  validation_failed→422，统一 {"error":{code,message}} 响应体）。
+- `qap/api/sse.py`：sse_frame（id=seq/event/data 三行帧）、ping_frame、
+  event_stream（先订阅后回放、seq 去重、15s ping、断开时从总线注销）。
+- `qap/api/routers/*`：契约 §5 全部端点（health 免鉴权；agents；
+  tenants/me；conversations 创建 201/列表 limit/详情含 messages/
+  POST messages 202+{message_id,run_id} 异步运行/会话 SSE ?after=；
+  tasks ?conversation_id=；hardware {"nodes"}；events 全局 SSE）。
+- `qap/main.py`：create_app 工厂 + lifespan（模拟器启停、运行清理）+
+  CORS 白名单 + 模块级 app（uvicorn qap.main:app）。
+- 集成测试 21 用例：§10 五步断言（SSE delta→completed(circuit+counts)、
+  3 步 DAG、quantum→QPU/classical→CPU 分配、hardware.updated 反映
+  租约、零真实 LLM/硬件）；401（4 变体）/403/404（含跨租户三端点）/
+  422/429+Retry-After 负样本；?after= 续传只补新事件；全局流过滤。
+  SSE 读取用原生 ASGI helper（httpx 0.28 ASGITransport 会跑完 app 才
+  返回，不支持无限流；helper 内已注释）。
+
+### Validation
+- `pytest`：214 passed（单元 193 + 集成 21）。
+
+### Known defects
+- 无。
+
 ## 2026-10-13 S7 插件注册、平台工具与 Runtime 工具循环 (backend)
 
 ### Added
