@@ -86,8 +86,16 @@ frontend/package.json）。
   `prefers-reduced-motion` 全量降级。
 - `src/components/layout/` —— `AppShell`（三栏 Grid：264px 会话侧栏 · 流体对话区
   max 820px · 360px 检查器）、`TopBar`（56px：产品名 / Agent 选择器 / 租户徽标 /
-  SSE 连接灯）、`SessionSidebar`、`InspectorPanel`（硬件拓扑｜任务 DAG Tab）、
-  `ConnectionLight`（绿/黄/红）。
+  SSE 连接灯）、`SessionSidebar`（会话列表/新建/切换）、`InspectorPanel`
+  （硬件拓扑｜任务 DAG Tab）、`ConnectionLight`（绿/黄/红）。
+- `src/types/` —— 领域模型与 SSE 事件契约（逐字段对齐 docs/ARCHITECTURE.md §4/§7）。
+- `src/api/client.ts` —— REST（Bearer/JSON/ApiError 含 Retry-After）+ EventSource
+  流封装（断线指数退避 1s→30s 封顶，会话流 `?after=<seq>` 续传）。
+- `src/api/mock/` —— Mock 引擎：fixtures 驱动全部面板；sendMessage 触发脚本
+  演示链路（流式 delta → circuit+counts artifacts → 三步 DAG 推进 →
+  hardware allocation 变化，对齐 ARCHITECTURE §10）；2s 利用率随机游走 tick。
+- `src/store/` —— `uiStore`（布局折叠状态）+ `appStore`（bootstrap / 会话切换 /
+  消息发送 / SSE 事件归并：流式累积、task upsert、硬件节点与 60s 利用率历史）。
 - 响应式：<1280px 检查器浮层化；<960px 侧栏抽屉化（`src/styles/layout.css`）。
 
 ### 运行
@@ -96,15 +104,16 @@ frontend/package.json）。
 cd frontend && npm install
 npm run build          # tsc -b && vite build
 npm test               # vitest run
-npm run dev            # 开发服务器（5173）
+npm run dev            # 开发服务器（5173），连接 http://127.0.0.1:8000
+VITE_USE_MOCK=1 npm run dev   # Mock 模式：后端未启动也可完整演示
 ```
 
-### 测试结果（S1 基线）
+### 测试结果（S2 后）
 
-`npm test`：2 个文件 11 个用例全绿（tokens 契约 7 + AppShell 布局 4）。
-`npm run build`：零 TS 错误。
+`npm test`：5 个文件 29 个用例全绿（tokens 7 + 布局 4 + client 6 + Mock 引擎 8 +
+store 4）。`npm run build`：零 TS 错误。
 
-（进行中：S2 数据接入 / S3 对话区 / S4 线路与直方图 / S5 DAG 与硬件拓扑。）
+（进行中：S3 对话区 / S4 线路与直方图 / S5 DAG 与硬件拓扑。）
 
 ## References
 

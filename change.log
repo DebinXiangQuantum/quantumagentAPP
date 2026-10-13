@@ -3,6 +3,36 @@
 格式：新条目置顶。每次切片提交必须更新（Added / Changed / Fixed + Validation +
 Known defects）。scope 见 docs/DEVELOPMENT.md §2。
 
+## 2026-10-13 `frontend: 数据接入层——REST/SSE client、Mock 引擎与应用 store（S2）`
+
+### Added
+
+- `src/types/domain.ts` / `src/types/events.ts`：领域模型与 SSE 事件契约
+  （逐字段对齐 ARCHITECTURE §4–§7，含封闭枚举与可空性）。
+- `src/api/client.ts`：RestClient（Bearer/JSON/ApiError 透传 Retry-After）+
+  会话/全局 EventSource 流封装——断线自行接管重连（指数退避 1s→30s 封顶，
+  会话流 `?after=<lastSeq>` 续传，畸形 JSON 按 error 事件上抛不崩溃）。
+- `src/api/mock/fixtures.ts`：演示数据（3 Agent、3 会话含 circuit/counts/
+  waveform/未知类型 artifact、成功+运行中任务、5 节点含 offline 演示）。
+- `src/api/mock/engine.ts`：Mock 引擎实现同一 ApiClient 契约；sendMessage 触发
+  §10 全链路脚本（delta→completed(circuit+counts)→三步 DAG cpu→qpu→cpu→
+  GPU 尾声租约展示"哪个 Agent 在用哪块 GPU"）；seq 单调 + 事件日志 cap 1024
+  支持 ?after= 重放；2s 利用率随机游走 tick。
+- `src/store/appStore.ts`：bootstrap 并行拉取 + 流事件归并（流式累积、
+  task upsert、硬件 60s 利用率滚动窗口 cap 30、连接灯聚合）；bootError 可重试。
+- TopBar/SessionSidebar 接入 store（Agent 选择器、租户徽标、连接灯、会话列表
+  新建/切换）；`src/utils/format.ts`（相对时间/时钟/百分比，防御式）。
+
+### Validation
+
+- `npm test`：29 用例全绿（新增 client 6：退避/URL/Bearer/429；Mock 引擎 8：
+  事件顺序/seq 单调/计数守恒/DAG 映射/租约生命周期/重放/fixtures；store 4）。
+- `npm run build`：零 TS 错误。
+
+### Known defects
+
+- 检查器两 Tab 内容与对话区仍为占位（S3/S5 填充）。
+
 ## 2026-10-13 `frontend: 工程骨架、设计系统 tokens 与三栏布局框架（S1）`
 
 ### Added
