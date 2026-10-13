@@ -190,6 +190,29 @@ curl 走通 §10 链路——health 返回 `{"status":"ok"}`；创建会话+发�
 以头为准）；集成测试新增 4 用例（全局/会话流查询参数鉴权、坏参数 401、
 头优先级），全量 **223 passed**。契约 §5 已同步修订。
 
+**B1（v1.1 渠道池与配置覆盖层）**：
+- `qap/core/config.py`：加载顺序改为 **config.toml（基底）← config.local.toml
+  （同目录，gitignored）深合并**——dict 递归按键合并（models 按键覆盖/新增、
+  条目内字段级覆盖）、标量直接覆盖、list 整体替换；本地文件缺失=正常；
+  合并结果沿用既有 fail-fast 结构校验。新增 `load_config_with_sources()`
+  返回 `LoadedConfig`（base/local 路径 + 基底/本地 model refs 溯源，B4 的
+  "仅可删本地覆盖渠道"判定依据）。
+- `ModelConfig` 新增 `default_thinking`（`off|low|high|max`，缺省 `high`，
+  非法值启动失败）与 `api_key_inline`（明文密钥，**只允许出现在
+  config.local.toml**；`resolve_api_key` 内联优先于环境变量）；openai/
+  anthropic 渠道的密钥来源放宽为 `api_key_env` 或 `api_key_inline` 二选一。
+- `qap/core/local_store.py`：config.local.toml 读-改-写门面（无第三方 TOML
+  写库，自研确定性序列化：含点号键自动加引号；重写整份文件会丢注释——
+  已知权衡）。
+- 修复根 `config.toml`：`glm-5.3`/`glm-5.3-flash` 的表键加引号（TOML 未引号
+  化的点号键会被解析为 `glm-5`→`3-flash` 嵌套表，v1.1 契约渠道池无法加载）。
+- 过渡：`PluginRegistry` 对**缺失/空**的 plugins_dir 不再抛"未实现"
+  （仓库默认 `plugins_dir="plugins"` 使模块级 `create_app()` 启动即崩）；
+  非空目录的发现加载在 B3 实现。
+- 测试：`tests/test_config_overlay.py` 24 用例（覆盖优先级/深合并语义/
+  default_thinking 枚举拒绝/内联密钥优先级/本地坏文件 fail-fast/
+  LocalConfigStore 读写回环），全量 **247 passed**。
+
 ## 前端 (Frontend)
 
 *本节由 `feat/frontend` 分支的开发切片维护更新：组件清单、页面说明、测试结果。*

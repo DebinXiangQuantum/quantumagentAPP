@@ -168,9 +168,19 @@ class TestPluginRegistry:
         registry = PluginRegistry(disabled)
         assert "echo" not in [i.id for i in registry.list()]
 
-    def test_external_plugins_dir_unimplemented(self) -> None:
+    def test_external_plugins_dir_unimplemented(self, tmp_path) -> None:
+        """B1 过渡语义：目录非空才报"未实现"；缺失/空目录 = 无外部插件。"""
+        plugins_dir = tmp_path / "plugins"
+        plugins_dir.mkdir()
+        # 空目录：正常（仓库默认 plugins_dir="plugins" 且目录通常不存在）
         agents_cfg = AgentsConfig(
-            default_model_ref="default", plugins_dir="/some/dir", builtin={},
+            default_model_ref="default", plugins_dir=str(plugins_dir), builtin={},
+        )
+        PluginRegistry(agents_cfg)
+        # 非空目录（含插件子目录）：v1.1 B3 切片实现前显式失败
+        (plugins_dir / "some-plugin").mkdir()
+        agents_cfg = AgentsConfig(
+            default_model_ref="default", plugins_dir=str(plugins_dir), builtin={},
         )
         with pytest.raises(QapError, match="not implemented"):
             PluginRegistry(agents_cfg)

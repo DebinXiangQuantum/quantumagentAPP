@@ -45,7 +45,10 @@ default_thinking = "off"
 # enabled/disabled/low/high/max；glm-5.3 系不接受 disabled，思考增量走
 # delta.reasoning_content）。密钥从环境变量 GLM_API_KEY 读取。 -----
 
-[models.glm-5.3-flash]
+# TOML 语法注意：ref 含点号（如 glm-5.3-flash）必须给键加引号，
+# 否则 [models.glm-5.3-flash] 会被解析为 models.glm-5 → 3-flash 嵌套表。
+
+[models."glm-5.3-flash"]
 provider = "openai"
 model = "glm-5.3-flash"
 base_url = "https://open.bigmodel.cn/api/paas/v4"
@@ -53,7 +56,7 @@ api_key_env = "GLM_API_KEY"
 timeout_seconds = 180
 default_thinking = "low"
 
-[models.glm-5.3]
+[models."glm-5.3"]
 provider = "openai"
 model = "glm-5.3"
 base_url = "https://open.bigmodel.cn/api/paas/v4"

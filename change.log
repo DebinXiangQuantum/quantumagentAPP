@@ -5,6 +5,41 @@ Validation（本切片测试结论）+ Known defects（已知缺陷，无则写�
 scope 与流程见 docs/DEVELOPMENT.md §2。
 
 
+## 2026-10-13 `backend: B1 渠道池与配置覆盖层（config.local.toml 深合并 + default_thinking）`
+
+### Added
+- 配置覆盖层（契约 §3 v1.1）：`load_config_with_sources()` 深合并
+  `config.toml`（基底）← 同目录 `config.local.toml`（gitignored）——
+  dict 递归按键合并、标量直接覆盖、list 整体替换；本地文件缺失=正常；
+  合并结果沿用 fail-fast 校验。`LoadedConfig` 溯源基底/本地 model refs
+  （B4 admin DELETE 的 409 判定依据）。
+- `ModelConfig.default_thinking`（`off|low|high|max`，缺省 `high`，非法值
+  启动失败）与 `ModelConfig.api_key_inline`（明文密钥只允许落本地文件，
+  `resolve_api_key` 内联优先）；非 mock 渠道密钥来源放宽为 env/inline 二选一。
+- `qap/core/local_store.py`：config.local.toml 读-改-写门面（自研确定性
+  TOML 序列化，含点号键加引号；B3 插件状态/B4 渠道编辑共用）。
+- `tests/test_config_overlay.py`：24 用例（TDD 先红后绿）。
+
+### Changed
+- 根 `config.toml`：`[models."glm-5.3"]`/`[models."glm-5.3-flash"]` 表键
+  加引号——TOML 未引号化的点号键会解析成 `glm-5`→`3-flash` 嵌套表，
+  v1.1 渠道池在 v1 加载器上直接启动失败（本切片修复的入口缺陷）。
+- `PluginRegistry`：plugins_dir 缺失/为空时不再抛"未实现"（仓库默认
+  `plugins_dir = "plugins"` 使 `qap.main` 模块级 `create_app()` 启动即崩）；
+  非空目录的发现与加载推迟到 B3（`test_runtime.py` 对应用例同步修订）。
+
+### Fixed
+- v1 代码在 main @7382886 的 config.toml（v1.1 契约）上 7 处加载失败
+  （default_thinking 未知键 ×6 + glm 嵌套表键 ×1），本切片全部恢复绿色。
+
+### Validation
+- 全量 `pytest` **247 passed**（v1 的 223 条全部保持 + 新增 24）。
+
+### Known defects
+- LocalConfigStore 重写整份 config.local.toml 会丢失手写注释与键序
+  （值语义保留；原型接受，见模块 docstring）。
+
+
 ## 2026-10-13 `frontend: 真实浏览器视觉走查修复（DAG 纵向布局/时间戳/对比度/原生控件）`
 
 ### Fixed

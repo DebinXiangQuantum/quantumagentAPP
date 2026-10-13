@@ -6,12 +6,17 @@
    ``cd backend && PYTHONPATH=src uvicorn qap.main:app`` 的常见布局，
    此时 config.toml 位于 backend/../config.toml，恰被向上探测命中）。
    候选均不存在 → :class:`ConfigError`（启动失败）。
-2. 解析用标准库 ``tomllib``；结构/类型/引用完整性用 Pydantic v2 校验，
+2. **配置覆盖层（v1.1 §3）**：若基底文件同目录存在 ``config.local.toml``
+   （gitignored），则**深合并**覆盖其上——dict 递归按键合并、标量直接
+   覆盖、list 整体替换；本地文件缺失 = 正常（纯基底加载）。
+3. 解析用标准库 ``tomllib``；结构/类型/引用完整性用 Pydantic v2 校验，
    **任何缺键/类型不符/未知键（extra=forbid）/未知 provider/未知 kind/
    负容量/悬空 model_ref 引用 → 立即抛 :class:`ConfigError`**。
-3. 密钥只从 ``api_key_env`` 指向的环境变量读取（本模块不读密钥本体，
-   仅在 Provider 实际发起调用时才读取，缺失时仅该模型报错）。
-4. 演示密钥 ``demo-key`` 可被环境变量 ``QAP_DEMO_API_KEY`` 覆盖，
+4. 密钥：仓库 config.toml 只存 ``api_key_env``（环境变量名）；
+   ``api_key_inline`` 明文**只允许出现在 config.local.toml**（管理平台
+   写入，见 §5 admin API），本模块只负责读入——密钥本体仅在 Provider
+   实际调用时读取，缺失时仅该模型报错。
+5. 演示密钥 ``demo-key`` 可被环境变量 ``QAP_DEMO_API_KEY`` 覆盖，
    避免示例值被误当作真实密钥（对任何租户的 api_key == "demo-key" 生效）。
 """
 
@@ -19,6 +24,7 @@ from __future__ import annotations
 
 import os
 import tomllib
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
@@ -28,11 +34,18 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 DEMO_API_KEY_PLACEHOLDER = "demo-key"
 #: 覆盖演示密钥的环境变量名（契约 §3）
 DEMO_API_KEY_ENV = "QAP_DEMO_API_KEY"
+#: 本地覆盖层文件名（与基底配置同目录；gitignored，契约 §3 v1.1）
+LOCAL_CONFIG_FILENAME = "config.local.toml"
 
 #: 支持的 provider wire format（未知值 → 启动失败）
 KNOWN_PROVIDERS = frozenset({"openai", "anthropic", "mock"})
 #: 支持的硬件节点类型（未知值 → 启动失败）
 KNOWN_NODE_KINDS = frozenset({"qpu", "gpu", "cpu"})
+
+#: 思考程度归一化枚举（契约 §9 v1.1）
+ThinkingLevel = Literal["off", "low", "high", "max"]
+#: 合法思考程度集合（校验/文档共用）
+KNOWN_THINKING_LEVELS = ("off", "low", "high", "max")
 
 
 class ConfigError(Exception):
@@ -58,7 +71,11 @@ class ModelConfig(_StrictModel):
 
     ``base_url``/``api_key_env``/``timeout_seconds`` 对 mock provider 可缺省
     （进程内、不联网）；对 openai/anthropic 必须显式给出 base_url 与
-    api_key_env（在引用校验阶段强制）。
+    ``api_key_env`` **或** ``api_key_inline``（在引用校验阶段强制）。
+
+    ``default_thinking``（v1.1 §9）：该渠道的默认思考程度，缺省 ``"high"``。
+    ``api_key_inline``：明文密钥，**只允许出现在 config.local.toml**
+    （gitignored）；仓库 config.toml 出现该键即违反提交纪律（密钥绝不入库）。
     """
 
     model_config = ConfigDict(extra="forbid", protected_namespaces=())
@@ -67,15 +84,28 @@ class ModelConfig(_StrictModel):
     model: str = Field(min_length=1)
     base_url: str | None = None
     api_key_env: str | None = None
+    #: 明文密钥（仅本地覆盖层；resolve_api_key 优先于环境变量）
+    api_key_inline: str | None = None
     timeout_seconds: float = Field(default=120.0, gt=0)
+    #: 默认思考程度（v1.1 §9：消息级 > 渠道 default_thinking > "high"）
+    default_thinking: ThinkingLevel = "high"
 
-    @field_validator("base_url", "api_key_env")
+    @field_validator("base_url", "api_key_env", "api_key_inline")
     @classmethod
     def _reject_blank(cls, v: str | None) -> str | None:
         # 空串是常见手误（键存在但值没填），与缺键同罪：fail-fast。
         if v is not None and not v.strip():
             raise ValueError("must be a non-empty string when present")
         return v
+
+
+class PluginStateConfig(_StrictModel):
+    """``[agents.plugin_state."<id>"]``：插件启停的持久化状态（v1.1 §8）。
+
+    只写 config.local.toml（管理平台"插件管理"入口）；缺省 enabled=true。
+    """
+
+    enabled: bool = True
 
 
 class BuiltinAgentConfig(_StrictModel):
@@ -86,11 +116,13 @@ class BuiltinAgentConfig(_StrictModel):
 
 
 class AgentsConfig(_StrictModel):
-    """``[agents]``：默认模型引用、外部插件目录、内置插件清单。"""
+    """``[agents]``：默认模型引用、外部插件目录、内置插件清单与插件状态。"""
 
     default_model_ref: str = Field(min_length=1)
     plugins_dir: str = ""
     builtin: dict[str, BuiltinAgentConfig] = Field(default_factory=dict)
+    #: 插件启停状态（来自本地覆盖层；对内置与已安装插件统一生效）
+    plugin_state: dict[str, PluginStateConfig] = Field(default_factory=dict)
 
 
 class HardwareNodeConfig(_StrictModel):
@@ -177,16 +209,19 @@ class AppConfig(_StrictModel):
     tenancy: TenancyConfig
 
     def resolve_api_key(self, model_ref: str) -> str | None:
-        """读取模型密钥（仅从 ``api_key_env`` 指向的环境变量）。
+        """读取模型密钥（内联优先，其次 ``api_key_env`` 环境变量）。
 
-        :returns: 环境变量存在则返回其值，否则 None（调用方在被实际使用
+        :returns: 有可用密钥则返回非空值，否则 None（调用方在被实际使用
             时才报错，契约 §3：不影响其他模型与 Mock）。
         :raises KeyError: model_ref 未在配置中定义（编程错误）。
         """
         entry = self.models[model_ref]
+        if entry.api_key_inline:
+            return entry.api_key_inline
         if entry.api_key_env is None:
             return None
-        return os.environ.get(entry.api_key_env)
+        value = os.environ.get(entry.api_key_env)
+        return value or None  # 环境变量存在但为空串视为未设置
 
 
 def _candidate_paths() -> list[Path]:
@@ -248,15 +283,15 @@ def _cross_validate(config: AppConfig) -> None:
         dangling.append(f"tenancy.default_tenant -> {config.tenancy.default_tenant!r}")
     if dangling:
         raise ConfigError("dangling references in config.toml: " + "; ".join(dangling))
-    # openai/anthropic 必须有 base_url 与 api_key_env（mock 不需要）。
+    # openai/anthropic 必须有 base_url 与密钥来源（env 名或本地内联；mock 不需要）。
     for ref, entry in config.models.items():
         if entry.provider == "mock":
             continue
-        missing = [
-            field
-            for field in ("base_url", "api_key_env")
-            if getattr(entry, field) is None
-        ]
+        missing = []
+        if entry.base_url is None:
+            missing.append("base_url")
+        if entry.api_key_env is None and entry.api_key_inline is None:
+            missing.append("api_key_env/api_key_inline")
         if missing:
             raise ConfigError(
                 f"models.{ref}: provider {entry.provider!r} requires "
@@ -264,24 +299,99 @@ def _cross_validate(config: AppConfig) -> None:
             )
 
 
-def load_config(path: str | Path | None = None) -> AppConfig:
-    """定位、解析并校验配置，返回 :class:`AppConfig`。
+def deep_merge(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]:
+    """深合并两个已解析的 TOML dict（契约 §3 v1.1 覆盖层语义）。
 
-    :param path: 显式路径（测试用）；None 时按契约顺序自动探测。
-    :raises ConfigError: 文件缺失 / TOML 语法错 / 结构或引用校验失败。
+    - dict 键：递归合并（models 字典因此按键覆盖/新增，条目内字段级覆盖）；
+    - list：整体替换（overlay 的 list 完全取代 base 的）；
+    - 标量：直接覆盖。
     """
-    target = Path(path).expanduser().resolve() if path is not None else find_config_path()
-    if not target.is_file():
-        raise ConfigError(f"config file not found: {target}")
+    result: dict[str, Any] = dict(base)
+    for key, value in overlay.items():
+        existing = result.get(key)
+        if isinstance(value, dict) and isinstance(existing, dict):
+            result[key] = deep_merge(existing, value)
+        else:
+            result[key] = value
+    return result
+
+
+@dataclass(frozen=True)
+class LoadedConfig:
+    """一次加载的完整结果：合并后配置 + 文件溯源（管理 API 需要）。
+
+    ``base_model_refs`` / ``local_model_refs`` 分别是基底与本地文件
+    ``[models]`` 表里出现过的 ref 集合——admin DELETE 的"仅可删本地覆盖
+    渠道"语义（契约 §5 v1.1）据此判定：可删 = 在本地 ∧ 不在基底。
+    """
+
+    config: AppConfig
+    base_path: Path
+    #: 本地覆盖层路径；文件不存在时为 None（纯基底加载）
+    local_path: Path | None
+    base_model_refs: frozenset[str]
+    local_model_refs: frozenset[str]
+
+
+def _parse_toml(path: Path) -> dict[str, Any]:
+    """解析单个 TOML 文件；语法错误包装为 :class:`ConfigError`。"""
     try:
-        with open(target, "rb") as fh:
-            data = tomllib.load(fh)
+        with open(path, "rb") as fh:
+            return tomllib.load(fh)
     except tomllib.TOMLDecodeError as exc:
-        raise ConfigError(f"invalid TOML in {target}: {exc}") from exc
+        raise ConfigError(f"invalid TOML in {path}: {exc}") from exc
+
+
+def _validate(data: dict[str, Any], source: Path) -> AppConfig:
+    """结构 + 引用完整性校验；失败统一 :class:`ConfigError`。"""
     _apply_demo_key_override(data)
     try:
         config = AppConfig.model_validate(data)
     except Exception as exc:  # pydantic ValidationError 统一包装为本模块异常
-        raise ConfigError(f"invalid config {target}: {exc}") from exc
+        raise ConfigError(f"invalid config {source}: {exc}") from exc
     _cross_validate(config)
     return config
+
+
+def _model_refs(data: dict[str, Any]) -> frozenset[str]:
+    """从已解析 dict 提取 ``[models]`` 的键集合（不存在则为空）。"""
+    models = data.get("models")
+    return frozenset(models.keys()) if isinstance(models, dict) else frozenset()
+
+
+def load_config_with_sources(path: str | Path | None = None) -> LoadedConfig:
+    """定位基底配置、叠加本地覆盖层、校验并返回完整溯源信息。
+
+    :param path: 显式基底路径（测试用）；None 时按契约顺序自动探测。
+    :raises ConfigError: 文件缺失 / TOML 语法错 / 结构或引用校验失败
+        （基底与本地文件任一畸形均 fail-fast）。
+    """
+    target = Path(path).expanduser().resolve() if path is not None else find_config_path()
+    if not target.is_file():
+        raise ConfigError(f"config file not found: {target}")
+    base_data = _parse_toml(target)
+    base_refs = _model_refs(base_data)
+    local_candidate = target.parent / LOCAL_CONFIG_FILENAME
+    local_path: Path | None = None
+    merged = base_data
+    local_refs: frozenset[str] = frozenset()
+    if local_candidate.is_file():
+        local_data = _parse_toml(local_candidate)
+        merged = deep_merge(base_data, local_data)
+        local_path = local_candidate
+        local_refs = _model_refs(local_data)
+    return LoadedConfig(
+        config=_validate(merged, target),
+        base_path=target,
+        local_path=local_path,
+        base_model_refs=base_refs,
+        local_model_refs=local_refs,
+    )
+
+
+def load_config(path: str | Path | None = None) -> AppConfig:
+    """定位、解析（含本地覆盖层）、校验配置，返回 :class:`AppConfig`。
+
+    （便捷入口：等价 ``load_config_with_sources(path).config``。）
+    """
+    return load_config_with_sources(path).config

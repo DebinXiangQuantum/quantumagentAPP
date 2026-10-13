@@ -133,13 +133,18 @@ class PluginRegistry:
         self._plugins: dict[str, AgentPlugin] = {}
         for plugin in final:
             self.register(plugin)
-        # 外部插件目录：契约 §8 允许原型阶段抛"未实现"
+        # 外部插件目录：目录缺失/为空 = 正常（无外部插件可装）；
+        # 含插件目录时的发现与加载在 v1.1 §8（B3 切片）实现，此前显式报错。
         if config.plugins_dir.strip():
-            raise QapError(
-                "external_plugins_unimplemented",
-                f"loading external plugins from {config.plugins_dir!r} is not "
-                "implemented in the prototype (see ARCHITECTURE §8)",
-            )
+            from pathlib import Path
+
+            external = Path(config.plugins_dir)
+            if external.is_dir() and any(external.iterdir()):
+                raise QapError(
+                    "external_plugins_unimplemented",
+                    f"loading external plugins from {config.plugins_dir!r} is not "
+                    "implemented yet (see ARCHITECTURE §8)",
+                )
 
     def register(self, plugin: AgentPlugin) -> None:
         """注册插件；重复 id 立即拒绝（清单一致性）。"""
