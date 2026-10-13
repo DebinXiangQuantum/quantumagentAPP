@@ -66,7 +66,124 @@ npm run dev          # 连接 http://127.0.0.1:8000 的真实后端
 
 *本节由 `feat/backend` 分支的开发切片维护更新：模块清单、运行方式、测试结果。*
 
-（基线：尚未实现——见 `docs/ARCHITECTURE.md` 的目标设计。）
+**S1（配置加载器）**：`backend/src/qap/core/config.py` 实现契约 §3——
+路径解析 `QAP_CONFIG` → CWD `./config.toml` → 向上探测；`tomllib` 解析 +
+Pydantic v2 严格校验（`extra=forbid`，缺键/类型错/未知 provider/未知 kind/
+负容量/悬空 model_ref 引用均启动 fail-fast）；密钥只经 `api_key_env` 读环境
+变量（`AppConfig.resolve_api_key`，缺失仅影响该模型被实际调用时）；
+`demo-key` 可被 `QAP_DEMO_API_KEY` 覆盖。同切片含 `core/errors.py`（统一
+错误码基类）与 `core/ids.py`（`c-/m-/t-/s-/a-/run-` 前缀 id 生成器）。
+测试：`backend/tests/test_config.py`（26 用例：合法加载、密钥规则、
+15 类畸形配置 fail-fast、TOML 语法错、路径探测）。
+
+**S2（领域模型 + Artifact 校验 + 事件总线）**：
+- `qap/domain/models.py`：契约 §4 全部序列化模型（AgentInfo/Conversation/
+  Message/Step/Task/HardwareNode/Allocation/Artifact 信封），id 前缀形状校验、
+  utilization ∈ [0,1] 且有限（NaN/±inf 拒绝）、Artifact 载荷构造期校验、
+  未知 type 放行（前端降级渲染的契约配合）。
+- `qap/domain/artifacts.py`：circuit/counts/waveform 三类载荷的完整约束
+  （量子比特下标、门元数、计数守恒、采样有限性等），非法载荷生成侧拒绝。
+- `qap/events/bus.py`：asyncio 发布/订阅总线——全局单调 seq（SSE 帧 id 即
+  seq，`?after=` 续传游标）、内存回放缓存最近 1024 条、会话流/全局流两级
+  过滤、慢客户端有界队列丢最旧。
+- `qap/core/clock.py`：契约格式 UTC 时间戳。
+- 测试：test_domain_models / test_artifacts / test_events_bus（新增 65 用例：
+  不变量、非法输入、缓冲驱逐、会话隔离、队列溢出等）。
+
+**S3（租户/鉴权/配额）**：`qap/tenancy/service.py`——API Key → 租户上下文
+（缺失/未知 Key → 401 语义，禁用 → 403 语义，支持运行时启停）；消息配额
+按 UTC 自然日惰性重置（超限 QuotaError 携带距午夜的 Retry-After 秒数）；
+并发任务配额（提交登记/终态释放，超限 429）；`usage_snapshot` 输出
+GET /tenants/me 的用量视图。测试 15 用例（含时钟注入的跨日重置与多租户
+额度隔离）。
+
+**S4（硬件注册表 + 分配器 + 利用率模拟器）**：
+- `qap/hardware/registry.py`：`[[hardware.nodes]]` 的权威运行时副本，
+  snapshot 深拷贝隔离内部状态；utilization 赋值期校验（NaN/±inf/越界拒绝）。
+- `qap/hardware/allocator.py`：容量租约——kind 匹配 + online 过滤 +
+  负载比择优；`try_lease`（满返 None）与 `lease`（满抛 `LeaseDenied` 可等待 /
+  无在线节点抛不可等待 `SchedulingError`）区分两种失败；租约变化发布
+  `hardware.updated`（载荷含 agent_id，支撑"哪个 Agent 在用哪块 GPU"）。
+- `qap/hardware/simulator.py`：负载相关的一阶惯性 + 噪声模型，构造性保证
+  utilization ∈ [0.05,0.98]；数值变化才发帧；rng 可注入保证确定性测试。
+- 领域模型 Step/HardwareNode 开启 `validate_assignment`（运行时改写也不变量成立）。
+- 测试 21 用例（容量不变量、offline 负样本、两种分配失败语义、事件载荷、
+  模拟器生命周期与确定性）。
+
+**S5（DAG 校验 + 调度器）**：
+- `qap/orchestrator/dag.py`：通用 DAG 校验（重复 id/未知依赖/自环/Kahn
+  检测成环）+ 提交期 StepSpec（depends_on 用前序下标，结构性无环）+
+  `build_steps`（下标 → 全局唯一 `s-` id）。
+- `qap/orchestrator/scheduler.py`：asyncio 编排循环（事件唤醒 + 轮询兜底）——
+  kind→节点映射（classical→cpu / quantum→qpu / agent→gpu）、容量租约排队、
+  全局 max_parallel_steps 计数、step_timeout_seconds 步超时（failed + 下游
+  级联 cancelled + 独立分支照常）、retry_failed_steps 单次重试；每次状态迁移
+  发布全量 `task.updated`；终态触发回调（配额释放接缝）。
+- `qap/orchestrator/runners.py`：模拟执行器（按 kind 缺省时长，
+  `QAP_SIM_STEP_SECONDS` 可缩放；`never_finish_step` 供超时负样本）。
+- 测试 24 用例（环/自环/重复 id 拒绝、3 步演示链、capacity=1 GPU 两步
+  串行不重叠、全局并行峰值 ≤ 上限、超时级联、offline 直接失败、容量等待、
+  独立分支存活、重试恢复、事件 seq 单调）。
+
+**S6（三 Provider 流式解析）**：`qap/agents/providers/`
+- `base.py`：CompletionRequest（provider 无关中间消息表示）/ ProviderEvent
+  四态（TextDelta / ToolCall / ProviderErrorEvent / TurnCompleted）/ LLMProvider
+  Protocol；错误一律事件化，绝不外抛网络异常。
+- `openai_provider.py`：chat/completions 流式——`delta.content` 文本增量、
+  `delta.tool_calls` 按 index 分片拼接 arguments、`[DONE]`/finish_reason 终止；
+  非 200/非法 JSON/流中断 → ProviderErrorEvent。
+- `anthropic_provider.py`：messages 流式——`content_block_delta` 的
+  text_delta 与 input_json_delta 拼接、content_block_stop 产完整 ToolCall、
+  message_stop 终止；x-api-key + anthropic-version 头；tool_result 块翻译。
+- `mock_provider.py`：剧本化（agent_id → 轮列表，run_key 推进游标），内置
+  §10 演示剧本（文本 + emit_artifact(circuit/counts) + submit_task(3 步 DAG)
+  + 收束文本）、calibration 波形剧本、echo 回声、error 注入。
+- `factory.py`：ModelConfig → Provider；密钥闭包"调用时读环境变量"。
+- 测试 25 用例（规范/畸形样例回放、头与请求体形状、剧本推进与隔离、
+  演示产物载荷自证）。
+
+**S7（插件注册 + 平台工具 + Runtime 工具循环）**：
+- `qap/agents/plugins.py`：AgentPlugin Protocol（§8）+ 三个内置演示插件
+  （algorithm-designer/calibration/echo）+ PluginRegistry（配置启停与
+  model_ref 覆盖、外部插件目录按契约抛"未实现"）。
+- `qap/agents/tools.py`：平台工具三件套——emit_artifact（§6 生成侧校验）、
+  submit_task（配额登记→入库→调度）、query_hardware（分配视图）；
+  工具错误结构化 JSON 回给模型（可自纠错），未知工具抛 ValidationFailed。
+- `qap/agents/runtime.py`：工具循环——TextDelta 实时 message.delta、
+  ToolCall 执行回填（assistant.tool_calls + tool 消息）直至纯文本轮；
+  ProviderError → SSE error + 部分文本收束；MAX 8 轮安全上限；
+  收束统一发布 message.completed（含 artifacts）。
+- `qap/domain/store.py`：会话/消息/任务内存存储（跨租户一律 404 语义）。
+- 测试 18 用例（演示链路可观察行为、配额/坏载荷/坏 DAG 结构化错误、
+  provider 故障收束、轮次上限、SSE 顺序）。
+
+**S8（全部路由 + SSE + 端到端集成）**：
+- `qap/api/`：state.py 组装根（AppConfig → 全部服务，任务终态回调释放租户
+  并发额度）；deps.py Bearer 鉴权依赖；errors.py QapError→HTTP 映射
+  （401/403/404/422/429+Retry-After，统一 `{"error":{code,message}}` 体）；
+  sse.py 帧构造（id=seq / event / data）+ 流生成器（回放去重、15s ping、
+  断开注销订阅）。
+- `qap/api/routers/`：契约 §5 全部端点——health（免鉴权）、agents、
+  tenants/me、conversations（创建 201/列表 ?limit/详情含 messages/
+  POST messages 202+异步运行/SSE 流 ?after=）、tasks（?conversation_id=）、
+  hardware、events（全局 SSE）。
+- `qap/main.py`：create_app（lifespan 启停模拟器、CORS 白名单、异常
+  处理器）；模块级 `app` 供 `uvicorn qap.main:app`。
+- 集成测试 21 用例（§10 五步断言 + 401/403/404/422/429 负样本 + 跨租户
+  隔离 + ?after= 续传 + 全局流过滤；SSE 读取走原生 ASGI——httpx 0.28
+  ASGITransport 不支持无限流，测试 helper 已注明）。
+- 补充 `tests/test_sse_format.py`（帧格式/15s 心跳/断开注销订阅/回放-实时
+  去重的单元级断言）。
+
+**DoD 冒烟（2026-10-13，全绿）**：全新 venv `pip install -e ".[dev]"` 后
+`pytest` **219 passed**；`PYTHONPATH=src uvicorn qap.main:app` 启动后
+curl 走通 §10 链路——health 返回 `{"status":"ok"}`；创建会话+发消息（202
+含 message_id/run_id）；SSE 观察到 4×`message.delta` → `message.completed`
+（circuit+counts artifacts）→ 9×`task.updated`（至 succeeded）→
+22×`hardware.updated`（租约含 agent_id，完成后清空）；3 步任务中 quantum
+步落 `qpu-quanta-20q`、classical 步落 `cpu-node-0`；`?after=` 续传只补新
+事件；全局流只含 task/hardware；利用率模拟器驱动 utilization∈[0,1]；
+未知会话流 404；免鉴权端点仅 health，无 Bearer 一律 401。
 
 ## 前端 (Frontend)
 

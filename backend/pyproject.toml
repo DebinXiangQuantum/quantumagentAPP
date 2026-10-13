@@ -1,0 +1,33 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "qap"
+version = "0.1.0"
+description = "QuantumAgentApp backend: multi-tenant quantum-agent platform (FastAPI prototype)"
+requires-python = ">=3.11"
+license = { text = "Proprietary" }
+authors = [{ name = "QuantumAgentApp backend team" }]
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+    "httpx>=0.27",
+    "pydantic>=2.6",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+]
+
+# 原型刻意保持最小依赖面：不引入 ORM/agent 框架（见 docs/ARCHITECTURE.md §2 工程选择）。
+[tool.hatch.build.targets.wheel]
+packages = ["src/qap"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+addopts = "--import-mode=importlib"
+asyncio_mode = "auto"
+testpaths = ["tests"]

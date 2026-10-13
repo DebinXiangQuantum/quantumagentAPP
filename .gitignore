@@ -3,6 +3,8 @@ runs/
 run/
 logs/
 *.log
+# 变更日志是文档而非运行时日志，必须入库（DEVELOPMENT.md §2.3）
+!change.log
 out/
 build/
 dist/
