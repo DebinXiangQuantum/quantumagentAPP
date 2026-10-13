@@ -109,11 +109,17 @@ class LocalConfigStore:
     # ---------- 渠道池（§5 admin models） ----------
 
     def upsert_model(self, ref: str, entry: dict[str, Any]) -> None:
-        """写入/整体替换 ``[models.<ref>]`` 条目（entry 已过 ModelConfig 校验）。"""
+        """写入/整体替换 ``[models.<ref>]`` 条目（entry 已过 ModelConfig 校验）。
+
+        值为 None 的键**不写入**——TOML 无 null；覆盖层语义下"键缺失 =
+        继承基底"，正是 None（未设置）应有效果。
+        """
         if not ref or not isinstance(entry, dict):
             raise ValueError("ref must be non-empty and entry must be a dict")
         data = self.load()
-        data.setdefault("models", {})[ref] = dict(entry)
+        data.setdefault("models", {})[ref] = {
+            key: value for key, value in entry.items() if value is not None
+        }
         self.save(data)
 
     def delete_model(self, ref: str) -> bool:

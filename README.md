@@ -254,6 +254,21 @@ curl 走通 §10 链路——health 返回 `{"status":"ok"}`；创建会话+发�
   11 用例（安装全生命周期/坏插件 422 与 broken/深度限制/未知 agent 结构化
   错误/子运行故障不悬空），全量 **286 passed**。
 
+**B4（v1.1 管理 API：渠道池）**：
+- `GET /api/v1/admin/models` → `{"models": ModelChannel[]}`（含 `has_api_key`
+  = 环境变量非空或本地文件内联；响应**无 api_key_inline 字段，绝不回传
+  密钥明文**）；`PUT /api/v1/admin/models/{ref}` 更新或创建（provider/
+  default_thinking 非法或非 mock 缺 base_url → 422；`api_key_inline` 只写
+  config.local.toml，响应只体现 has_api_key）；`DELETE` 仅可删本地覆盖
+  渠道（204），基底渠道（config.toml 定义）或仍被 agents.default_model_ref/
+  builtin/已安装插件 model_ref 引用 → 409（悬空引用防护）。
+- PUT/DELETE 即时生效：`AppState.providers` 与 `config.models` 原地增删改
+  （Runtime 闭包共享同一 dict）；本地文件条目 None 值键不落盘（覆盖层
+  "键缺失=继承基底"语义）。
+- 测试：`tests/test_admin_models.py` 15 用例（GET 脱敏形状/has_api_key 随
+  env 变化/内联密钥不回显且只落本地文件/非法输入 5 类 422/基底与被引用
+  渠道 409/本地渠道删除后运行时 422），全量 **301 passed**。
+
 ## 前端 (Frontend)
 
 *本节由 `feat/frontend` 分支的开发切片维护更新：组件清单、页面说明、测试结果。*

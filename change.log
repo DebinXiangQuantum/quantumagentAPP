@@ -5,6 +5,37 @@ Validation（本切片测试结论）+ Known defects（已知缺陷，无则写�
 scope 与流程见 docs/DEVELOPMENT.md §2。
 
 
+## 2026-10-13 `backend: B4 管理 API——渠道池 CRUD（脱敏/本地持久化/悬空引用防护）`
+
+### Added
+- `GET /api/v1/admin/models`：`{"models": ModelChannel[]}`——`has_api_key` =
+  内联密钥存在或 `api_key_env` 环境变量非空；响应无 `api_key_inline` 字段
+  （**绝不回传密钥明文**，测试断言响应体不含明文）。
+- `PUT /api/v1/admin/models/{ref}`（ModelChannelInput）：更新或创建渠道，
+  整条写入 config.local.toml 并即时生效（providers 表/config.models 原地
+  替换，Runtime 闭包共享同一 dict）；非法 provider/default_thinking、
+  非 mock 渠道缺 base_url 或密钥来源 → 422；`api_key_inline` 只落
+  gitignored 本地文件，响应只体现 has_api_key=true。
+- `DELETE /api/v1/admin/models/{ref}`（204）：仅可删"本地覆盖渠道"
+  （不在基底 config.toml 中）；基底渠道 → 409；仍被
+  agents.default_model_ref / builtin model_ref / 已安装插件 model_ref
+  引用 → 409（防悬空引用——契约 fail-fast 哲学的管理端延伸，见下）。
+- `tests/test_admin_models.py`：15 用例（TDD 先红后绿）。
+
+### Changed
+- `LocalConfigStore.upsert_model`：None 值键不落盘（TOML 无 null；覆盖层
+  语义"键缺失=继承基底"恰好是未设置字段应有效果）。
+
+### Validation
+- 全量 `pytest` **301 passed**（286 保持 + 新增 15；本轮 v2 四切片累计
+  新增 78 条，v1 的 223 条全部保持）。
+
+### Known defects
+- DELETE 的"被引用"判定只覆盖 agents 配置与已注册插件的静态 model_ref，
+  不拦截"删除时恰有运行中消息使用该渠道"（运行中的 provider 实例已构造，
+  本轮调用可完成；下一轮请求将 422——原型接受的窗口）。
+
+
 ## 2026-10-13 `backend: B3 编排 Agent 与插件安装——orchestrator/dispatch_agent/插件全生命周期`
 
 ### Added
