@@ -269,6 +269,21 @@ curl 走通 §10 链路——health 返回 `{"status":"ok"}`；创建会话+发�
   env 变化/内联密钥不回显且只落本地文件/非法输入 5 类 422/基底与被引用
   渠道 409/本地渠道删除后运行时 422），全量 **301 passed**。
 
+**真实 GLM 冒烟驱动修正（2026-10-13）**：
+- 契约修正（doc-first，ARCHITECTURE §3/§9 已同步）：glm-5.3 系
+  `thinking.type` 只接受 `enabled`，思考强度走独立顶层参数
+  `reasoning_effort ∈ low|high|max`（实测 disabled/low/high/max 作 type
+  值一律服务端 1210）；openai 映射改为 off→`disabled`、low/high/max→
+  `enabled`+`reasoning_effort` 同名。
+- 修复两处 v1 潜伏缺陷（真实渠道首调即暴露，mock 从不触发）：① Runtime
+  注入的平台工具是 dict 形态而真实 provider 只认对象属性（新增
+  `base.tool_fields()` 归一化）；② provider 非预期异常会静默杀死 run
+  task（两 provider 增加兜底折叠为 ProviderErrorEvent）。
+- 真实冒烟（glm-5.3-flash + orchestrator）：模型自主 dispatch
+  algorithm-designer → 4 artifacts + 3 步 VQE 任务 succeeded（QPU/CPU
+  正确分配）+ 654 delta / 4 reasoning / 9 task.updated / 6
+  hardware.updated。全量 **304 passed**。
+
 ## 前端 (Frontend)
 
 *本节由 `feat/frontend` 分支的开发切片维护更新：组件清单、页面说明、测试结果。*

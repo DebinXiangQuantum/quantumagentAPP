@@ -75,14 +75,30 @@ def make_anthropic_provider(body: bytes) -> tuple[object, dict]:
 
 
 class TestOpenAIThinkingMapping:
-    """§9 表第 2 列：openai 兼容（GLM）渠道的 thinking 请求体映射。"""
+    """§9 表第 2 列（2026-10-13 实测修正）：GLM 渠道的思考请求体映射。
 
-    @pytest.mark.parametrize(
-        ("level", "expected_type"),
-        [("off", "disabled"), ("low", "low"), ("high", "high"), ("max", "max")],
-    )
-    async def test_thinking_type_mapping(
-        self, monkeypatch: pytest.MonkeyPatch, level: str, expected_type: str
+    实测事实：``thinking.type`` 只接受 enabled/disabled；强度走独立顶层
+    参数 ``reasoning_effort``（low/high/max 直接作 type 值 → 服务端 1210）。
+    """
+
+    async def test_off_sends_disabled(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("GLM_API_KEY", "sk-test")
+        provider, captured = make_openai_provider(sse("data: [DONE]"))
+        request = CompletionRequest(
+            model="glm-5.3",
+            messages=[{"role": "user", "content": "q"}],
+            thinking_level="off",
+        )
+        await collect(provider, request)
+        sent = json.loads(captured["request"].read())
+        assert sent["thinking"] == {"type": "disabled"}
+        assert "reasoning_effort" not in sent
+
+    @pytest.mark.parametrize("level", ["low", "high", "max"])
+    async def test_levels_use_reasoning_effort(
+        self, monkeypatch: pytest.MonkeyPatch, level: str
     ) -> None:
         monkeypatch.setenv("GLM_API_KEY", "sk-test")
         provider, captured = make_openai_provider(sse("data: [DONE]"))
@@ -93,7 +109,8 @@ class TestOpenAIThinkingMapping:
         )
         await collect(provider, request)
         sent = json.loads(captured["request"].read())
-        assert sent["thinking"] == {"type": expected_type}
+        assert sent["thinking"] == {"type": "enabled"}
+        assert sent["reasoning_effort"] == level
 
     async def test_absent_level_omits_thinking_key(
         self, monkeypatch: pytest.MonkeyPatch
@@ -104,6 +121,7 @@ class TestOpenAIThinkingMapping:
         await collect(provider, make_request())
         sent = json.loads(captured["request"].read())
         assert "thinking" not in sent
+        assert "reasoning_effort" not in sent
 
 
 class TestOpenAIReasoningStream:

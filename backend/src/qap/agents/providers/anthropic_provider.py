@@ -35,6 +35,7 @@ from qap.agents.providers.base import (
     ThoughtDelta,
     ToolCall,
     TurnCompleted,
+    tool_fields,
 )
 from qap.agents.providers.sse import iter_sse_events
 from qap.core.config import ModelConfig, ThinkingLevel
@@ -137,12 +138,10 @@ class AnthropicProvider:
             payload["system"] = request.system
         if request.tools:
             payload["tools"] = [
-                {
-                    "name": tool.name,
-                    "description": tool.description,
-                    "input_schema": tool.parameters,
-                }
-                for tool in request.tools
+                {"name": name, "description": description, "input_schema": parameters}
+                for name, description, parameters in (
+                    tool_fields(tool) for tool in request.tools
+                )
             ]
         return payload
 
@@ -179,6 +178,8 @@ class AnthropicProvider:
                         yield event
         except httpx.HTTPError as exc:
             yield ProviderErrorEvent(f"anthropic: stream interrupted: {exc}")
+        except Exception as exc:  # provider 契约：任何故障事件化，绝不外抛
+            yield ProviderErrorEvent(f"anthropic: unexpected failure: {exc}")
 
     async def _stream_response(
         self, response: httpx.Response

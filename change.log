@@ -5,6 +5,42 @@ Validation（本切片测试结论）+ Known defects（已知缺陷，无则写�
 scope 与流程见 docs/DEVELOPMENT.md §2。
 
 
+## 2026-10-13 `backend: 真实 GLM 冒烟驱动的契约修正与两处潜伏缺陷修复`
+
+### Changed（doc-first：先改 ARCHITECTURE §3/§9 再改代码）
+- GLM 思考参数映射修正：实测（2026-10-13，live API + 官方文档
+  docs.bigmodel.cn/cn/guide/capabilities/thinking）glm-5.3 系
+  `thinking.type` **只接受 enabled**（disabled 报 1210；low/high/max
+  直接作 type 值同样报 1210——原文档表格与真实服务端行为不符），思考
+  强度走独立顶层参数 `reasoning_effort ∈ low|high|max`。openai provider
+  映射改为：off → `thinking.disabled`；low/high/max →
+  `thinking.enabled` + `reasoning_effort` 同名（anthropic 列不变）。
+
+### Fixed（v1 潜伏缺陷，真实渠道首调即暴露）
+- **工具声明形态不兼容**：Runtime 注入的平台工具是 dict
+  （`PlatformTools.specs()`），openai/anthropic provider 的请求体构造只
+  认对象属性 → 真实渠道带 tools 的首条请求即 AttributeError（mock 从不
+  触发）。新增 `base.tool_fields()` 统一归一化两种形态。
+- **provider 意外异常外泄**：非 httpx 异常会杀死 run task 且无人问询
+  （表现为空回复静默收束）。两个 provider 增加兜底 `except Exception`
+  → ProviderErrorEvent（契约 §9"绝不外抛"的完备实现）。
+
+### Validation
+- 全量 `pytest` **304 passed**（+3：dict 工具回归 ×2、意外异常折叠 ×1，
+  thinking 映射用例同步改写）。
+- 真实冒烟（secrets/glm.env，glm-5.3-flash，thinking_level=low，
+  orchestrator 缺省会话）：654×message.delta + 4×message.reasoning +
+  9×task.updated + 6×hardware.updated → message.completed（4 artifacts：
+  circuit/counts×2——专家与 orchestrator 各自 emit，模型行为）；模型自主
+  dispatch algorithm-designer，3 步 VQE 任务 succeeded（quantum→
+  qpu-quanta-20q，classical→cpu-node-0）；最终回复含专家产出汇总。
+
+### Known defects
+- 多轮工具循环下 message.reasoning 帧可与后轮正文交错（§7"思考先于
+  正文"在**单轮** provider 流内成立；整条消息跨轮次时后续轮的思考仍会
+  出现——契约语义按单轮理解，前端按到达顺序渲染即可）。
+
+
 ## 2026-10-13 `backend: B4 管理 API——渠道池 CRUD（脱敏/本地持久化/悬空引用防护）`
 
 ### Added

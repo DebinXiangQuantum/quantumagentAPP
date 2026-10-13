@@ -32,6 +32,7 @@ from qap.agents.providers.base import (
     ThoughtDelta,
     ToolCall,
     TurnCompleted,
+    tool_fields,
 )
 from qap.agents.providers.sse import iter_sse_events
 from qap.core.config import ModelConfig, ThinkingLevel
@@ -40,25 +41,26 @@ from qap.core.config import ModelConfig, ThinkingLevel
 #: 但读间隙不应小于该值，避免长思考模型被误判断流。
 _STREAM_READ_TIMEOUT_FLOOR = 5.0
 
-#: §9 v1.1 映射表：ThinkingLevel → openai 兼容渠道 thinking.type
-_THINKING_TYPE_BY_LEVEL: dict[str, str] = {
-    "off": "disabled",
-    "low": "low",
-    "high": "high",
-    "max": "max",
-}
+#: §9 v1.1 映射（2026-10-13 冒烟实测修正）：openai 兼容（GLM）渠道
+#: ``thinking.type`` 只接受 enabled/disabled——思考强度走**独立顶层参数**
+#: ``reasoning_effort``（官方文档 docs.bigmodel.cn …/capabilities/thinking；
+#: 实测 low/high/max 直接作 type 值会被 1210 拒绝）。
+#: off → disabled；low/high/max → enabled + reasoning_effort 同名。
+_OFF_THINKING_TYPE = "disabled"
+_ON_THINKING_TYPE = "enabled"
 
 
-def thinking_type_for(level: ThinkingLevel) -> str:
-    """思考程度 → openai 请求体 ``thinking.type``（GLM 实测 2026-10-13）。
+def thinking_params_for(level: ThinkingLevel) -> dict[str, object]:
+    """思考程度 → openai 请求体的思考参数（thinking + reasoning_effort）。
 
     注意：glm-5.3 系列不接受 ``disabled``（服务端错误码 1210 会作为
     error 事件透传）——这是渠道侧行为，由调用方选择 off 时自担。
     """
-    mapped = _THINKING_TYPE_BY_LEVEL.get(level)
-    if mapped is None:
-        raise ValueError(f"unknown thinking level {level!r}")
-    return mapped
+    if level == "off":
+        return {"thinking": {"type": _OFF_THINKING_TYPE}}
+    if level in ("low", "high", "max"):
+        return {"thinking": {"type": _ON_THINKING_TYPE}, "reasoning_effort": level}
+    raise ValueError(f"unknown thinking level {level!r}")
 
 
 class _AccumulatingToolCall:
@@ -131,17 +133,19 @@ class OpenAIProvider:
                 {
                     "type": "function",
                     "function": {
-                        "name": tool.name,
-                        "description": tool.description,
-                        "parameters": tool.parameters,
+                        "name": name,
+                        "description": description,
+                        "parameters": parameters,
                     },
                 }
-                for tool in request.tools
+                for name, description, parameters in (
+                    tool_fields(tool) for tool in request.tools
+                )
             ]
-        # v1.1 §9：思考程度 → thinking.type（off→disabled，其余同名）；
-        # 未指定（None）则完全省略（向后兼容非思考渠道）。
+        # v1.1 §9（实测修正）：off → thinking.disabled；low/high/max →
+        # thinking.enabled + 顶层 reasoning_effort；未指定则完全省略。
         if request.thinking_level is not None:
-            payload["thinking"] = {"type": thinking_type_for(request.thinking_level)}
+            payload.update(thinking_params_for(request.thinking_level))
         return payload
 
     # ---------- 流式主流程 ----------
@@ -177,6 +181,8 @@ class OpenAIProvider:
                         yield event
         except httpx.HTTPError as exc:
             yield ProviderErrorEvent(f"openai: stream interrupted: {exc}")
+        except Exception as exc:  # provider 契约：任何故障事件化，绝不外抛
+            yield ProviderErrorEvent(f"openai: unexpected failure: {exc}")
 
     async def _stream_response(
         self, response: httpx.Response

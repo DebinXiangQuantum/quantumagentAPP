@@ -101,6 +101,28 @@ class ToolCallRecord:
     arguments: str
 
 
+def tool_fields(tool: object) -> tuple[str, str, dict]:
+    """工具声明的统一读取：兼容 ToolSpec 对象与 dict 两种形态。
+
+    Runtime 注入的平台工具是 dict（``PlatformTools.specs()``），插件领域
+    工具经合并时也统一为 dict；单测/外部调用可能传 ToolSpec 对象——
+    provider 侧一律经本函数归一化（v1 潜伏缺陷：真实 provider 只认对象
+    属性，首条真实渠道调用即 AttributeError，冒烟发现于 2026-10-13）。
+    """
+    if isinstance(tool, dict):
+        name = str(tool.get("name") or "")
+        description = str(tool.get("description") or "")
+        parameters = tool.get("parameters")
+        if not isinstance(parameters, dict):
+            parameters = {"type": "object", "properties": {}}
+        return name, description, parameters
+    return (
+        str(getattr(tool, "name", "")),
+        str(getattr(tool, "description", "")),
+        dict(getattr(tool, "parameters", {}) or {}),
+    )
+
+
 class LLMProvider(Protocol):
     """统一 LLM Provider 协议（契约 §9）。"""
 
