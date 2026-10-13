@@ -43,6 +43,8 @@ from qap.events.bus import EventBus
 
 #: 工具循环安全上限（轮）：剧本化 mock 需要 2 轮；真实模型偶发多轮工具
 MAX_TOOL_LOOP_TURNS = 8
+#: dispatch_agent 嵌套深度上限（契约 §8 v1.1：深度=1，子 Agent 不可再分派）
+MAX_DISPATCH_DEPTH = 1
 
 
 class AgentRuntime:
@@ -103,6 +105,72 @@ class AgentRuntime:
         )
         return assistant
 
+    async def run_subagent(
+        self, parent: ToolContext, agent_id: str, instruction: str
+    ) -> dict:
+        """执行一次 dispatch_agent 子运行（契约 §8 v1.1，深度=1）。
+
+        以目标专家的 system_prompt+tools 跑完整工具循环（不向 SSE 发布
+        增量——回复文本作为工具结果回流 orchestrator）；专家的
+        emit_artifact/submit_task 经共享的 ``pending_artifacts`` 与上下文
+        归属当前会话与消息。返回结构化 dict（错误亦然，模型可自纠错）。
+        """
+        if parent.dispatch_depth >= MAX_DISPATCH_DEPTH:
+            return {
+                "error": "dispatch_denied",
+                "message": "dispatch nesting depth exceeded (max 1)",
+            }
+        try:
+            plugin = self._plugins.get(agent_id)
+        except NotFoundError:
+            return {
+                "error": "agent_not_found",
+                "message": f"no registered agent with id {agent_id!r}",
+            }
+        provider = self._provider_for(plugin.model_ref)
+        level = self._default_thinking_for(plugin.model_ref)
+        from qap.core.clock import utcnow_iso
+        from qap.domain.models import Message as MessageModel
+
+        # 子运行的"影子 assistant"：仅承载累积文本/思考，不落库不出 SSE
+        shadow = MessageModel(
+            id=parent.message_id,
+            conversation_id=parent.conversation_id,
+            role="assistant",
+            content="",
+            agent_id=plugin.id,
+            created_at=utcnow_iso(),
+        )
+        sub_context = ToolContext(
+            conversation_id=parent.conversation_id,
+            tenant_id=parent.tenant_id,
+            agent_id=plugin.id,
+            message_id=parent.message_id,
+            run_key=f"{parent.run_key}:dispatch:{plugin.id}",
+            dispatch_depth=parent.dispatch_depth + 1,
+        )
+        # 产物归属：子 Agent 的 emit_artifact 直接进父消息的产物列表
+        sub_context.pending_artifacts = parent.pending_artifacts
+        from qap.domain.models import Conversation as ConversationModel
+
+        carrier = ConversationModel(
+            id=parent.conversation_id,
+            title="",
+            agent_id=plugin.id,
+            tenant_id=parent.tenant_id,
+            created_at=shadow.created_at,
+        )
+        history = [type(shadow)(id="m-0", conversation_id=carrier.id,
+                                role="user", content=instruction,
+                                agent_id=plugin.id, created_at=shadow.created_at)]
+        shadow, failure = await self._drive(
+            carrier, plugin, shadow, sub_context, provider, history, level,
+            stream_to_sse=False,
+        )
+        if failure is not None:
+            return {"error": "provider_error", "message": failure}
+        return {"reply": shadow.content, "agent_id": plugin.id}
+
     # ---------- 主循环（会话运行与子运行共用骨架） ----------
 
     async def _drive(
@@ -116,11 +184,14 @@ class AgentRuntime:
         thinking_level: str,
         *,
         stream_to_sse: bool = True,
-    ) -> Message:
+    ) -> tuple[Message, str | None]:
         """工具循环骨架；``stream_to_sse=False`` 为 dispatch 子运行（§8）。
 
-        子运行与主运行的差异：不向 SSE 发布增量（其回复作为工具结果回流
-        orchestrator）、不落库（无独立 assistant 消息语义）。
+        子运行与主运行的差异：不向 SSE 发布增量与完成事件（其回复作为
+        工具结果回流 orchestrator）、不落库（无独立 assistant 消息语义）；
+        provider 故障仍发布 SSE ``error``（诚实遥测）。
+
+        :returns: (累积后的 assistant, 失败消息或 None)。
         """
         # 中间表示历史（含本轮用户消息；跳过无文本内容的历史噪音）
         turns: list[dict] = [
@@ -169,8 +240,12 @@ class AgentRuntime:
             else:  # for-else：轮次耗尽
                 text_buffer.append("（已达工具循环轮次上限，回复在此收束。）")
         finally:
-            self._finalize(conversation, assistant, context, text_buffer, reasoning_buffer, failure)
-        return assistant
+            self._finalize(
+                conversation, assistant, context,
+                text_buffer, reasoning_buffer, failure,
+                stream_to_sse=stream_to_sse,
+            )
+        return assistant, failure
 
     # ---------- 单轮流处理 ----------
 
@@ -249,11 +324,16 @@ class AgentRuntime:
         text_buffer: list[str],
         reasoning_buffer: list[str],
         failure: str | None,
+        *,
+        stream_to_sse: bool = True,
     ) -> None:
-        """统一收束：落 content/reasoning/artifacts，发布 message.completed。"""
+        """统一收束：落 content/reasoning/artifacts；主运行发布
+        ``message.completed``（子运行不发布——其回复经工具结果回流）。"""
         assistant.content = "".join(text_buffer)
         assistant.reasoning = "".join(reasoning_buffer)
         assistant.artifacts = list(context.pending_artifacts)
+        if not stream_to_sse:
+            return
         self._events.publish(
             "message.completed",
             {

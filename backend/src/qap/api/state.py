@@ -8,14 +8,18 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 
+from qap.agents.plugin_manager import PluginManager
 from qap.agents.plugins import PluginRegistry
 from qap.agents.providers.base import LLMProvider
 from qap.agents.providers.factory import create_provider
 from qap.agents.runtime import AgentRuntime
 from qap.agents.tools import PlatformTools
-from qap.core.config import AppConfig
+from qap.core.config import AppConfig, LoadedConfig
+from qap.core.errors import NotFoundError
 from qap.core.ids import IdGenerator
+from qap.core.local_store import LOCAL_CONFIG_FILENAME, LocalConfigStore
 from qap.domain.store import ConversationStore, MessageStore, TaskStore
 from qap.events.bus import EventBus
 from qap.hardware.allocator import Allocator
@@ -42,8 +46,14 @@ class AppState:
     scheduler: Scheduler
     simulator: UtilizationSimulator
     runtime: AgentRuntime
+    #: 插件安装生命周期管理（admin 端点，v1.1 §8）
+    plugin_manager: PluginManager
     #: model_ref → provider 实例（admin 渠道编辑后原地增删改，v1.1 §5）
     providers: dict[str, LLMProvider] = field(default_factory=dict)
+    #: config.local.toml 存取（admin 持久化出口；None = 无文件落点）
+    local_store: LocalConfigStore | None = None
+    #: 基底（config.toml）渠道 refs——不可删除（admin DELETE → 409 判定）
+    base_model_refs: frozenset[str] = frozenset()
     #: 进行中的 Agent 运行（run_id -> asyncio.Task；关闭时兜底取消）
     runs: dict[str, object] = field(default_factory=dict)
 
@@ -108,20 +118,30 @@ def _spawn(coroutine):
     return asyncio.get_running_loop().create_task(coroutine)
 
 
-def build_app_state(config: AppConfig) -> AppState:
+def build_app_state(config: AppConfig | LoadedConfig) -> AppState:
     """从已校验配置组装全部服务（构造顺序即依赖顺序）。
 
-    利用率模拟器是否启动由 ``main.py`` 的 lifespan 按
+    接受 ``LoadedConfig``（生产路径：含 base/local 溯源与 plugins_dir 根）
+    或裸 ``AppConfig``（测试注入：无文件溯源，plugins_dir/local 落点取
+    CWD）。利用率模拟器是否启动由 ``main.py`` 的 lifespan 按
     ``config.hardware.simulated`` 决定（测试常关）。
     """
+    if isinstance(config, LoadedConfig):
+        loaded = config
+        app_config = loaded.config
+        base_dir = loaded.base_path.parent
+    else:
+        app_config = config
+        base_dir = Path.cwd()
+        loaded = None
     idgen = IdGenerator()
     events = EventBus()
     conversations = ConversationStore()
     messages = MessageStore()
     tasks = TaskStore()
-    tenants = TenantService(config.tenancy)
-    plugins = PluginRegistry(config.agents)
-    nodes = NodeRegistry(config.hardware)
+    tenants = TenantService(app_config.tenancy)
+    plugins = PluginRegistry(app_config.agents, base_dir=base_dir)
+    nodes = NodeRegistry(app_config.hardware)
     allocator = Allocator(nodes, events)
 
     def on_task_finished(task) -> None:
@@ -129,15 +149,15 @@ def build_app_state(config: AppConfig) -> AppState:
         tenants.release_task(task.tenant_id, task.id)
 
     scheduler = Scheduler(
-        config.scheduler, allocator, events, on_task_finished=on_task_finished
+        app_config.scheduler, allocator, events, on_task_finished=on_task_finished
     )
-    simulator = UtilizationSimulator(nodes, events, config.hardware.tick_seconds)
+    simulator = UtilizationSimulator(nodes, events, app_config.hardware.tick_seconds)
     tools = PlatformTools(idgen, tenants, scheduler, tasks, nodes.snapshot)
 
     # Provider 表：model_ref → provider 实例（mock 共享剧本游标，天然单例）。
     # 存于 providers dict 并挂到 state：admin 渠道编辑（v1.1 §5）原地增删改。
     providers: dict[str, LLMProvider] = {
-        ref: create_provider(entry) for ref, entry in config.models.items()
+        ref: create_provider(entry) for ref, entry in app_config.models.items()
     }
     runtime = AgentRuntime(
         plugins,
@@ -145,12 +165,21 @@ def build_app_state(config: AppConfig) -> AppState:
         lambda model_ref: providers[model_ref],
         tools,
         events,
-        default_thinking_for=lambda ref: config.models[ref].default_thinking
-        if ref in config.models
+        default_thinking_for=lambda ref: app_config.models[ref].default_thinking
+        if ref in app_config.models
         else "high",
     )
+    tools.bind_dispatcher(runtime.run_subagent)  # dispatch_agent 执行器（§8）
+
+    # 插件管理：安装目录相对路径以基底配置目录解析；本地覆盖层同目录
+    plugins_dir: Path | None = None
+    if app_config.agents.plugins_dir.strip():
+        candidate = Path(app_config.agents.plugins_dir).expanduser()
+        plugins_dir = candidate if candidate.is_absolute() else base_dir / candidate
+    local_store = LocalConfigStore(base_dir / LOCAL_CONFIG_FILENAME)
+    plugin_manager = PluginManager(plugins, plugins_dir, local_store)
     return AppState(
-        config=config,
+        config=app_config,
         idgen=idgen,
         events=events,
         conversations=conversations,
@@ -163,5 +192,8 @@ def build_app_state(config: AppConfig) -> AppState:
         scheduler=scheduler,
         simulator=simulator,
         runtime=runtime,
+        plugin_manager=plugin_manager,
         providers=providers,
+        local_store=local_store,
+        base_model_refs=loaded.base_model_refs if loaded else frozenset(app_config.models),
     )

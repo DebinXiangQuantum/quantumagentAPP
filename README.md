@@ -232,6 +232,28 @@ curl 走通 §10 链路——health 返回 `{"status":"ok"}`；创建会话+发�
   增量拼接==全文与思考在前正文在后/anthropic 预算与 max_tokens/api 422 与
   优先级经 mock request_log 断言/SSE reasoning 帧序），全量 **266 passed**。
 
+**B3（v1.1 编排 Agent 与插件安装）**：
+- 内置 `orchestrator`（会话 `agent_id` 缺省即它，Create/PostMessage 均如此）：
+  系统提示由注册表按**当前已注册专家**动态合成（安装/启停/卸载后自动
+  刷新），说明平台能力+专家清单+平台工具，引导按任务自主 `dispatch_agent`。
+- 平台工具 `dispatch_agent(agent_id, instruction)`（§8，声明对所有 Agent
+  可见）：执行期守门——非 orchestrator 或嵌套深度 ≥1 → 结构化工具错误
+  `dispatch_denied`（模型可自纠错）；子运行复用 Runtime 工具循环但不发
+  SSE 增量，回复文本回流 orchestrator；子 Agent 的 emit_artifact/
+  submit_task 经共享 ToolContext 归属当前会话与消息。
+- 插件安装（§8 v1.1）：`plugin.json`（agent-plugins.org 1.0.0 基础字段）
+  + 扩展键 `"qap":{"entry":"<module>:<factory>"}`；`plugin_loader` 按文件
+  定位 importlib 加载（唯一化模块名，不污染 sys.path），任何失败 422 带原因
+  /启动扫描记 broken，**不拖垮平台**。管理端点：
+  `POST /api/v1/admin/plugins/install`（复制到 `agents.plugins_dir`，重名
+  409）、`GET …/plugins`（builtin+installed+enabled+broken）、
+  `PUT …/plugins/{id}`（启停持久化 config.local.toml
+  `[agents.plugin_state]`）、`DELETE …/plugins/{id}`（卸载目录+状态；
+  builtin 409）；启动扫描 plugins_dir 并按持久化状态恢复 disabled。
+- 测试：`tests/test_dispatch.py` 8 用例 + `tests/test_plugins_admin.py`
+  11 用例（安装全生命周期/坏插件 422 与 broken/深度限制/未知 agent 结构化
+  错误/子运行故障不悬空），全量 **286 passed**。
+
 ## 前端 (Frontend)
 
 *本节由 `feat/frontend` 分支的开发切片维护更新：组件清单、页面说明、测试结果。*

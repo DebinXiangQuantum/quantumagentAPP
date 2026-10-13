@@ -5,6 +5,45 @@ Validation（本切片测试结论）+ Known defects（已知缺陷，无则写�
 scope 与流程见 docs/DEVELOPMENT.md §2。
 
 
+## 2026-10-13 `backend: B3 编排 Agent 与插件安装——orchestrator/dispatch_agent/插件全生命周期`
+
+### Added
+- 内置 `orchestrator`（§8 v1.1）：会话 agent_id 缺省即它；系统提示按当前
+  已注册专家动态合成（`compose_orchestrator_prompt`，安装/启停/卸载后
+  自动刷新）；mock 剧本演示"思考 → dispatch algorithm-designer → 收束"。
+- 平台工具 `dispatch_agent(agent_id, instruction)`：声明对所有 Agent 可见
+  （契约 §8 平台级工具），执行期守门——非 orchestrator 或 dispatch 深度
+  ≥1（MAX_DISPATCH_DEPTH=1）→ `{"error":"dispatch_denied"}` 结构化结果；
+  子运行复用 Runtime 工具循环（`_drive(stream_to_sse=False)`），不发 SSE
+  增量/完成事件（回复经工具结果回流），provider 故障仍发 SSE error；
+  子 Agent 产物经共享 pending_artifacts 归属当前会话与消息。
+- 插件安装机制：`agents/plugin_loader.py`（plugin.json 清单 + qap.entry 的
+  importlib 文件定位加载，模块名唯一化防冲突，失败 ValidationFailed 422
+  带原因）；`PluginRegistry` 重构（broken 记录/禁用账本/外部扫描/admin
+  视图/启停优先级 plugin_state > builtin > true）；`agents/plugin_manager.py`
+  （install 复制到 plugins_dir、uninstall 删目录清状态、启停持久化
+  config.local.toml [agents.plugin_state]）；`api/routers/admin.py`
+  四端点（install 201 / list / PUT 启停 / DELETE 204；重名与卸载内置 409）。
+- 新增 `ConflictError`（code=conflict → 409）与 errors.py 映射。
+- `build_app_state` 接受 `LoadedConfig`（plugins_dir 相对路径以基底配置
+  目录解析；local_store/base_model_refs 挂 AppState 供 B4）。
+- 测试：test_dispatch.py 8 用例 + test_plugins_admin.py 11 用例。
+
+### Changed
+- `agents/plugins.py` 重写为"内置四件套 + 外部插件 + 编排提示动态合成"
+  （B1 的"非空 plugins_dir 报未实现"过渡语义移除；v1 的
+  test_external_plugins_dir_unimplemented 改为无清单目录忽略语义）。
+- /agents 清单现含 orchestrator（相关 v1 断言同步更新）。
+
+### Validation
+- 全量 `pytest` **286 passed**（266 保持 + 新增 20）。
+
+### Known defects
+- 已卸载插件的模块对象仍滞留 sys.modules（Python importlib 固有行为；
+  重新安装同名插件时文件定位加载会重新 exec，不影响正确性，仅占内存）。
+- config.local.toml 的注释在启停持久化时丢失（B1 已知权衡）。
+
+
 ## 2026-10-13 `backend: B2 思考程度与思考流——thinking_level 映射、thought_delta 与 message.reasoning`
 
 ### Added

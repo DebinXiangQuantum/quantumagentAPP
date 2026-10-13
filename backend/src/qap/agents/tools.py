@@ -1,19 +1,24 @@
 """平台级工具（契约 §8）：所有 Agent 可用，由 Runtime 注入。
 
-三个工具（声明即 JSON Schema，执行结果一律 JSON 字符串）：
+四个工具（声明即 JSON Schema，执行结果一律 JSON 字符串）：
 - ``emit_artifact(artifact)``：附加可视化产物到当前消息。载荷经 §6 校验，
   非法载荷生成侧拒绝（错误以 ``{"error": ...}`` 回给模型，可自纠错）；
 - ``submit_task(name, steps)``：提交 DAG 任务（steps 为 StepSpec 数组，
   depends_on 用前序下标）；受租户并发配额约束（QuotaError → 工具错误）；
-- ``query_hardware()``：返回节点与活动分配（回答"哪个 Agent 在用哪块 GPU"）。
+- ``query_hardware()``：返回节点与活动分配（回答"哪个 Agent 在用哪块 GPU"）；
+- ``dispatch_agent(agent_id, instruction)``（v1.1）：编排 Agent 独占——
+  以目标专家的 system_prompt+tools 跑一轮子推理并返回其回复；非
+  orchestrator 调用或嵌套超深（>1）→ 结构化工具错误（可自纠错）。
 """
 
 from __future__ import annotations
 
+import inspect
 import json
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import Awaitable, Callable, Protocol
 
+from qap.agents.plugins import ORCHESTRATOR_ID
 from qap.core.clock import utcnow_iso
 from qap.core.errors import QapError, ValidationFailed
 from qap.core.ids import IdGenerator
@@ -26,13 +31,18 @@ from qap.tenancy.service import TenantService
 
 @dataclass
 class ToolContext:
-    """一次 Agent 运行的工具执行上下文（平台工具的"当前消息"等锚点）。"""
+    """一次 Agent 运行的工具执行上下文（平台工具的"当前消息"等锚点）。
+
+    ``dispatch_depth``（v1.1 §8）：0 = 会话主运行；1 = 被 dispatch_agent
+    派出的子运行（不可再分派）。
+    """
 
     conversation_id: str
     tenant_id: str
     agent_id: str
     message_id: str
     run_key: str
+    dispatch_depth: int = 0
     #: 本次运行累计的产物（Runtime 在 message.completed 时落库）
     pending_artifacts: list[Artifact] = field(default_factory=list)
 
@@ -41,6 +51,11 @@ class HardwareSnapshotFn(Protocol):
     """硬件快照提供者（NodeRegistry.snapshot 的依赖注入接口）。"""
 
     def __call__(self) -> list: ...
+
+
+#: dispatch_agent 的执行器接口：(父上下文, 目标 agent, 指令) → 结构化结果。
+#: 由 AgentRuntime.run_subagent 注入（组装期绑定，避免构造环）。
+DispatcherFn = Callable[[ToolContext, str, str], Awaitable[dict]]
 
 
 _EMIT_ARTIFACT_SPEC = {
@@ -96,6 +111,22 @@ _QUERY_HARDWARE_SPEC = {
     "parameters": {"type": "object", "properties": {}},
 }
 
+_DISPATCH_AGENT_SPEC = {
+    "name": "dispatch_agent",
+    "description": (
+        "把子任务分派给一个领域专家 Agent 执行完整推理并返回其回复文本"
+        "（仅编排助手 orchestrator 可用；专家的产物与任务自动归属当前会话）"
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "agent_id": {"type": "string", "description": "目标专家 Agent id"},
+            "instruction": {"type": "string", "description": "给专家的具体指令（含任务上下文）"},
+        },
+        "required": ["agent_id", "instruction"],
+    },
+}
+
 
 class PlatformTools:
     """平台工具的声明与执行（execute 是 Runtime 工具循环的唯一入口）。"""
@@ -107,17 +138,29 @@ class PlatformTools:
         scheduler: Scheduler,
         tasks: TaskStore,
         hardware_snapshot: HardwareSnapshotFn,
+        *,
+        dispatcher: DispatcherFn | None = None,
     ) -> None:
         self._idgen = idgen
         self._tenants = tenants
         self._scheduler = scheduler
         self._tasks = tasks
         self._hardware_snapshot = hardware_snapshot
+        self._dispatcher = dispatcher
+
+    def bind_dispatcher(self, dispatcher: DispatcherFn) -> None:
+        """绑定 dispatch_agent 执行器（AgentRuntime.run_subagent，组装期）。"""
+        self._dispatcher = dispatcher
 
     @staticmethod
     def specs() -> list[dict]:
-        """三个平台工具的声明（dict 形态，避免运行时依赖 ToolSpec 类型）。"""
-        return [_EMIT_ARTIFACT_SPEC, _SUBMIT_TASK_SPEC, _QUERY_HARDWARE_SPEC]
+        """四个平台工具的声明（dict 形态，避免运行时依赖 ToolSpec 类型）。"""
+        return [
+            _EMIT_ARTIFACT_SPEC,
+            _SUBMIT_TASK_SPEC,
+            _QUERY_HARDWARE_SPEC,
+            _DISPATCH_AGENT_SPEC,
+        ]
 
     async def execute(self, context: ToolContext, name: str, arguments: str) -> str:
         """执行工具；结果/错误都以 JSON 字符串返回（模型可读、可自纠错）。
@@ -134,12 +177,15 @@ class PlatformTools:
             "emit_artifact": self._emit_artifact,
             "submit_task": self._submit_task,
             "query_hardware": self._query_hardware,
+            "dispatch_agent": self._dispatch_agent,
         }
         handler = handlers.get(name)
         if handler is None:
             raise ValidationFailed(f"unknown tool {name!r}")
         try:
             result = handler(context, args)
+            if inspect.isawaitable(result):  # 异步工具（dispatch_agent）
+                result = await result
             return json.dumps(result, ensure_ascii=False)
         except QapError as exc:
             # 领域可纠错错误（载荷非法/配额超限/坏 DAG）→ 结构化回给模型
@@ -187,3 +233,27 @@ class PlatformTools:
         """全量节点与分配（§10 第 4 条的 Agent 侧视角）。"""
         nodes = [node.model_dump() for node in self._hardware_snapshot()]
         return {"nodes": nodes}
+
+    async def _dispatch_agent(self, context: ToolContext, args: dict) -> dict:
+        """dispatch_agent（§8 v1.1）：orchestrator 独占的专家分派。"""
+        agent_id = str(args.get("agent_id") or "").strip()
+        instruction = str(args.get("instruction") or "").strip()
+        if not agent_id or not instruction:
+            return {
+                "error": "invalid_arguments",
+                "message": "dispatch_agent requires 'agent_id' and 'instruction'",
+            }
+        if context.agent_id != ORCHESTRATOR_ID or context.dispatch_depth >= 1:
+            return {
+                "error": "dispatch_denied",
+                "message": (
+                    "dispatch_agent 仅编排助手 orchestrator 可用，且专家不能再分派"
+                    "（嵌套深度=1）"
+                ),
+            }
+        if self._dispatcher is None:  # 组装缺位（单测 Rig 未绑定时）防御
+            return {
+                "error": "dispatch_unavailable",
+                "message": "dispatch_agent is not wired in this deployment",
+            }
+        return await self._dispatcher(context, agent_id, instruction)

@@ -148,9 +148,17 @@ def rig() -> Rig:
 class TestPluginRegistry:
     def test_builtin_plugins_listed(self, rig: Rig) -> None:
         infos = rig.plugins.list()
-        assert [i.id for i in infos] == ["algorithm-designer", "calibration", "echo"]
+        assert [i.id for i in infos] == [
+            "algorithm-designer", "calibration", "echo", "orchestrator",
+        ]
         assert all(i.builtin for i in infos)
         assert "circuit-synthesis" in infos[0].capabilities
+
+    def test_orchestrator_prompt_lists_experts_dynamically(self, rig: Rig) -> None:
+        """v1.1：编排提示按已注册专家动态合成（含专家 id 与工具说明）。"""
+        plugin = rig.plugins.get("orchestrator")
+        assert "algorithm-designer" in plugin.system_prompt
+        assert "dispatch_agent" in plugin.system_prompt
 
     def test_unknown_agent_rejected(self, rig: Rig) -> None:
         with pytest.raises(NotFoundError):
@@ -168,22 +176,20 @@ class TestPluginRegistry:
         registry = PluginRegistry(disabled)
         assert "echo" not in [i.id for i in registry.list()]
 
-    def test_external_plugins_dir_unimplemented(self, tmp_path) -> None:
-        """B1 过渡语义：目录非空才报"未实现"；缺失/空目录 = 无外部插件。"""
+    def test_plugins_dir_without_manifests_ignored(self, tmp_path) -> None:
+        """B3 语义：plugins_dir 缺失/无 plugin.json 子目录 = 无外部插件，正常。"""
         plugins_dir = tmp_path / "plugins"
         plugins_dir.mkdir()
-        # 空目录：正常（仓库默认 plugins_dir="plugins" 且目录通常不存在）
+        (plugins_dir / "not-a-plugin.txt").write_text("stray file", encoding="utf-8")
+        (plugins_dir / "no-manifest").mkdir()
         agents_cfg = AgentsConfig(
             default_model_ref="default", plugins_dir=str(plugins_dir), builtin={},
         )
-        PluginRegistry(agents_cfg)
-        # 非空目录（含插件子目录）：v1.1 B3 切片实现前显式失败
-        (plugins_dir / "some-plugin").mkdir()
-        agents_cfg = AgentsConfig(
-            default_model_ref="default", plugins_dir=str(plugins_dir), builtin={},
-        )
-        with pytest.raises(QapError, match="not implemented"):
-            PluginRegistry(agents_cfg)
+        registry = PluginRegistry(agents_cfg)
+        # 无外部插件加载（仅内置四件套），也不报错
+        assert [i.id for i in registry.list()] == [
+            "algorithm-designer", "calibration", "echo", "orchestrator",
+        ]
 
     def test_duplicate_plugin_rejected(self) -> None:
         agents_cfg, *_ = make_config()

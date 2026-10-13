@@ -5,6 +5,7 @@
 - ``not_found`` → 404（含跨租户访问：与不存在同语义）
 - ``quota_exceeded`` → 429 + ``Retry-After`` 头（秒）
 - ``validation_failed`` → 422
+- ``conflict`` → 409（重复安装/删除基底渠道/卸载内置插件）
 - 其余（provider/scheduling/内部）→ 500（不向客户端泄露内部细节）
 """
 
@@ -20,6 +21,7 @@ _STATUS_BY_CODE = {
     "unauthorized": 401,
     "tenant_disabled": 403,
     "not_found": 404,
+    "conflict": 409,
     "quota_exceeded": 429,
     "validation_failed": 422,
 }

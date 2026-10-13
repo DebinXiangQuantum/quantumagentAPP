@@ -73,6 +73,19 @@ _DEMO_TASK_STEPS = [
 
 #: 默认剧本：agent_id → 轮列表（见模块 docstring）
 DEFAULT_SCRIPTS: dict[str, list[list[tuple]]] = {
+    "orchestrator": [
+        [
+            ("thought", "先判断任务类型：这是量子算法设计任务，适合分派给 algorithm-designer。"),
+            ("text", "我来协调处理这个任务，先分派给量子算法设计专家。"),
+            ("tool", "dispatch_agent", {
+                "agent_id": "algorithm-designer",
+                "instruction": "请设计一个 VQE 方案，附上线路与计数产物并提交全流程任务",
+            }),
+        ],
+        [
+            ("text", "专家已完成处理：产物与任务已附上，供你查看。"),
+        ],
+    ],
     "algorithm-designer": [
         [
             ("thought", "分析：先把化学问题映射为分子哈密顿量的矩阵表示。"),
