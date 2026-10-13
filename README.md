@@ -206,6 +206,16 @@ assistant id，误用会在 completed 去重时吞掉 artifacts），mock 引擎
 语义；④ ApiError 解析后端 `{"error":{code,message}}` 业务消息。测试
 **84 passed**（新增 4），build 零错误。
 
+**视觉走查修订（2026-10-13，main，真实浏览器截图评审）**：① 任务 DAG 改
+**纵向流水线布局**（横向布局在 360px 检查器溢出 744px 且画布高度塌缩为
+19px——节点被裁成不可见；修复后画布显式内容尺寸 + 层自上而下堆叠）；
+② 消息增加 HH:MM 等宽时间戳（formatHM）；③ 对比度修订：占位文案/会话副行/
+DAG 节点 meta/趋势线由 faint 升 secondary；④ `color-scheme: dark` 修正原生
+select 弹出层；⑤ Artifact 箭头展开旋转 90° affordance；⑥ 量子线路导线在
+MEASURE 表针后收束；⑦ 容量点增加 title 提示；⑧ DAG 依赖边提亮。测试
+**91 passed**（新增 formatHM×6 + DAG 纵向几何×1），build 零错误；
+DAG 面板/时间戳/占用徽标（"algorithm-designer · t-3/s-8"）截图复验通过。
+
 ### 组件清单（随切片增长）
 
 - `src/styles/tokens.ts` —— 设计系统唯一来源：全部色板/字体栈/字号/间距/圆角/

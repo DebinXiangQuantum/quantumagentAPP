@@ -17,11 +17,14 @@ import { Drawer } from '../common/Drawer';
 import { formatClock } from '../../utils/format';
 import type { Step, Task } from '../../types/domain';
 
-// 布局几何（px；与 §6.3 紧凑信息密度一致）
+// 布局几何（px；§6.3 修订：**纵向流水线**——依赖层自上而下堆叠、同层并排，
+// 适配 360px 检查器宽度。横向布局在窄面板上会溢出到 744px 且画布高度塌缩）
 const NODE_W = 200;
 const NODE_H = 64;
-const GAP_X = 72;
+const GAP_X = 16;
 const GAP_Y = 24;
+/** 画布在内容尺寸外的余量（px），保证边缘节点/箭头不被裁切 */
+const CANVAS_MARGIN = 8;
 
 export function DagView(props: { task: Task | null }): JSX.Element {
   const [selected, setSelected] = useState<Step | null>(null);
@@ -43,15 +46,17 @@ export function DagView(props: { task: Task | null }): JSX.Element {
     );
   }
 
-  const width = model.layers * NODE_W + Math.max(0, model.layers - 1) * GAP_X;
-  const height =
-    Math.max(...model.nodes.map((n) => n.indexInLayer + 1)) * NODE_H +
-    Math.max(0, Math.max(...model.nodes.map((n) => n.indexInLayer + 1)) - 1) * GAP_Y;
+  // 纵向：宽度 = 最宽层的并排节点数；高度 = 依赖层数堆叠
+  const maxInLayer = Math.max(...model.nodes.map((n) => n.indexInLayer + 1));
+  const width = maxInLayer * NODE_W + (maxInLayer - 1) * GAP_X;
+  const height = model.layers * NODE_H + (model.layers - 1) * GAP_Y;
 
-  const xOf = (layer: number): number => layer * (NODE_W + GAP_X);
-  const yOf = (idx: number): number => idx * (NODE_H + GAP_Y);
+  const xOf = (idx: number): number => idx * (NODE_W + GAP_X);
+  const yOf = (layer: number): number => layer * (NODE_H + GAP_Y);
 
-  const nodePos = new Map(model.nodes.map((n) => [n.step.id, { x: xOf(n.layer), y: yOf(n.indexInLayer) }]));
+  const nodePos = new Map(
+    model.nodes.map((n) => [n.step.id, { x: xOf(n.indexInLayer), y: yOf(n.layer) }]),
+  );
 
   return (
     <div className="dag-view">
@@ -64,7 +69,11 @@ export function DagView(props: { task: Task | null }): JSX.Element {
           依赖存在环或异常，已按出现顺序降级布局。
         </p>
       ) : null}
-      <div className="dag-view__canvas">
+      {/* 画布显式给内容尺寸：绝对定位的节点/SVG 不贡献流内高度，否则容器塌缩 */}
+      <div
+        className="dag-view__canvas"
+        style={{ width: width + CANVAS_MARGIN, height: height + CANVAS_MARGIN }}
+      >
         <svg
           className="dag-view__edges"
           width={width}
@@ -88,16 +97,17 @@ export function DagView(props: { task: Task | null }): JSX.Element {
             const from = nodePos.get(edge.from);
             const to = nodePos.get(edge.to);
             if (!from || !to) return null;
-            const x1 = from.x + NODE_W;
-            const y1 = from.y + NODE_H / 2;
-            const x2 = to.x;
-            const y2 = to.y + NODE_H / 2;
-            const midX = (x1 + x2) / 2;
+            // 纵向依赖边：从上层节点底边中点 → 下层节点顶边中点
+            const x1 = from.x + NODE_W / 2;
+            const y1 = from.y + NODE_H;
+            const x2 = to.x + NODE_W / 2;
+            const y2 = to.y - 2;
+            const midY = (y1 + y2) / 2;
             return (
               <path
                 key={`${edge.from}->${edge.to}`}
                 data-testid={`dag-edge-${edge.from}-${edge.to}`}
-                d={`M ${x1} ${y1} C ${midX} ${y1}, ${midX} ${y2}, ${x2 - 2} ${y2}`}
+                d={`M ${x1} ${y1} C ${x1} ${midY}, ${x2} ${midY}, ${x2} ${y2}`}
                 className="dag-edge"
                 markerEnd="url(#dag-arrow)"
               />
@@ -116,7 +126,7 @@ export function DagView(props: { task: Task | null }): JSX.Element {
             ]
               .filter(Boolean)
               .join(' ')}
-            style={{ left: xOf(layer), top: yOf(indexInLayer), width: NODE_W, height: NODE_H }}
+            style={{ left: xOf(indexInLayer), top: yOf(layer), width: NODE_W, height: NODE_H }}
             onClick={() => setSelected(step)}
             aria-label={`步骤 ${step.name}（${step.id}）`}
           >

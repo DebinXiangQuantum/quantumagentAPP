@@ -4,6 +4,8 @@
  * 职责：
  *  - 用户：右对齐、--bg-elevated 底色圆角气泡；
  *  - 助手：左对齐、无底色，组首条带头像（Q 标识），正文 pre-wrap；
+ *  - 时间戳：HH:MM（等宽、faint），随气泡对齐（视觉评审补充：会话流
+ *    缺乏时间锚点会显得"漂浮"）；
  *  - 助手 artifacts：通栏卡片列表（ArtifactCard）。
  * Props 契约：
  *  - message：Message 契约（畸形字段按空串/空数组降级，不崩溃）；
@@ -11,6 +13,7 @@
  *  - separator：角色组切换处为 true（渲染细分隔线）。
  */
 import type { Message } from '../../types/domain';
+import { formatHM } from '../../utils/format';
 import { ArtifactCard } from './ArtifactCard';
 
 export function MessageBubble(props: {
@@ -21,13 +24,20 @@ export function MessageBubble(props: {
   const { message, showAvatar = false, separator = false } = props;
   const content = typeof message.content === 'string' ? message.content : '';
   const artifacts = Array.isArray(message.artifacts) ? message.artifacts : [];
+  // 畸形 created_at → '—'，时间戳仍占位保持行距稳定（防御式，不崩溃）
+  const time = formatHM(message.created_at);
 
   if (message.role === 'user') {
     return (
       <>
         {separator ? <div className="message-group-sep" role="separator" /> : null}
         <div className="message message--user">
-          <div className="message__bubble">{content}</div>
+          <div className="message__stack">
+            <div className="message__bubble">{content}</div>
+            <time className="message__time mono" dateTime={message.created_at || undefined}>
+              {time}
+            </time>
+          </div>
         </div>
       </>
     );
@@ -56,6 +66,9 @@ export function MessageBubble(props: {
               ))}
             </div>
           ) : null}
+          <time className="message__time message__time--assistant mono" dateTime={message.created_at || undefined}>
+            {time}
+          </time>
         </div>
       </div>
     </>

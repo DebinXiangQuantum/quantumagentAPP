@@ -48,6 +48,23 @@ export function CircuitCanvas(props: { payload: unknown }): JSX.Element {
   const colX = (col: number): number => labelW + col * cellW + cellW / 2;
   const qY = (q: number): number => padY + q * cellH + cellH / 2;
 
+  // 每个 qubit 的导线终点：默认延伸到画布右缘；末操作是 MEASURE 的 qubit，
+  // 导线在表针符号（半径 9）右侧 5px 收束——拖尾导线会显得"未完成"（视觉评审）
+  const wireEndX = new Map<number, number>();
+  for (let q = 0; q < layout.qubits; q += 1) {
+    let lastCol = -1;
+    let lastIsMeasure = false;
+    for (const placed of layout.placed) {
+      const touches =
+        placed.op.targets.includes(q) || (placed.op.controls ?? []).includes(q);
+      if (touches) {
+        lastCol = placed.column;
+        lastIsMeasure = placed.op.gate.toUpperCase() === 'MEASURE';
+      }
+    }
+    wireEndX.set(q, lastIsMeasure && lastCol >= 0 ? colX(lastCol) + 14 : width - 8);
+  }
+
   const renderGate = (op: CircuitOperation, col: number): JSX.Element => {
     const cx = colX(col);
     const shape = gateShape(op);
@@ -217,7 +234,7 @@ export function CircuitCanvas(props: { payload: unknown }): JSX.Element {
                 data-qubit={q}
                 x1={labelW}
                 y1={qY(q)}
-                x2={width - 8}
+                x2={wireEndX.get(q) ?? width - 8}
                 y2={qY(q)}
                 className="circuit-wire"
               />

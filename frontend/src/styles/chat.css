@@ -35,6 +35,14 @@
 .message--user {
   justify-content: flex-end;
 }
+/* 用户气泡列：气泡 + 下方时间戳（右对齐，与气泡同侧） */
+.message__stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-4);
+  max-width: 100%;
+}
 .message__bubble {
   max-width: 78%;
   padding: var(--space-8) var(--space-12);
@@ -44,6 +52,14 @@
   border-bottom-right-radius: var(--radius-sm);
   white-space: pre-wrap;
   word-break: break-word;
+}
+/* 消息时间戳：等宽 + faint，给会话流一个时间锚点 */
+.message__time {
+  font-size: var(--fs-caption);
+  color: var(--text-faint);
+}
+.message__time--assistant {
+  margin-top: calc(-1 * var(--space-4));
 }
 .message--assistant {
   align-items: flex-start;
@@ -138,6 +154,11 @@
   flex-shrink: 0;
   color: var(--text-faint);
   font-size: var(--fs-caption);
+  transition: transform var(--motion-fast) var(--ease-out);
+}
+/* 展开态：箭头旋转 90° 提供明确的可展开/可收起 affordance（视觉评审） */
+.artifact-card__chevron--open {
+  transform: rotate(90deg);
 }
 .artifact-card__body {
   padding: var(--space-12);

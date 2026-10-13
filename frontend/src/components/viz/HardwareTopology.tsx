@@ -140,7 +140,11 @@ export function HardwareTopology(props: {
                       <span className="hw-card__util-num mono">{formatPercent(node.utilization)}</span>
                       <UtilSparkline history={props.history[node.id] ?? []} />
                     </span>
-                    <span className="hw-card__dots" aria-label={`容量 ${capacity}，占用 ${leased}`}>
+                    <span
+                      className="hw-card__dots"
+                      aria-label={`容量 ${capacity}，占用 ${leased}`}
+                      title={`容量 ${capacity}，占用 ${leased}（黄点 = 已租出）`}
+                    >
                       {Array.from({ length: Math.min(capacity, 16) }, (_, i) => (
                         <span
                           key={i}

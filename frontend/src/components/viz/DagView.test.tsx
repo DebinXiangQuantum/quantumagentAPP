@@ -77,6 +77,19 @@ describe('DagView', () => {
     expect(paths.length).toBe(2);
   });
 
+  it('纵向流水线布局：链式 3 层 → SVG 高 3×64+2×24=240、宽 200（适配 360px 检查器）', () => {
+    render(<DagView task={TASK} />);
+    const svg = document.querySelector('svg.dag-view__edges') as SVGSVGElement | null;
+    expect(svg).not.toBeNull();
+    // 单节点/层的链：宽度收敛为单节点宽，高度按层堆叠（不再横向溢出面板）
+    expect(svg!.getAttribute('width')).toBe('200');
+    expect(svg!.getAttribute('height')).toBe('240');
+    // 画布容器显式给出内容尺寸（绝对定位内容不再导致高度塌缩）
+    const canvas = document.querySelector('.dag-view__canvas') as HTMLElement | null;
+    expect(canvas).not.toBeNull();
+    expect(canvas!.style.height).toBe('248px'); // 240 + 8px 余量
+  });
+
   it('运行中节点带呼吸光晕类', () => {
     render(<DagView task={TASK} />);
     expect(screen.getByTestId('dag-node-s-1')).toHaveClass('dag-node--running');

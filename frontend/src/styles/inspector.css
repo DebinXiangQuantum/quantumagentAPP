@@ -28,7 +28,9 @@
 }
 .dag-view__canvas {
   position: relative;
-  overflow: auto;
+  /* 滚动交由检查器面板 body 统一处理；画布自身由 DagView 显式给内容尺寸
+     （绝对定位节点不贡献流内高度，无显式尺寸会塌缩成 ~19px 把节点裁掉） */
+  overflow: visible;
   padding: var(--space-4);
 }
 .dag-view__edges {
@@ -37,13 +39,14 @@
   top: var(--space-4);
   z-index: var(--z-base);
 }
+/* 依赖边/箭头：faint 比边框色亮一档，深色底上流向更可读（视觉评审修订） */
 .dag-edge {
   fill: none;
-  stroke: var(--border-strong);
+  stroke: var(--text-faint);
   stroke-width: 1.4;
 }
 .dag-arrow-fill {
-  fill: var(--border-strong);
+  fill: var(--text-faint);
 }
 
 /* DAG 节点：绝对定位按钮 + kind 左色条 */
@@ -90,7 +93,8 @@
   font-weight: 600;
 }
 .dag-node__meta {
-  color: var(--text-faint);
+  /* id/节点号是有效定位信息，secondary 保证可读（视觉评审修订） */
+  color: var(--text-secondary);
   font-size: var(--fs-caption);
 }
 /* 运行中：呼吸光晕（reduced-motion → 实线描边，见 global.css） */
@@ -230,7 +234,8 @@
   text-align: right;
 }
 .hw-spark-line {
-  stroke: var(--text-faint);
+  /* secondary：faint 在深色底上对比不足，60s 趋势线需要可读（视觉评审修订） */
+  stroke: var(--text-secondary);
 }
 .hw-card__dots {
   display: flex;

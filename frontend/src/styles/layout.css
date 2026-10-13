@@ -172,7 +172,8 @@
 }
 .conversation-item__meta {
   font-size: var(--fs-caption);
-  color: var(--text-faint);
+  /* secondary：会话副行是有效信息，faint 对比度不足（视觉评审修订） */
+  color: var(--text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

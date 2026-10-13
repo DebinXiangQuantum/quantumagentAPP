@@ -85,8 +85,11 @@ export function ArtifactCard(props: { artifact: Artifact }): JSX.Element {
         <span className="artifact-card__title truncate">
           {a.title.length > 0 ? a.title : '（未命名产物）'}
         </span>
-        <span className="artifact-card__chevron" aria-hidden="true">
-          {expanded ? '▾' : '▸'}
+        <span
+          className={`artifact-card__chevron${expanded ? ' artifact-card__chevron--open' : ''}`}
+          aria-hidden="true"
+        >
+          ▸
         </span>
       </button>
       {expanded ? (

@@ -5,6 +5,36 @@ Validation（本切片测试结论）+ Known defects（已知缺陷，无则写�
 scope 与流程见 docs/DEVELOPMENT.md §2。
 
 
+## 2026-10-13 `frontend: 真实浏览器视觉走查修复（DAG 纵向布局/时间戳/对比度/原生控件）`
+
+### Fixed
+- **DagView 纵向流水线布局**（关键缺陷）：原横向布局 3 层链宽 744px 溢出
+  360px 检查器，且绝对定位内容导致画布高度塌缩至 19px、节点被裁剪不可见
+  （截图走查发现）。改为依赖层自上而下堆叠、同层并排；画布显式给出内容
+  尺寸（width/height = 布局尺寸 + 8px 余量）；依赖边改为竖向贝塞尔
+  （上层底边中点 → 下层顶边中点）。
+- 消息时间戳：MessageBubble 用户/助手均渲染 HH:MM 等宽时间戳（新增
+  utils/format.formatHM，畸形输入返回 '—'）。
+- 对比度修订（faint #5C667A 对深色底不足 4.5:1）：输入占位、会话副行、
+  DAG 节点 meta、60s 趋势线、DAG 依赖边 → secondary/提亮一档。
+- `body { color-scheme: dark }`：原生 select 弹出层/输入部件按深色渲染。
+- Artifact 卡片箭头展开时旋转 90°（明确可展开 affordance）。
+- 量子线路：末操作为 MEASURE 的 qubit 导线在表针后 14px 收束（拖尾导线
+  显得未完成）；容量点增加 title 悬停提示。
+
+### Validation
+- TDD：formatHM 6 用例 + DagView 纵向几何 1 用例先红后绿；全量
+  `npm test` **91 passed**（18 文件）；`npm run build` 零 TS 错误。
+- 真实浏览器（ZCode IAB + 视觉模型）截图复验：DAG 三节点完整可见且纵向
+  排列；发送消息 → 流式 → artifacts → t-2/t-3 任务推进；运行中 QPU/CPU 卡
+  显示黄点与 "algorithm-designer · t-3/s-8" 占用徽标、利用率尖峰——
+  "哪个 Agent 在用哪块硬件"前端可回答（ARCHITECTURE §10.4）。
+
+### Known defects
+- Playwright 合成点击在本页部分按钮上 actionability 超时（hit-test 干净、
+  原生 click 正常，疑 IAB 后端合成事件时序问题，非 UI 缺陷；真实点击正常）。
+
+
 ## 2026-10-13 `integration: 前后端契约联调修复（SSE 鉴权/租户字段/202 语义/错误体）`
 
 ### Fixed

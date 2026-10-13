@@ -28,7 +28,7 @@
 | `--border-strong` | `#2E3A50` | 强调描边/hover |
 | `--text-primary` | `#E8ECF4` | 主文本 |
 | `--text-secondary` | `#9AA4B8` | 次级文本 |
-| `--text-faint` | `#5C667A` | 占位/禁用 |
+| `--text-faint` | `#5C667A` | 装饰性文字/禁用（占位/副行等有效信息一律用 `--text-secondary`，2026-10-13 视觉评审修订：faint 对深色底不足 4.5:1） |
 | `--accent-cyan` | `#4FD8EB` | 主强调（量子/链接/选中） |
 | `--accent-violet` | `#8B7CF6` | 次强调（quantum 类步骤/线路） |
 | `--success` | `#3DD68C` | 成功/succeeded |
@@ -90,8 +90,10 @@ Node `kind` → `gpu=accent-cyan`、`qpu=accent-violet`、`cpu=text-secondary`�
 2. **CountsHistogram**：横轴比特串（等宽）、纵轴概率（counts/shots）；
    条形从基线生长动画 160ms；hover 显示计数与占比；总 shots 显示于副标题；
    最大值归一化不变量：`max(高度)/绘图高 == max(counts)/max_count`。
-3. **DagView**：节点 = Step（kind 色 + 状态图标 + 等宽 id）；边 = 依赖（箭头，
-   贝塞尔）；运行中节点呼吸光晕（2s 循环，reduced-motion 时改为实线描边）；
+3. **DagView**：**纵向流水线布局**（依赖层自上而下堆叠、同层并排；2026-10-13
+   修订——横向布局在 360px 检查器上溢出且画布高度塌缩）。节点 = Step
+   （kind 色 + 状态图标 + 等宽 id）；边 = 依赖（箭头，竖向贝塞尔）；
+   运行中节点呼吸光晕（2s 循环，reduced-motion 时改为实线描边）；
    点击节点 → 右侧详情（node_id、起止时间、detail/error）。
 4. **HardwareTopology**：按 kind 分组的卡片网格；GPU/QPU 卡显示型号、容量点、
    利用率迷你条（60s 滚动）、活动 allocation 徽标（"algorithm-designer · t-1/s-2"）；

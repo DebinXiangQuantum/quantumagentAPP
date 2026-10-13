@@ -28,6 +28,8 @@ body {
   font-family: var(--font-ui);
   font-size: var(--fs-body);
   line-height: var(--lh-body);
+  /* 原生控件（select 下拉/输入部件）按深色系渲染，避免亮色弹出层突兀 */
+  color-scheme: dark;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   overflow: hidden;
@@ -208,7 +210,9 @@ body {
 }
 .input::placeholder,
 .textarea::placeholder {
-  color: var(--text-faint);
+  /* 占位文案用 secondary（faint 对深色底对比度不足 4.5:1，视觉评审修订） */
+  color: var(--text-secondary);
+  opacity: 0.85;
 }
 .input:hover,
 .textarea:hover,

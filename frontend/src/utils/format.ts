@@ -24,6 +24,16 @@ export function formatClock(iso: string | null | undefined): string {
   return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
+/** 本地时间 HH:MM（消息时间戳——秒数对会话流是噪音）；异常输入返回 '—'。 */
+export function formatHM(iso: string | null | undefined): string {
+  if (typeof iso !== 'string' || iso.length === 0) return '—';
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return '—';
+  const d = new Date(t);
+  const pad = (n: number): string => String(n).padStart(2, '0');
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 /** 百分比：0.37 → "37%"（clamp [0,1]，畸形输入返回 "—"）。 */
 export function formatPercent(util: unknown): string {
   const n = typeof util === 'number' && Number.isFinite(util) ? util : NaN;
