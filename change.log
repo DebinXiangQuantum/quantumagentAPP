@@ -4,6 +4,36 @@
 Removed + Validation（本切片测试结论）+ Known defects（已知缺陷）。
 日期为提交日（ISO 8601）。
 
+## 2026-10-13 S7 插件注册、平台工具与 Runtime 工具循环 (backend)
+
+### Added
+- `qap/agents/plugins.py`：AgentPlugin Protocol（契约 §8：id/name/
+  description/capabilities/model_ref/system_prompt/tools）+ 三个内置演示
+  插件 + PluginRegistry（配置 enabled 过滤、model_ref 覆盖、重复 id 拒绝、
+  外部 plugins_dir 按契约抛 external_plugins_unimplemented）。
+- `qap/agents/tools.py`：PlatformTools——emit_artifact（Artifact 构造期
+  §6 校验，非法载荷生成侧拒绝）、submit_task（StepSpec 校验→配额登记→
+  TaskStore 入库→Scheduler 提交）、query_hardware（快照含 allocations）；
+  execute 把 QapError 结构化 JSON 回给模型（自纠错语义），未知工具抛
+  ValidationFailed，非法 JSON 参数结构化返回。
+- `qap/agents/runtime.py`：AgentRuntime 工具循环——每轮
+  system+history→provider.stream：TextDelta 实时发布 message.delta；
+  ToolCall→工具执行→历史回填（assistant.tool_calls + tool 消息）→
+  继续下一轮直至纯文本；ProviderErrorEvent→SSE error + 部分文本收束；
+  MAX_TOOL_LOOP_TURNS=8 安全上限；统一收束发布 message.completed（含
+  artifacts）。
+- `qap/domain/store.py`：ConversationStore/MessageStore/TaskStore 内存
+  存储，跨租户访问一律 NotFoundError（404 语义）。
+- 测试 18 用例（含 §10 链路的非 HTTP 预演：delta→工具→task→completed
+  事件顺序、quota/bad-payload/bad-DAG 结构化错误、provider 故障收束、
+  轮次上限）。
+
+### Validation
+- `pytest`：193 passed。
+
+### Known defects
+- 无。
+
 ## 2026-10-13 S6 三种 LLM Provider 流式解析 (backend)
 
 ### Added

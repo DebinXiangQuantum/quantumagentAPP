@@ -142,6 +142,21 @@ GET /tenants/me 的用量视图。测试 15 用例（含时钟注入的跨日重
 - 测试 25 用例（规范/畸形样例回放、头与请求体形状、剧本推进与隔离、
   演示产物载荷自证）。
 
+**S7（插件注册 + 平台工具 + Runtime 工具循环）**：
+- `qap/agents/plugins.py`：AgentPlugin Protocol（§8）+ 三个内置演示插件
+  （algorithm-designer/calibration/echo）+ PluginRegistry（配置启停与
+  model_ref 覆盖、外部插件目录按契约抛"未实现"）。
+- `qap/agents/tools.py`：平台工具三件套——emit_artifact（§6 生成侧校验）、
+  submit_task（配额登记→入库→调度）、query_hardware（分配视图）；
+  工具错误结构化 JSON 回给模型（可自纠错），未知工具抛 ValidationFailed。
+- `qap/agents/runtime.py`：工具循环——TextDelta 实时 message.delta、
+  ToolCall 执行回填（assistant.tool_calls + tool 消息）直至纯文本轮；
+  ProviderError → SSE error + 部分文本收束；MAX 8 轮安全上限；
+  收束统一发布 message.completed（含 artifacts）。
+- `qap/domain/store.py`：会话/消息/任务内存存储（跨租户一律 404 语义）。
+- 测试 18 用例（演示链路可观察行为、配额/坏载荷/坏 DAG 结构化错误、
+  provider 故障收束、轮次上限、SSE 顺序）。
+
 ## 前端 (Frontend)
 
 *本节由 `feat/frontend` 分支的开发切片维护更新：组件清单、页面说明、测试结果。*
