@@ -67,9 +67,12 @@ wire format + Mock）、SSE 实时事件。
 - GLM 渠道（OpenAI 兼容，实测 2026-10-13）：base_url
   `https://open.bigmodel.cn/api/paas/v4`，密钥经 `api_key_env = "GLM_API_KEY"`
   从环境读取；可用模型实测含 glm-4.5/4.5-air/4.6/4.7/5/5-turbo/5.1/5.2/
-  **5.3/5.3-flash/5.3-flashx**。思考控制 `thinking.type ∈ {enabled,disabled,
-  low,high,max}`；**glm-5.3 系列不接受 disabled**（服务端错误码 1210），其
-  思考内容以流式 `delta.reasoning_content` 增量返回（OpenAI 扩展字段）。
+  **5.3/5.3-flash/5.3-flashx**。思考控制（v1.1 实测修正，官方文档
+  docs.bigmodel.cn/cn/guide/capabilities/thinking）：glm-5.3 系**只接受**
+  `thinking.type = "enabled"`（`disabled` 报服务端错误码 1210；实测
+  `low/high/max` 直接作 type 值同样报 1210），思考强度经**独立顶层参数**
+  `reasoning_effort ∈ low|high|max`（缺省 max）；其思考内容以流式
+  `delta.reasoning_content` 增量返回（OpenAI 扩展字段）。
 
 ## 4. 领域模型（序列化 JSON 契约）
 
@@ -266,14 +269,16 @@ class LLMProvider(Protocol):
 | `anthropic` | `POST {base_url}/v1/messages`，`stream:true` | `x-api-key`、`anthropic-version: 2023-06-01` | 事件 `content_block_delta`（`text_delta` / `input_json_delta` 拼接工具入参；`thinking_delta` → `thought_delta`） |
 | `mock` | 进程内 | — | 脚本化：演示场景依次产出 reasoning/text/tool_call，驱动 §10 全链路 |
 
-**v1.1 思考程度（ThinkingLevel）→ 请求参数映射**（归一化枚举 `off|low|high|max`）：
+**v1.1 思考程度（ThinkingLevel）→ 请求参数映射**（归一化枚举 `off|low|high|max`；
+openai 列为 GLM 实测形状——2026-10-13 冒烟修正：强度走独立
+`reasoning_effort` 参数，`thinking.type` 只接受 `enabled`/`disabled`）：
 
 | ThinkingLevel | openai 兼容（GLM） | anthropic |
 |---|---|---|
-| `off` | `thinking: {"type":"disabled"}`（GLM-5.3 系拒绝，服务端错误码 1210 会透传为 error 事件） | 不发送 thinking 块 |
-| `low` | `{"type":"low"}` | `thinking: {"type":"enabled","budget_tokens":2048}` |
-| `high` | `{"type":"high"}` | `… budget_tokens:8192` |
-| `max` | `{"type":"max"}` | `… budget_tokens:16384` |
+| `off` | `thinking: {"type":"disabled"}`（glm-5.3 系拒绝，服务端错误码 1210 会透传为 error 事件） | 不发送 thinking 块 |
+| `low` | `thinking: {"type":"enabled"}` + `reasoning_effort: "low"` | `thinking: {"type":"enabled","budget_tokens":2048}` |
+| `high` | `… enabled` + `reasoning_effort: "high"` | `… budget_tokens:8192` |
+| `max` | `… enabled` + `reasoning_effort: "max"` | `… budget_tokens:16384` |
 
 取值优先级：消息级 `thinking_level` > 会话/请求 `model_ref` 渠道的
 `default_thinking` > `"high"`。`ProviderEvent` 新增 `thought_delta{text}`

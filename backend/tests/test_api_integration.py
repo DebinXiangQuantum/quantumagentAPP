@@ -231,7 +231,9 @@ class TestBasics:
         response = await bundle.http.get("/api/v1/agents", headers=DEMO_HEADERS)
         assert response.status_code == 200
         agents = response.json()
-        assert {a["id"] for a in agents} == {"algorithm-designer", "calibration", "echo"}
+        assert {a["id"] for a in agents} == {
+            "algorithm-designer", "calibration", "echo", "orchestrator",
+        }
         first = agents[0]
         assert set(first) >= {"id", "name", "description", "capabilities", "model_ref", "builtin"}
 

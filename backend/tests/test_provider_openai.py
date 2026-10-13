@@ -122,6 +122,41 @@ class TestHappyPath:
         assert sent["tools"][0]["function"]["name"] == "query_hardware"
         assert captured["request"].headers["authorization"] == "Bearer sk-test"
 
+    async def test_dict_shaped_tools_accepted(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """回归（2026-10-13 冒烟发现）：Runtime 注入的平台工具是 dict 形态，
+        真实 provider 只认对象属性会 AttributeError——必须两者兼容。"""
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        provider, captured = make_provider(sse("data: [DONE]"))
+        request = CompletionRequest(
+            model="m",
+            messages=[{"role": "user", "content": "q"}],
+            tools=[{"name": "dispatch_agent", "description": "分派专家",
+                    "parameters": {"type": "object", "properties": {}}}],
+        )
+        await collect(provider, request)
+        sent = json.loads(captured["request"].read())
+        assert sent["tools"][0]["function"]["name"] == "dispatch_agent"
+
+    async def test_unexpected_exception_folded_to_error_event(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """负样本：provider 内部非预期异常 → ProviderErrorEvent（绝不外抛，
+        避免 run task 静默死亡——2026-10-13 冒烟发现的第二处缺陷）。"""
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+
+        def broken_handler(request: httpx.Request) -> httpx.Response:
+            raise RuntimeError("boom inside transport")
+
+        config = ModelConfig(
+            provider="openai", model="m", base_url="https://api.test/v1",
+            api_key_env="OPENAI_API_KEY", timeout_seconds=10,
+        )
+        provider = create_provider(config, transport=httpx.MockTransport(broken_handler))
+        events = await collect(provider, make_request())
+        errors = [e for e in events if isinstance(e, ProviderErrorEvent)]
+        assert errors and "unexpected failure" in errors[0].message
+        assert not any(isinstance(e, TurnCompleted) for e in events)
+
 
 class TestNegativeSamples:
     async def test_missing_api_key_env(self, monkeypatch: pytest.MonkeyPatch) -> None:

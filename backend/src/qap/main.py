@@ -20,7 +20,7 @@ from qap import __version__
 from qap.api.errors import qap_error_handler
 from qap.api.routers import api_router
 from qap.api.state import AppState, build_app_state
-from qap.core.config import load_config
+from qap.core.config import AppConfig, LoadedConfig, load_config_with_sources
 from qap.core.errors import QapError
 
 
@@ -34,9 +34,14 @@ async def _lifespan(app: FastAPI):
     await state.shutdown()
 
 
-def create_app(config=None) -> FastAPI:
-    """构造 FastAPI 应用；``config`` 可注入已加载的 AppConfig（测试）。"""
-    resolved = config if config is not None else load_config()
+def create_app(config: AppConfig | LoadedConfig | None = None) -> FastAPI:
+    """构造 FastAPI 应用。
+
+    ``config`` 可注入已加载的 ``AppConfig``/``LoadedConfig``（测试）；
+    None 时按契约加载（基底 config.toml ← 同目录 config.local.toml 深合并）。
+    """
+    resolved = config if config is not None else load_config_with_sources()
+    resolved_config = resolved.config if isinstance(resolved, LoadedConfig) else resolved
     app = FastAPI(
         title="QuantumAgentApp API",
         version=__version__,
@@ -45,7 +50,7 @@ def create_app(config=None) -> FastAPI:
     app.state.qap = build_app_state(resolved)
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=resolved.server.cors_origins,
+        allow_origins=resolved_config.server.cors_origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

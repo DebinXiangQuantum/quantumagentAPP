@@ -29,15 +29,38 @@ from qap.agents.providers.base import (
     ProviderErrorEvent,
     ProviderEvent,
     TextDelta,
+    ThoughtDelta,
     ToolCall,
     TurnCompleted,
+    tool_fields,
 )
 from qap.agents.providers.sse import iter_sse_events
-from qap.core.config import ModelConfig
+from qap.core.config import ModelConfig, ThinkingLevel
 
 #: 流式读超时下限（秒）：外层总超时由 ModelConfig.timeout_seconds 控制，
 #: 但读间隙不应小于该值，避免长思考模型被误判断流。
 _STREAM_READ_TIMEOUT_FLOOR = 5.0
+
+#: §9 v1.1 映射（2026-10-13 冒烟实测修正）：openai 兼容（GLM）渠道
+#: ``thinking.type`` 只接受 enabled/disabled——思考强度走**独立顶层参数**
+#: ``reasoning_effort``（官方文档 docs.bigmodel.cn …/capabilities/thinking；
+#: 实测 low/high/max 直接作 type 值会被 1210 拒绝）。
+#: off → disabled；low/high/max → enabled + reasoning_effort 同名。
+_OFF_THINKING_TYPE = "disabled"
+_ON_THINKING_TYPE = "enabled"
+
+
+def thinking_params_for(level: ThinkingLevel) -> dict[str, object]:
+    """思考程度 → openai 请求体的思考参数（thinking + reasoning_effort）。
+
+    注意：glm-5.3 系列不接受 ``disabled``（服务端错误码 1210 会作为
+    error 事件透传）——这是渠道侧行为，由调用方选择 off 时自担。
+    """
+    if level == "off":
+        return {"thinking": {"type": _OFF_THINKING_TYPE}}
+    if level in ("low", "high", "max"):
+        return {"thinking": {"type": _ON_THINKING_TYPE}, "reasoning_effort": level}
+    raise ValueError(f"unknown thinking level {level!r}")
 
 
 class _AccumulatingToolCall:
@@ -110,13 +133,19 @@ class OpenAIProvider:
                 {
                     "type": "function",
                     "function": {
-                        "name": tool.name,
-                        "description": tool.description,
-                        "parameters": tool.parameters,
+                        "name": name,
+                        "description": description,
+                        "parameters": parameters,
                     },
                 }
-                for tool in request.tools
+                for name, description, parameters in (
+                    tool_fields(tool) for tool in request.tools
+                )
             ]
+        # v1.1 §9（实测修正）：off → thinking.disabled；low/high/max →
+        # thinking.enabled + 顶层 reasoning_effort；未指定则完全省略。
+        if request.thinking_level is not None:
+            payload.update(thinking_params_for(request.thinking_level))
         return payload
 
     # ---------- 流式主流程 ----------
@@ -152,6 +181,8 @@ class OpenAIProvider:
                         yield event
         except httpx.HTTPError as exc:
             yield ProviderErrorEvent(f"openai: stream interrupted: {exc}")
+        except Exception as exc:  # provider 契约：任何故障事件化，绝不外抛
+            yield ProviderErrorEvent(f"openai: unexpected failure: {exc}")
 
     async def _stream_response(
         self, response: httpx.Response
@@ -172,6 +203,10 @@ class OpenAIProvider:
                 continue  # 心跳/usage 帧
             choice = choices[0]
             delta = choice.get("delta") or {}
+            # v1.1：GLM/DeepSeek 式思考增量（先于正文到达）→ ThoughtDelta
+            reasoning = delta.get("reasoning_content")
+            if reasoning:
+                yield ThoughtDelta(reasoning)
             content = delta.get("content")
             if content:
                 yield TextDelta(content)

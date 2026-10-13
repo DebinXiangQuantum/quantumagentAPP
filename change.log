@@ -5,6 +5,184 @@ Validation（本切片测试结论）+ Known defects（已知缺陷，无则写�
 scope 与流程见 docs/DEVELOPMENT.md §2。
 
 
+## 2026-10-13 `backend: 真实 GLM 冒烟驱动的契约修正与两处潜伏缺陷修复`
+
+### Changed（doc-first：先改 ARCHITECTURE §3/§9 再改代码）
+- GLM 思考参数映射修正：实测（2026-10-13，live API + 官方文档
+  docs.bigmodel.cn/cn/guide/capabilities/thinking）glm-5.3 系
+  `thinking.type` **只接受 enabled**（disabled 报 1210；low/high/max
+  直接作 type 值同样报 1210——原文档表格与真实服务端行为不符），思考
+  强度走独立顶层参数 `reasoning_effort ∈ low|high|max`。openai provider
+  映射改为：off → `thinking.disabled`；low/high/max →
+  `thinking.enabled` + `reasoning_effort` 同名（anthropic 列不变）。
+
+### Fixed（v1 潜伏缺陷，真实渠道首调即暴露）
+- **工具声明形态不兼容**：Runtime 注入的平台工具是 dict
+  （`PlatformTools.specs()`），openai/anthropic provider 的请求体构造只
+  认对象属性 → 真实渠道带 tools 的首条请求即 AttributeError（mock 从不
+  触发）。新增 `base.tool_fields()` 统一归一化两种形态。
+- **provider 意外异常外泄**：非 httpx 异常会杀死 run task 且无人问询
+  （表现为空回复静默收束）。两个 provider 增加兜底 `except Exception`
+  → ProviderErrorEvent（契约 §9"绝不外抛"的完备实现）。
+
+### Validation
+- 全量 `pytest` **304 passed**（+3：dict 工具回归 ×2、意外异常折叠 ×1，
+  thinking 映射用例同步改写）。
+- 真实冒烟（secrets/glm.env，glm-5.3-flash，thinking_level=low，
+  orchestrator 缺省会话）：654×message.delta + 4×message.reasoning +
+  9×task.updated + 6×hardware.updated → message.completed（4 artifacts：
+  circuit/counts×2——专家与 orchestrator 各自 emit，模型行为）；模型自主
+  dispatch algorithm-designer，3 步 VQE 任务 succeeded（quantum→
+  qpu-quanta-20q，classical→cpu-node-0）；最终回复含专家产出汇总。
+
+### Known defects
+- 多轮工具循环下 message.reasoning 帧可与后轮正文交错（§7"思考先于
+  正文"在**单轮** provider 流内成立；整条消息跨轮次时后续轮的思考仍会
+  出现——契约语义按单轮理解，前端按到达顺序渲染即可）。
+
+
+## 2026-10-13 `backend: B4 管理 API——渠道池 CRUD（脱敏/本地持久化/悬空引用防护）`
+
+### Added
+- `GET /api/v1/admin/models`：`{"models": ModelChannel[]}`——`has_api_key` =
+  内联密钥存在或 `api_key_env` 环境变量非空；响应无 `api_key_inline` 字段
+  （**绝不回传密钥明文**，测试断言响应体不含明文）。
+- `PUT /api/v1/admin/models/{ref}`（ModelChannelInput）：更新或创建渠道，
+  整条写入 config.local.toml 并即时生效（providers 表/config.models 原地
+  替换，Runtime 闭包共享同一 dict）；非法 provider/default_thinking、
+  非 mock 渠道缺 base_url 或密钥来源 → 422；`api_key_inline` 只落
+  gitignored 本地文件，响应只体现 has_api_key=true。
+- `DELETE /api/v1/admin/models/{ref}`（204）：仅可删"本地覆盖渠道"
+  （不在基底 config.toml 中）；基底渠道 → 409；仍被
+  agents.default_model_ref / builtin model_ref / 已安装插件 model_ref
+  引用 → 409（防悬空引用——契约 fail-fast 哲学的管理端延伸，见下）。
+- `tests/test_admin_models.py`：15 用例（TDD 先红后绿）。
+
+### Changed
+- `LocalConfigStore.upsert_model`：None 值键不落盘（TOML 无 null；覆盖层
+  语义"键缺失=继承基底"恰好是未设置字段应有效果）。
+
+### Validation
+- 全量 `pytest` **301 passed**（286 保持 + 新增 15；本轮 v2 四切片累计
+  新增 78 条，v1 的 223 条全部保持）。
+
+### Known defects
+- DELETE 的"被引用"判定只覆盖 agents 配置与已注册插件的静态 model_ref，
+  不拦截"删除时恰有运行中消息使用该渠道"（运行中的 provider 实例已构造，
+  本轮调用可完成；下一轮请求将 422——原型接受的窗口）。
+
+
+## 2026-10-13 `backend: B3 编排 Agent 与插件安装——orchestrator/dispatch_agent/插件全生命周期`
+
+### Added
+- 内置 `orchestrator`（§8 v1.1）：会话 agent_id 缺省即它；系统提示按当前
+  已注册专家动态合成（`compose_orchestrator_prompt`，安装/启停/卸载后
+  自动刷新）；mock 剧本演示"思考 → dispatch algorithm-designer → 收束"。
+- 平台工具 `dispatch_agent(agent_id, instruction)`：声明对所有 Agent 可见
+  （契约 §8 平台级工具），执行期守门——非 orchestrator 或 dispatch 深度
+  ≥1（MAX_DISPATCH_DEPTH=1）→ `{"error":"dispatch_denied"}` 结构化结果；
+  子运行复用 Runtime 工具循环（`_drive(stream_to_sse=False)`），不发 SSE
+  增量/完成事件（回复经工具结果回流），provider 故障仍发 SSE error；
+  子 Agent 产物经共享 pending_artifacts 归属当前会话与消息。
+- 插件安装机制：`agents/plugin_loader.py`（plugin.json 清单 + qap.entry 的
+  importlib 文件定位加载，模块名唯一化防冲突，失败 ValidationFailed 422
+  带原因）；`PluginRegistry` 重构（broken 记录/禁用账本/外部扫描/admin
+  视图/启停优先级 plugin_state > builtin > true）；`agents/plugin_manager.py`
+  （install 复制到 plugins_dir、uninstall 删目录清状态、启停持久化
+  config.local.toml [agents.plugin_state]）；`api/routers/admin.py`
+  四端点（install 201 / list / PUT 启停 / DELETE 204；重名与卸载内置 409）。
+- 新增 `ConflictError`（code=conflict → 409）与 errors.py 映射。
+- `build_app_state` 接受 `LoadedConfig`（plugins_dir 相对路径以基底配置
+  目录解析；local_store/base_model_refs 挂 AppState 供 B4）。
+- 测试：test_dispatch.py 8 用例 + test_plugins_admin.py 11 用例。
+
+### Changed
+- `agents/plugins.py` 重写为"内置四件套 + 外部插件 + 编排提示动态合成"
+  （B1 的"非空 plugins_dir 报未实现"过渡语义移除；v1 的
+  test_external_plugins_dir_unimplemented 改为无清单目录忽略语义）。
+- /agents 清单现含 orchestrator（相关 v1 断言同步更新）。
+
+### Validation
+- 全量 `pytest` **286 passed**（266 保持 + 新增 20）。
+
+### Known defects
+- 已卸载插件的模块对象仍滞留 sys.modules（Python importlib 固有行为；
+  重新安装同名插件时文件定位加载会重新 exec，不影响正确性，仅占内存）。
+- config.local.toml 的注释在启停持久化时丢失（B1 已知权衡）。
+
+
+## 2026-10-13 `backend: B2 思考程度与思考流——thinking_level 映射、thought_delta 与 message.reasoning`
+
+### Added
+- `CompletionRequest.thinking_level`（v1.1 §9 归一化枚举 off/low/high/max）
+  与 provider 侧映射：openai 兼容渠道请求体 `thinking:{"type":...}`
+  （off→disabled，其余同名；未指定则整个键省略，向后兼容）；anthropic
+  off 不发 thinking 块，low/high/max → enabled + budget_tokens
+  2048/8192/16384（启用思考时 max_tokens 按预算加成，满足 API 的
+  max_tokens > budget 约束——max 档 16384 超过原固定 4096 会被服务端拒）。
+- `ProviderEvent ThoughtDelta{text}`：openai 解析 `delta.reasoning_content`
+  （GLM/DeepSeek 式思考增量，实测 2026-10-13），anthropic 解析
+  `thinking_delta`；mock 剧本新增 `("thought", str)` 脚本项并在
+  `request_log` 记录每次请求的 thinking_level（忽略但记录）。
+- `Message.reasoning` 字段（默认空串）与 SSE `message.reasoning` 事件
+  （载荷含 conversation_id/message_id/delta/seq，EventBus 注入 seq）；
+  `message.completed` 载荷新增 `reasoning` 全文；思考增量先于正文发布。
+- `POST …/messages` 请求体扩展 `model_ref?`/`thinking_level?`：model_ref
+  未知 → 422；thinking_level 非法 → 422；取值优先级 消息级 > 渠道
+  default_thinking（AgentRuntime 统一解析，`default_thinking_for` 注入）。
+- `tests/test_thinking.py`：19 用例（TDD 先红后绿；httpx MockTransport
+  回放，零真实网络请求）。
+
+### Changed
+- `qap/api/state.py`：providers 表挂到 `AppState.providers`（与 Runtime
+  闭包共享同一 dict，为 B4 admin 渠道热编辑铺路）。
+- mock 默认剧本（algorithm-designer）前置两条 thought 项，驱动
+  message.reasoning 端到端可观察。
+
+### Validation
+- 全量 `pytest` **266 passed**（247 保持 + 新增 19）。
+
+### Known defects
+- glm-5.3 系列对 `thinking.type=disabled` 返回服务端错误 1210——按契约
+  作为 error 事件透传，由调用方对 glm-5.3 渠道避免 off 档（渠道
+  default_thinking 配置已避开）。
+
+
+## 2026-10-13 `backend: B1 渠道池与配置覆盖层（config.local.toml 深合并 + default_thinking）`
+
+### Added
+- 配置覆盖层（契约 §3 v1.1）：`load_config_with_sources()` 深合并
+  `config.toml`（基底）← 同目录 `config.local.toml`（gitignored）——
+  dict 递归按键合并、标量直接覆盖、list 整体替换；本地文件缺失=正常；
+  合并结果沿用 fail-fast 校验。`LoadedConfig` 溯源基底/本地 model refs
+  （B4 admin DELETE 的 409 判定依据）。
+- `ModelConfig.default_thinking`（`off|low|high|max`，缺省 `high`，非法值
+  启动失败）与 `ModelConfig.api_key_inline`（明文密钥只允许落本地文件，
+  `resolve_api_key` 内联优先）；非 mock 渠道密钥来源放宽为 env/inline 二选一。
+- `qap/core/local_store.py`：config.local.toml 读-改-写门面（自研确定性
+  TOML 序列化，含点号键加引号；B3 插件状态/B4 渠道编辑共用）。
+- `tests/test_config_overlay.py`：24 用例（TDD 先红后绿）。
+
+### Changed
+- 根 `config.toml`：`[models."glm-5.3"]`/`[models."glm-5.3-flash"]` 表键
+  加引号——TOML 未引号化的点号键会解析成 `glm-5`→`3-flash` 嵌套表，
+  v1.1 渠道池在 v1 加载器上直接启动失败（本切片修复的入口缺陷）。
+- `PluginRegistry`：plugins_dir 缺失/为空时不再抛"未实现"（仓库默认
+  `plugins_dir = "plugins"` 使 `qap.main` 模块级 `create_app()` 启动即崩）；
+  非空目录的发现与加载推迟到 B3（`test_runtime.py` 对应用例同步修订）。
+
+### Fixed
+- v1 代码在 main @7382886 的 config.toml（v1.1 契约）上 7 处加载失败
+  （default_thinking 未知键 ×6 + glm 嵌套表键 ×1），本切片全部恢复绿色。
+
+### Validation
+- 全量 `pytest` **247 passed**（v1 的 223 条全部保持 + 新增 24）。
+
+### Known defects
+- LocalConfigStore 重写整份 config.local.toml 会丢失手写注释与键序
+  （值语义保留；原型接受，见模块 docstring）。
+
+
 ## 2026-10-13 `frontend: 真实浏览器视觉走查修复（DAG 纵向布局/时间戳/对比度/原生控件）`
 
 ### Fixed

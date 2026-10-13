@@ -137,6 +137,45 @@ class TestHappyPath:
         assert headers["anthropic-version"] == ANTHROPIC_VERSION
         assert captured["request"].url.path.endswith("/v1/messages")
 
+    async def test_dict_shaped_tools_accepted(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """回归（2026-10-13 冒烟发现）：Runtime 注入的平台工具是 dict 形态，
+        真实 provider 只认对象属性会 AttributeError——必须两者兼容。"""
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "ak-test")
+        provider, captured = make_anthropic_sse_done()
+        request = CompletionRequest(
+            model="claude",
+            messages=[{"role": "user", "content": "q"}],
+            tools=[{"name": "dispatch_agent", "description": "分派专家",
+                    "parameters": {"type": "object", "properties": {}}}],
+        )
+        await collect(provider, request)
+        sent = json.loads(captured["request"].read())
+        assert sent["tools"][0]["name"] == "dispatch_agent"
+        assert sent["tools"][0]["input_schema"] == {"type": "object", "properties": {}}
+
+
+def make_anthropic_sse_done() -> tuple[object, dict]:
+    """最小 200 响应（message_stop）的 anthropic provider + 请求捕获。"""
+    import httpx
+
+    from qap.agents.providers.factory import create_provider
+    from qap.core.config import ModelConfig
+
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["request"] = request
+        body = sse(("message_stop", '{"type":"message_stop"}'))
+        return httpx.Response(
+            200, headers={"content-type": "text/event-stream"}, content=body
+        )
+
+    config = ModelConfig(
+        provider="anthropic", model="claude-sonnet-4-5",
+        base_url="https://api.test", api_key_env="ANTHROPIC_API_KEY", timeout_seconds=10,
+    )
+    return create_provider(config, transport=httpx.MockTransport(handler)), captured
+
 
 class TestNegativeSamples:
     async def test_missing_api_key(self, monkeypatch: pytest.MonkeyPatch) -> None:

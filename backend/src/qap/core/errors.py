@@ -51,6 +51,13 @@ class ValidationFailed(QapError):
         super().__init__("validation_failed", message)
 
 
+class ConflictError(QapError):
+    """资源冲突（409）：重复安装插件、删除基底渠道、卸载内置插件等。"""
+
+    def __init__(self, message: str) -> None:
+        super().__init__("conflict", message)
+
+
 class ProviderError(QapError):
     """LLM Provider 侧故障（非 200、流中断、超时、密钥缺失等）。"""
 

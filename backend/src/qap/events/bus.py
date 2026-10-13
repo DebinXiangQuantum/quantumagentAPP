@@ -8,8 +8,8 @@
   * 会话流（``conversation_id`` 非 None）：该会话的 message.* / task.updated /
     error，外加全局 hardware.updated；
   * 全局流（``conversation_id=None``）：仅 task.updated / hardware.updated。
-- ``message.delta`` 的 data 按契约带 ``seq`` 字段——发布方不需要自己填，
-  总线在此处注入，保证与帧 id 严格一致。
+- ``message.delta`` / ``message.reasoning`` 的 data 按契约带 ``seq``
+  字段——发布方不需要自己填，总线在此处注入，保证与帧 id 严格一致。
 """
 
 from __future__ import annotations
@@ -24,6 +24,8 @@ from typing import Any
 EVENT_BUFFER_SIZE = 1024
 #: 全局 SSE（GET /api/v1/events）转发的事件名（契约 §5：task/hardware 事件）
 GLOBAL_STREAM_NAMES = frozenset({"task.updated", "hardware.updated"})
+#: 契约 §7：data 载荷需要注入 seq 的事件（增量流，供客户端排序/续传）
+SEQ_CARRYING_EVENT_NAMES = frozenset({"message.delta", "message.reasoning"})
 #: 订阅者队列上限：超过则丢弃最旧事件（SSE 客户端可用 ?after= 补齐）
 SUBSCRIBER_QUEUE_SIZE = 256
 
@@ -114,14 +116,15 @@ class EventBus:
         """发布事件：写入回放缓冲并投递给所有匹配订阅。
 
         :param name: SSE 事件名（契约 §7 表格中的任一名字）。
-        :param data: 事件载荷；``message.delta`` 会在此注入 ``seq``。
+        :param data: 事件载荷；增量流事件（message.delta / message.reasoning）
+            会在此注入 ``seq``。
         :param conversation_id: 事件所属会话；None 表示全局事件。
         """
         if not name or not isinstance(name, str):
             raise ValueError("event name must be a non-empty string")
         seq = next(self._state.seq_counter)
         payload = dict(data)  # 不篡改调用方字典
-        if name == "message.delta":
+        if name in SEQ_CARRYING_EVENT_NAMES:
             payload["seq"] = seq  # 契约字段：与 SSE 帧 id 一致
         event = QapEvent(seq=seq, name=name, data=payload, conversation_id=conversation_id)
         self._state.buffer.append(event)
