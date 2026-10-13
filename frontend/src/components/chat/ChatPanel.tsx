@@ -10,21 +10,26 @@
  * Props 契约：无 props（数据来自 useAppStore）。
  * 交互行为：输入区见 MessageInput；卡片展开见 ArtifactCard。
  */
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAppStore } from '../../store/appStore';
 import type { Message } from '../../types/domain';
 import { MessageBubble } from './MessageBubble';
 import { MessageInput } from './MessageInput';
 import { StreamingCursor } from './StreamingCursor';
+import { MessageListSkeleton } from '../common/Skeletons';
 
 /** 用户上滚超过该像素值时停止自动跟随（避免打断回看）。 */
 const FOLLOW_THRESHOLD_PX = 80;
+
+/** 光标淡出驻留时长（略长于 --motion-fast，保证 120ms 过渡可见）。 */
+const CURSOR_FADE_MS = 220;
 
 export function ChatPanel(): JSX.Element {
   const activeCid = useAppStore((s) => s.activeConversationId);
   const conversations = useAppStore((s) => s.conversations);
   const messagesByCid = useAppStore((s) => s.messagesByCid);
   const streamingByCid = useAppStore((s) => s.streamingByCid);
+  const loadedCids = useAppStore((s) => s.loadedCids);
   const streamError = useAppStore((s) => s.streamError);
   const clearStreamError = useAppStore((s) => s.clearStreamError);
   const sendMessage = useAppStore((s) => s.sendMessage);
@@ -32,9 +37,26 @@ export function ChatPanel(): JSX.Element {
   const flowRef = useRef<HTMLDivElement | null>(null);
   const followRef = useRef(true);
 
+  // 光标完成淡出：streaming → 无 streaming 的迁移瞬间短暂渲染 fading 光标
+  const [cursorFading, setCursorFading] = useState(false);
+  const prevStreamingId = useRef<string | null>(null);
+  useEffect(() => {
+    const currentId = streamingByCid[activeCid ?? '']?.messageId ?? null;
+    const wasStreaming = prevStreamingId.current !== null;
+    prevStreamingId.current = currentId;
+    if (wasStreaming && currentId === null) {
+      setCursorFading(true);
+      const t = setTimeout(() => setCursorFading(false), CURSOR_FADE_MS);
+      return () => clearTimeout(t);
+    }
+    return undefined;
+  }, [streamingByCid, activeCid]);
+
   const conv = conversations.find((c) => c.id === activeCid) ?? null;
   const messages: Message[] = activeCid ? messagesByCid[activeCid] ?? [] : [];
   const streaming = activeCid ? streamingByCid[activeCid] : undefined;
+  const messagesLoading =
+    activeCid !== null && !loadedCids[activeCid] && !streaming;
 
   // 自动跟随：新消息/流式增量到达时滚到底（用户上滚则暂停）
   useEffect(() => {
@@ -75,6 +97,8 @@ export function ChatPanel(): JSX.Element {
                 在左侧新建一个会话，或等待数据加载完成。
               </p>
             </div>
+          ) : messagesLoading ? (
+            <MessageListSkeleton count={2} />
           ) : messages.length === 0 && !streaming ? (
             <div className="empty-state">
               <p className="empty-state__title">对话尚未开始</p>
@@ -105,6 +129,11 @@ export function ChatPanel(): JSX.Element {
                       <StreamingCursor />
                     </div>
                   </div>
+                </div>
+              ) : null}
+              {cursorFading && !streaming && messages.length > 0 ? (
+                <div className="message-cursor-fade" aria-hidden="true">
+                  <StreamingCursor fading />
                 </div>
               ) : null}
             </>

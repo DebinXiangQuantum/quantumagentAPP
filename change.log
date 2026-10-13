@@ -3,6 +3,30 @@
 格式：新条目置顶。每次切片提交必须更新（Added / Changed / Fixed + Validation +
 Known defects）。scope 见 docs/DEVELOPMENT.md §2。
 
+## 2026-10-13 `frontend: 非理想态与动效打磨——骨架、错误重试、光标淡出（S6）`
+
+### Added
+
+- `common/Skeletons.tsx`：同构骨架屏族（会话项/消息流/硬件卡片/DAG 节点），
+  bootstrap 期间侧栏/检查器/消息流全部呈现 shimmer 占位（1.2s 循环）。
+- `common/GlobalErrorBar.tsx`：bootstrap 失败 → 顶栏下全局警示条 + 重试按钮
+  （接 store.retryBootstrap）。
+- 流式光标完成淡出：streaming → completed 迁移后以 fading 类驻留 220ms
+  （120ms 透明度过渡）再卸载。
+- token 合规修正：抽屉遮罩改 `var(--bg-base)`+opacity 派生；输入区行高改
+  `fs-body × lh-body` token 派生计算。
+
+### Validation
+
+- `npm test`：80 用例全绿（新增 5：骨架 4 + 光标淡出 1）。
+- `npm run build`：零 TS 错误。
+- 硬编码审计：tokens.ts 之外零 hex/rgba 颜色字面量；全部 font-size 走
+  `var(--fs-*)`（design.md §8 第 1/2 项 grep 通过）。
+
+### Known defects
+
+- 无。
+
 ## 2026-10-13 `frontend: 任务 DAG、硬件拓扑与详情抽屉（S5）`
 
 ### Added

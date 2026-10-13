@@ -13,15 +13,22 @@ import { TopBar } from './TopBar';
 import { SessionSidebar } from './SessionSidebar';
 import { ChatPanel } from '../chat/ChatPanel';
 import { InspectorPanel } from './InspectorPanel';
+import { GlobalErrorBar } from '../common/GlobalErrorBar';
 import { useUiStore } from '../../store/uiStore';
+import { useAppStore } from '../../store/appStore';
 
 export function AppShell(): JSX.Element {
   const sidebarCollapsed = useUiStore((s) => s.sidebarCollapsed);
   const inspectorOpen = useUiStore((s) => s.inspectorOpen);
+  const bootError = useAppStore((s) => s.bootError);
+  const retryBootstrap = useAppStore((s) => s.retryBootstrap);
 
   return (
     <div className="app-shell">
       <TopBar />
+      {bootError ? (
+        <GlobalErrorBar message={bootError} retry={() => void retryBootstrap()} />
+      ) : null}
       <div
         className={[
           'app-main',

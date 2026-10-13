@@ -125,12 +125,23 @@ npm run dev            # 开发服务器（5173），连接 http://127.0.0.1:800
 VITE_USE_MOCK=1 npm run dev   # Mock 模式：后端未启动也可完整演示
 ```
 
-### 测试结果（S5 后）
+### 测试结果（S6 后 · 最终）
 
-`npm test`：15 个文件 75 个用例全绿（+21：DAG 纯函数 5 / DagView 5 /
-HardwareTopology 5 / StatusBadge 6）。`npm run build`：零 TS 错误。
+`npm test`：17 个文件 80 个用例全绿。`npm run build`：零 TS 错误（JS 194 kB /
+gzip 62 kB）。
 
-（进行中：S6 打磨——骨架/空态/错误态/响应式细节/reduced-motion 复核。）
+### 非理想态与动效（S6）
+
+- loading：同构骨架屏（会话项/消息流/硬件卡片/DAG 节点，shimmer 1.2s），
+  bootstrap 完成前各面板呈现；
+- empty：无会话/无消息/无任务/无硬件四类插画式空态 + 行动按钮；
+- error：bootstrap 失败 → 顶栏下全局警示条 + 重试；SSE error → 消息区内联
+  警示条（流自动指数退避重连，无需手动重试）；
+- 动效全部 ≤200ms（折叠/淡入/条形生长 160ms），循环类（光标 530ms/骨架
+  1.2s/呼吸 2s）在 `prefers-reduced-motion` 下全部停用并降级为实线描边；
+- 光标完成淡出（120ms 过渡，220ms 后卸载）。
+
+（全部切片完成：S1 骨架 / S2 数据 / S3 对话 / S4 可视化 / S5 检查器 / S6 打磨。）
 
 ## References
 

@@ -11,8 +11,12 @@
  */
 import { useRef, useState } from 'react';
 import { useAppStore } from '../../store/appStore';
+import { TOKENS } from '../../styles/tokens';
 
 const MAX_INPUT_ROWS = 8;
+/** 单行高度 = fs-body × lh-body（token 派生，避免硬编码行高）。 */
+const ROW_HEIGHT_PX =
+  parseFloat(TOKENS.fontSize.body) * parseFloat(TOKENS.lineHeight.body);
 
 export function MessageInput(props: { onSend: (text: string) => void }): JSX.Element {
   const [value, setValue] = useState('');
@@ -34,8 +38,7 @@ export function MessageInput(props: { onSend: (text: string) => void }): JSX.Ele
     const ta = taRef.current;
     if (!ta) return;
     ta.style.height = 'auto';
-    // 行高近似：fs-body × lh-body = 13 × 1.6 ≈ 20.8px；上限 8 行
-    const capped = Math.min(ta.scrollHeight, 20.8 * MAX_INPUT_ROWS);
+    const capped = Math.min(ta.scrollHeight, ROW_HEIGHT_PX * MAX_INPUT_ROWS);
     ta.style.height = `${capped}px`;
   };
 

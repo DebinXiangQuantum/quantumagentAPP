@@ -9,6 +9,7 @@
 import { useUiStore } from '../../store/uiStore';
 import { useAppStore } from '../../store/appStore';
 import { formatRelativeTime } from '../../utils/format';
+import { ConversationListSkeleton } from '../common/Skeletons';
 
 export function SessionSidebar(): JSX.Element {
   const collapsed = useUiStore((s) => s.sidebarCollapsed);
@@ -18,6 +19,8 @@ export function SessionSidebar(): JSX.Element {
   const selectConversation = useAppStore((s) => s.selectConversation);
   const createConversation = useAppStore((s) => s.createConversation);
   const currentAgentId = useAppStore((s) => s.currentAgentId);
+  const booted = useAppStore((s) => s.booted);
+  const bootError = useAppStore((s) => s.bootError);
 
   const agentName = (agentId: string): string =>
     agents.find((a) => a.id === agentId)?.name ?? agentId;
@@ -47,7 +50,9 @@ export function SessionSidebar(): JSX.Element {
         </button>
       </div>
       <div className="session-sidebar__list" data-testid="conversation-list">
-        {conversations.length === 0 ? (
+        {!booted && !bootError ? (
+          <ConversationListSkeleton count={4} />
+        ) : conversations.length === 0 ? (
           <div className="empty-state">
             <p className="empty-state__title">暂无会话</p>
             <p className="empty-state__hint">

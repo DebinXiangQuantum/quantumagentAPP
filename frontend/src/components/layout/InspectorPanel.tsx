@@ -11,6 +11,7 @@ import { useUiStore, type InspectorTab } from '../../store/uiStore';
 import { useAppStore } from '../../store/appStore';
 import { HardwareTopology } from '../viz/HardwareTopology';
 import { DagView } from '../viz/DagView';
+import { DagSkeleton, HwGridSkeleton } from '../common/Skeletons';
 
 const TABS: ReadonlyArray<{ id: InspectorTab; label: string }> = [
   { id: 'hardware', label: '硬件拓扑' },
@@ -26,6 +27,8 @@ export function InspectorPanel(): JSX.Element {
   const tasks = useAppStore((s) => s.tasks);
   const history = useAppStore((s) => s.utilHistoryByNode);
   const activeCid = useAppStore((s) => s.activeConversationId);
+  const booted = useAppStore((s) => s.booted);
+  const bootError = useAppStore((s) => s.bootError);
 
   // 当前会话的任务优先；无则展示全部（跨会话可观察）
   const scopedTasks = activeCid
@@ -55,7 +58,14 @@ export function InspectorPanel(): JSX.Element {
         ))}
       </div>
       <div className="inspector-panel__body">
-        {activeTab === 'hardware' ? (
+        {!booted && !bootError ? (
+          // loading：同构骨架（硬件卡片 / DAG 节点）
+          activeTab === 'hardware' ? (
+            <HwGridSkeleton count={4} />
+          ) : (
+            <DagSkeleton />
+          )
+        ) : activeTab === 'hardware' ? (
           <HardwareTopology nodes={hardwareNodes} tasks={tasks} history={history} />
         ) : (
           <div className="inspector-panel__dags">
