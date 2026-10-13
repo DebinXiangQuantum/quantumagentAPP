@@ -4,6 +4,25 @@
 Removed + Validation（本切片测试结论）+ Known defects（已知缺陷）。
 日期为提交日（ISO 8601）。
 
+## 2026-10-13 S8 收尾：SSE 单元断言与 DoD 冒烟佐证 (backend)
+
+### Added
+- `backend/tests/test_sse_format.py`：SSE 帧三行格式（id=seq/event/data）、
+  ping 帧无 id（不推进续传游标）、15s 心跳常量、断开后订阅从总线注销
+  （无泄漏）、回放-实时重叠 seq 去重、帧 data 无损 JSON 回读。
+
+### Validation
+- 全新 venv 安装 `pip install -e ".[dev]"` 后 `pytest`：**219 passed**。
+- uvicorn 冒烟（curl 走 §10 全链路）：health ok；202 含 message_id/run_id；
+  SSE 4×delta → completed(circuit+counts) → 9×task.updated(succeeded) →
+  22×hardware.updated（allocations 含 agent_id，完成后清空）；quantum 步
+  落 qpu-quanta-20q、classical 步落 cpu-node-0；?after= 续传只补新事件；
+  全局流只含 task/hardware；利用率 ∈[0,1]；未知会话 404；除 health 外
+  无 Bearer 401。
+
+### Known defects
+- 无。
+
 ## 2026-10-13 S8 REST+SSE 全端点与端到端集成测试 (backend)
 
 ### Added

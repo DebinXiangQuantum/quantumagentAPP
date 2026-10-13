@@ -172,6 +172,18 @@ GET /tenants/me 的用量视图。测试 15 用例（含时钟注入的跨日重
 - 集成测试 21 用例（§10 五步断言 + 401/403/404/422/429 负样本 + 跨租户
   隔离 + ?after= 续传 + 全局流过滤；SSE 读取走原生 ASGI——httpx 0.28
   ASGITransport 不支持无限流，测试 helper 已注明）。
+- 补充 `tests/test_sse_format.py`（帧格式/15s 心跳/断开注销订阅/回放-实时
+  去重的单元级断言）。
+
+**DoD 冒烟（2026-10-13，全绿）**：全新 venv `pip install -e ".[dev]"` 后
+`pytest` **219 passed**；`PYTHONPATH=src uvicorn qap.main:app` 启动后
+curl 走通 §10 链路——health 返回 `{"status":"ok"}`；创建会话+发消息（202
+含 message_id/run_id）；SSE 观察到 4×`message.delta` → `message.completed`
+（circuit+counts artifacts）→ 9×`task.updated`（至 succeeded）→
+22×`hardware.updated`（租约含 agent_id，完成后清空）；3 步任务中 quantum
+步落 `qpu-quanta-20q`、classical 步落 `cpu-node-0`；`?after=` 续传只补新
+事件；全局流只含 task/hardware；利用率模拟器驱动 utilization∈[0,1]；
+未知会话流 404；免鉴权端点仅 health，无 Bearer 一律 401。
 
 ## 前端 (Frontend)
 
