@@ -97,6 +97,19 @@ Pydantic v2 严格校验（`extra=forbid`，缺键/类型错/未知 provider/未
 GET /tenants/me 的用量视图。测试 15 用例（含时钟注入的跨日重置与多租户
 额度隔离）。
 
+**S4（硬件注册表 + 分配器 + 利用率模拟器）**：
+- `qap/hardware/registry.py`：`[[hardware.nodes]]` 的权威运行时副本，
+  snapshot 深拷贝隔离内部状态；utilization 赋值期校验（NaN/±inf/越界拒绝）。
+- `qap/hardware/allocator.py`：容量租约——kind 匹配 + online 过滤 +
+  负载比择优；`try_lease`（满返 None）与 `lease`（满抛 `LeaseDenied` 可等待 /
+  无在线节点抛不可等待 `SchedulingError`）区分两种失败；租约变化发布
+  `hardware.updated`（载荷含 agent_id，支撑"哪个 Agent 在用哪块 GPU"）。
+- `qap/hardware/simulator.py`：负载相关的一阶惯性 + 噪声模型，构造性保证
+  utilization ∈ [0.05,0.98]；数值变化才发帧；rng 可注入保证确定性测试。
+- 领域模型 Step/HardwareNode 开启 `validate_assignment`（运行时改写也不变量成立）。
+- 测试 21 用例（容量不变量、offline 负样本、两种分配失败语义、事件载荷、
+  模拟器生命周期与确定性）。
+
 ## 前端 (Frontend)
 
 *本节由 `feat/frontend` 分支的开发切片维护更新：组件清单、页面说明、测试结果。*

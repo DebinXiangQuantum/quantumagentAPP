@@ -104,7 +104,8 @@ class Step(BaseModel):
     （DAG 完整性校验见 orchestrator/dag.py）。
     """
 
-    model_config = ConfigDict(extra="forbid")
+    # 运行时会被调度器逐字段改写（status/node_id/...），开启赋值期校验
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
     id: str = Field(pattern=r"^s-\d+$")
     name: str = Field(min_length=1)
@@ -148,9 +149,13 @@ class Allocation(BaseModel):
 
 
 class HardwareNode(BaseModel):
-    """硬件节点（契约 §4 HardwareNode）：容量/利用率/活动租约。"""
+    """硬件节点（契约 §4 HardwareNode）：容量/利用率/活动租约。
 
-    model_config = ConfigDict(extra="forbid")
+    利用率/租约由模拟器与分配器在运行时逐字段改写，开启赋值期校验，
+    保证不变量 3 在**每次变更**时都成立（而非仅在构造时）。
+    """
+
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
     id: str = Field(min_length=1)
     kind: NodeKind

@@ -4,6 +4,30 @@
 Removed + Validation（本切片测试结论）+ Known defects（已知缺陷）。
 日期为提交日（ISO 8601）。
 
+## 2026-10-13 S4 硬件注册表、容量分配器与利用率模拟器 (backend)
+
+### Added
+- `qap/hardware/registry.py`：NodeRegistry——配置节点的权威运行时实例；
+  snapshot() 深拷贝隔离；set_utilization 经模型赋值期校验拒绝 NaN/±inf/越界。
+- `qap/hardware/allocator.py`：Allocator——kind 匹配 + online 过滤 + 负载比
+  择优的租约管理；try_lease（容量暂满返回 None）与 lease（抛 LeaseDenied
+  可等待 / 该 kind 无在线节点抛 SchedulingError 不可等待）区分失败语义；
+  release/release_task 幂等；租约变化发布 hardware.updated（载荷含
+  agent_id 与 allocations，支撑 §10 第 4 条可观察性）。
+- `qap/hardware/simulator.py`：UtilizationSimulator——负载相关目标值
+  （load_ratio 线性插值）+ 一阶惯性逼近 + 噪声，构造性保证 utilization
+  ∈ [0.05,0.98]；仅数值变化时发帧；start/stop 生命周期；rng 注入确定性。
+- `qap/domain/models.py`：Step/HardwareNode 开启 validate_assignment，
+  运行时字段改写也满足不变量。
+- 测试 21 用例（容量不变量、offline/容量满负样本、事件载荷、模拟器
+  确定性与生命周期）。
+
+### Validation
+- `pytest`：127 passed。
+
+### Known defects
+- 无。
+
 ## 2026-10-13 S3 租户管理、鉴权与配额 (backend)
 
 ### Added
