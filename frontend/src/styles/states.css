@@ -241,6 +241,7 @@
   left: 0;
   top: 0;
 }
+/* 偏移镜像 DagView 布局常量（NODE_W 200 + GAP_X 72），保持骨架同构 */
 .dag-skeleton__node--child {
   left: 272px;
   top: 44px;
@@ -254,7 +255,8 @@
 .message-cursor-fade {
   display: flex;
   justify-content: flex-start;
-  padding-left: 40px; /* 头像宽 28 + 间距 12，对齐助手正文 */
+  /* 对齐助手正文：头像 28px + 列间距 token */
+  padding-left: calc(28px + var(--space-12));
 }
 
 /* ============ 全局错误条（bootstrap 失败） ============ */
