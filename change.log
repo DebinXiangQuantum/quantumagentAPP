@@ -4,6 +4,23 @@
 Removed + Validation（本切片测试结论）+ Known defects（已知缺陷）。
 日期为提交日（ISO 8601）。
 
+## 2026-10-13 S3 租户管理、鉴权与配额 (backend)
+
+### Added
+- `qap/tenancy/service.py`：TenantService——Bearer Key → TenantContext
+  （缺失/空白/未知 Key → AuthError 401 语义；禁用 → AuthError(disabled)
+  403 语义，含运行时 set_enabled 启停）；消息配额按 UTC 自然日惰性重置
+  （超限抛 QuotaError，Retry-After = 距 UTC 午夜秒数）；并发任务配额
+  （register_task/release_task，幂等释放）；usage_snapshot 供
+  GET /api/v1/tenants/me。时钟可注入（now_fn）支撑确定性测试。
+- 测试 15 用例（鉴权正/负样本、跨日重置、多租户隔离、额度恢复）。
+
+### Validation
+- `pytest`：106 passed。
+
+### Known defects
+- 无。
+
 ## 2026-10-13 S2 领域模型 + Artifact 校验 + 事件总线 (backend)
 
 ### Added

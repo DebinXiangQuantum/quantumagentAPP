@@ -90,6 +90,13 @@ Pydantic v2 严格校验（`extra=forbid`，缺键/类型错/未知 provider/未
 - 测试：test_domain_models / test_artifacts / test_events_bus（新增 65 用例：
   不变量、非法输入、缓冲驱逐、会话隔离、队列溢出等）。
 
+**S3（租户/鉴权/配额）**：`qap/tenancy/service.py`——API Key → 租户上下文
+（缺失/未知 Key → 401 语义，禁用 → 403 语义，支持运行时启停）；消息配额
+按 UTC 自然日惰性重置（超限 QuotaError 携带距午夜的 Retry-After 秒数）；
+并发任务配额（提交登记/终态释放，超限 429）；`usage_snapshot` 输出
+GET /tenants/me 的用量视图。测试 15 用例（含时钟注入的跨日重置与多租户
+额度隔离）。
+
 ## 前端 (Frontend)
 
 *本节由 `feat/frontend` 分支的开发切片维护更新：组件清单、页面说明、测试结果。*
