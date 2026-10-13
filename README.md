@@ -66,7 +66,15 @@ npm run dev          # 连接 http://127.0.0.1:8000 的真实后端
 
 *本节由 `feat/backend` 分支的开发切片维护更新：模块清单、运行方式、测试结果。*
 
-（基线：尚未实现——见 `docs/ARCHITECTURE.md` 的目标设计。）
+**S1（配置加载器）**：`backend/src/qap/core/config.py` 实现契约 §3——
+路径解析 `QAP_CONFIG` → CWD `./config.toml` → 向上探测；`tomllib` 解析 +
+Pydantic v2 严格校验（`extra=forbid`，缺键/类型错/未知 provider/未知 kind/
+负容量/悬空 model_ref 引用均启动 fail-fast）；密钥只经 `api_key_env` 读环境
+变量（`AppConfig.resolve_api_key`，缺失仅影响该模型被实际调用时）；
+`demo-key` 可被 `QAP_DEMO_API_KEY` 覆盖。同切片含 `core/errors.py`（统一
+错误码基类）与 `core/ids.py`（`c-/m-/t-/s-/a-/run-` 前缀 id 生成器）。
+测试：`backend/tests/test_config.py`（26 用例：合法加载、密钥规则、
+15 类畸形配置 fail-fast、TOML 语法错、路径探测）。
 
 ## 前端 (Frontend)
 

@@ -1,0 +1,27 @@
+# Changelog
+
+本文件记录每次提交的新增/变更与验证结论。格式：Added / Changed / Fixed /
+Removed + Validation（本切片测试结论）+ Known defects（已知缺陷）。
+日期为提交日（ISO 8601）。
+
+## 2026-10-13 S1 配置加载器与校验 (backend)
+
+### Added
+- `backend/` 工程骨架：hatchling + pyproject（pytest `pythonpath=["src"]`、
+  `--import-mode=importlib`、`asyncio_mode=auto`），最小依赖集
+  fastapi/uvicorn/httpx/pydantic v2。
+- `qap/core/config.py`：契约 §3 配置加载器（路径探测顺序 `QAP_CONFIG` →
+  `./config.toml` → CWD/包位置向上探测；tomllib + Pydantic 严格校验；
+  `demo-key` 可被 `QAP_DEMO_API_KEY` 覆盖；密钥仅经 `api_key_env` 环境变量）。
+- `qap/core/errors.py`：统一错误基类 `QapError` 及 NotFound/Auth/Quota/
+  Validation/Provider/Scheduling 子类（供 API 层映射 401/403/404/422/429）。
+- `qap/core/ids.py`：`c-/m-/t-/s-/a-/run-` 前缀 id 生成器（线程安全、
+  全局唯一集合、未知前缀抛 ValueError）。
+- `backend/tests/test_config.py`：26 个用例（合法加载/密钥规则/畸形
+  fail-fast/负样本路径探测）。
+
+### Validation
+- `pytest tests/test_config.py`：26 passed。
+
+### Known defects
+- 无。
