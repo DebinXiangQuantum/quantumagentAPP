@@ -3,6 +3,8 @@ runs/
 run/
 logs/
 *.log
+# 变更日志是受版本控制的文档，不属于运行时日志
+!change.log
 out/
 build/
 dist/

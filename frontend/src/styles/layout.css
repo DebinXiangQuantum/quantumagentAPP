@@ -1,0 +1,227 @@
+/**
+ * layout.css —— 应用外壳 / 顶栏 / 侧栏 / 检查器 / 对话区容器布局（design.md §5）。
+ *
+ * 断点行为：
+ *  - ≥1280px：三栏并排（264 · 流体 · 360）；
+ *  - <1280px：检查器浮层化（fixed + 遮罩，从右滑入）；
+ *  - <960px：侧栏抽屉化（fixed + 遮罩）。
+ * 约束：尺寸/颜色全部走 CSS 变量。
+ */
+
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  z-index: var(--z-base);
+}
+
+/* ============ 顶栏 56px ============ */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-16);
+  height: var(--topbar-height);
+  padding: 0 var(--space-16);
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-default);
+  position: sticky;
+  top: 0;
+  z-index: var(--z-sticky);
+}
+.topbar__left,
+.topbar__center,
+.topbar__right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+}
+.topbar__product {
+  font-size: var(--fs-body-lg);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+.topbar__agent-label {
+  font-size: var(--fs-caption);
+  white-space: nowrap;
+}
+.select--topbar {
+  width: auto;
+  min-width: 160px;
+  padding: var(--space-4) var(--space-8);
+}
+.tenant-badge {
+  padding: var(--space-4) var(--space-8);
+  font-size: var(--fs-caption);
+  color: var(--text-secondary);
+  background: var(--bg-inset);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+}
+
+/* SSE 连接灯：绿 / 黄 / 红 */
+.conn-light {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-8);
+  font-size: var(--fs-caption);
+  color: var(--text-secondary);
+}
+.conn-light__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-faint);
+}
+.conn-light--online .conn-light__dot {
+  background: var(--success);
+}
+.conn-light--online {
+  color: var(--success);
+}
+.conn-light--connecting .conn-light__dot {
+  background: var(--warning);
+}
+.conn-light--offline .conn-light__dot {
+  background: var(--danger);
+}
+.conn-light--offline {
+  color: var(--danger);
+}
+
+/* ============ 三栏主体 ============ */
+.app-main {
+  flex: 1;
+  display: grid;
+  grid-template-columns: var(--sidebar-width) minmax(0, 1fr) var(--inspector-width);
+  min-height: 0;
+}
+.app-main--sidebar-collapsed {
+  grid-template-columns: 0 minmax(0, 1fr) var(--inspector-width);
+}
+.app-main--inspector-collapsed {
+  grid-template-columns: var(--sidebar-width) minmax(0, 1fr) 0;
+}
+.app-main--sidebar-collapsed.app-main--inspector-collapsed {
+  grid-template-columns: 0 minmax(0, 1fr) 0;
+}
+
+/* ============ 会话侧栏 ============ */
+.session-sidebar {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--bg-surface);
+  border-right: 1px solid var(--border-default);
+  overflow: hidden;
+  transition: grid-template-columns var(--motion-panel) var(--ease-out);
+}
+.session-sidebar[data-collapsed='true'] {
+  border-right-width: 0;
+}
+.session-sidebar__list {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-8);
+}
+
+/* ============ 对话区 ============ */
+.chat-panel {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-base);
+}
+.chat-panel__inner {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  max-width: var(--chat-max-width);
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-24) var(--space-24) var(--space-16);
+}
+
+/* ============ 检查器 ============ */
+.inspector-panel {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-surface);
+  border-left: 1px solid var(--border-default);
+  overflow: hidden;
+}
+.inspector-panel[data-collapsed='true'] {
+  border-left-width: 0;
+}
+.inspector-panel__tabs {
+  display: flex;
+  gap: var(--space-4);
+  padding: 0 var(--space-12);
+  border-bottom: 1px solid var(--border-default);
+}
+.inspector-panel__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-16);
+}
+
+/* ============ 断点 <1280px：检查器浮层化 ============ */
+@media (max-width: 1279px) {
+  .app-main,
+  .app-main--sidebar-collapsed,
+  .app-main--inspector-collapsed,
+  .app-main--sidebar-collapsed.app-main--inspector-collapsed {
+    grid-template-columns: var(--sidebar-width) minmax(0, 1fr) 0;
+  }
+  .inspector-panel {
+    position: fixed;
+    top: var(--topbar-height);
+    right: 0;
+    bottom: 0;
+    width: var(--inspector-width);
+    max-width: 92vw;
+    z-index: var(--z-drawer);
+    box-shadow: var(--shadow-2);
+    border-left: 1px solid var(--border-default);
+  }
+  .inspector-panel[data-collapsed='true'] {
+    display: none;
+  }
+}
+
+/* ============ 断点 <960px：侧栏抽屉化 ============ */
+@media (max-width: 959px) {
+  .app-main,
+  .app-main--sidebar-collapsed,
+  .app-main--inspector-collapsed,
+  .app-main--sidebar-collapsed.app-main--inspector-collapsed {
+    grid-template-columns: minmax(0, 1fr) 0;
+  }
+  .session-sidebar {
+    position: fixed;
+    top: var(--topbar-height);
+    left: 0;
+    bottom: 0;
+    width: var(--sidebar-width);
+    max-width: 86vw;
+    z-index: var(--z-drawer);
+    box-shadow: var(--shadow-2);
+  }
+  .session-sidebar[data-collapsed='true'] {
+    display: none;
+  }
+  .topbar__product {
+    font-size: var(--fs-body);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 38vw;
+  }
+  .topbar__center {
+    display: none;
+  }
+}

@@ -1,0 +1,497 @@
+/**
+ * global.css —— 全局基础样式（与 tokens.ts 注入的 CSS 变量配合）。
+ *
+ * 职责：reset、正文排版、滚动条、focus-visible ring、按钮/输入五态、
+ *       骨架 shimmer、光标闪烁、呼吸光晕、条形生长、抽屉滑入、
+ *       prefers-reduced-motion 降级。
+ * 约束：本文件不出现任何 token 之外的颜色/字号/间距字面量。
+ */
+
+/* ============ Reset ============ */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow: hidden;
+}
+
+::selection {
+  background: var(--accent-cyan);
+  color: var(--bg-base);
+}
+
+/* ============ 滚动条（科学工具信息密度：细、低调） ============ */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: var(--radius-sm);
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ============ focus-visible ring（键盘可达性） ============ */
+:focus {
+  outline: none;
+}
+:focus-visible {
+  outline: 2px solid var(--accent-cyan);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* ============ 内联 SVG 图标跟随文字颜色 ============ */
+.svg-fill-current {
+  fill: currentColor;
+}
+.svg-stroke-current {
+  stroke: currentColor;
+}
+
+/* ============ 排版工具 ============ */
+.mono {
+  font-family: var(--font-data);
+  line-height: var(--lh-data);
+}
+.text-secondary {
+  color: var(--text-secondary);
+}
+.text-faint {
+  color: var(--text-faint);
+}
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ============ 按钮：default / hover / active / focus-visible / disabled 五态 ============ */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-8);
+  padding: var(--space-8) var(--space-12);
+  font-family: var(--font-ui);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  color: var(--text-primary);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition:
+    background var(--motion-fast) var(--ease-out),
+    border-color var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out),
+    opacity var(--motion-fast) var(--ease-out);
+  user-select: none;
+}
+.btn:hover {
+  background: var(--bg-elevated);
+  border-color: var(--border-strong);
+}
+.btn:active {
+  transform: translateY(1px);
+}
+.btn:disabled {
+  color: var(--text-faint);
+  background: var(--bg-inset);
+  border-color: var(--border-default);
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.btn--primary {
+  color: var(--bg-base);
+  background: var(--accent-cyan);
+  border-color: var(--accent-cyan);
+  font-weight: 600;
+}
+.btn--primary:hover:not(:disabled) {
+  background: var(--accent-cyan);
+  filter: brightness(1.08);
+}
+.btn--primary:disabled {
+  background: var(--border-default);
+  border-color: var(--border-default);
+  color: var(--text-faint);
+}
+.btn--ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-secondary);
+}
+.btn--ghost:hover:not(:disabled) {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+.btn--danger {
+  color: var(--danger);
+  border-color: var(--border-default);
+}
+.btn--danger:hover:not(:disabled) {
+  border-color: var(--danger);
+}
+.btn--sm {
+  padding: var(--space-4) var(--space-8);
+  font-size: var(--fs-caption);
+}
+
+/* ============ 图标按钮（顶栏/卡片头） ============ */
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition:
+    background var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out);
+}
+.icon-btn:hover {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+.icon-btn:active {
+  background: var(--bg-elevated);
+}
+.icon-btn:disabled {
+  color: var(--text-faint);
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* ============ 输入：五态 ============ */
+.input,
+.textarea,
+.select {
+  width: 100%;
+  padding: var(--space-8) var(--space-12);
+  font-family: var(--font-ui);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  color: var(--text-primary);
+  background: var(--bg-inset);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  transition: border-color var(--motion-fast) var(--ease-out);
+}
+.input::placeholder,
+.textarea::placeholder {
+  color: var(--text-faint);
+}
+.input:hover,
+.textarea:hover,
+.select:hover {
+  border-color: var(--border-strong);
+}
+.input:disabled,
+.textarea:disabled,
+.select:disabled {
+  color: var(--text-faint);
+  background: var(--bg-surface);
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.select {
+  appearance: none;
+  cursor: pointer;
+}
+.select option {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+}
+
+/* ============ 卡片 / 面板 ============ */
+.card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+}
+.card--elevated {
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-2);
+}
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-8);
+  padding: var(--space-12) var(--space-16);
+  border-bottom: 1px solid var(--border-default);
+}
+
+/* ============ Tab ============ */
+.tab {
+  padding: var(--space-8) var(--space-12);
+  font-family: var(--font-ui);
+  font-size: var(--fs-body);
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition:
+    color var(--motion-fast) var(--ease-out),
+    border-color var(--motion-fast) var(--ease-out);
+}
+.tab:hover {
+  color: var(--text-primary);
+}
+.tab:active {
+  color: var(--accent-cyan);
+}
+.tab[aria-selected='true'] {
+  color: var(--accent-cyan);
+  border-bottom-color: var(--accent-cyan);
+}
+.tab:disabled {
+  color: var(--text-faint);
+  cursor: not-allowed;
+}
+
+/* ============ 骨架屏：shimmer 1.2s（§7），结构同构占位 ============ */
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: var(--bg-surface);
+  border-radius: var(--radius-sm);
+}
+.skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--border-default),
+    transparent
+  );
+  animation: qap-shimmer var(--motion-shimmer) var(--ease-out) infinite;
+}
+@keyframes qap-shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* ============ 流式光标：1px 宽闪烁条，530ms 步进（§7） ============ */
+.streaming-cursor {
+  display: inline-block;
+  width: 1px;
+  height: 1em;
+  margin-left: var(--space-4);
+  vertical-align: -0.15em;
+  background: var(--accent-cyan);
+  animation: qap-cursor-blink var(--motion-cursor-blink) steps(1) infinite;
+}
+.streaming-cursor--fade {
+  animation: none;
+  opacity: 0;
+  transition: opacity var(--motion-fast) var(--ease-out);
+}
+@keyframes qap-cursor-blink {
+  0%,
+  50% {
+    opacity: 1;
+  }
+  50.01%,
+  100% {
+    opacity: 0;
+  }
+}
+
+/* ============ 运行呼吸光晕：2s 循环（§6.3；reduced-motion 降级见文末） ============ */
+.glow-breathe {
+  animation: qap-glow var(--motion-glow-breath) var(--ease-out) infinite;
+}
+@keyframes qap-glow {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 0 transparent);
+  }
+  50% {
+    filter: drop-shadow(0 0 6px var(--warning));
+  }
+}
+
+/* ============ 条形生长：160ms（§6.2） ============ */
+.bar-grow {
+  transform-box: fill-box;
+  transform-origin: bottom;
+  animation: qap-bar-grow var(--motion-bar-grow) var(--ease-out) both;
+}
+@keyframes qap-bar-grow {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+
+/* ============ 通用淡入 / 抽屉滑入 ============ */
+.fade-in {
+  animation: qap-fade-in var(--motion-fast) var(--ease-out) both;
+}
+@keyframes qap-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.slide-in-right {
+  animation: qap-slide-right var(--motion-panel) var(--ease-out) both;
+}
+@keyframes qap-slide-right {
+  from {
+    transform: translateX(24px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+/* ============ 状态徽标（§6.5 全组件统一） ============ */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-8);
+  font-family: var(--font-data);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-data);
+  border-radius: var(--radius-sm);
+  border: 1px solid;
+  white-space: nowrap;
+}
+.status-badge__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+/* pending：空心 */
+.status-badge--pending {
+  color: var(--text-secondary);
+  border-color: var(--border-strong);
+  background: transparent;
+}
+.status-badge--pending .status-badge__dot {
+  background: transparent;
+  border: 1px solid var(--text-secondary);
+}
+/* running：warning 呼吸 */
+.status-badge--running {
+  color: var(--warning);
+  border-color: var(--warning);
+  background: transparent;
+}
+.status-badge--running .status-badge__dot {
+  animation: qap-badge-breathe var(--motion-glow-breath) var(--ease-out) infinite;
+}
+@keyframes qap-badge-breathe {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+.status-badge--succeeded {
+  color: var(--success);
+  border-color: var(--success);
+  background: transparent;
+}
+.status-badge--failed {
+  color: var(--danger);
+  border-color: var(--danger);
+  background: transparent;
+}
+/* cancelled：faint */
+.status-badge--cancelled {
+  color: var(--text-faint);
+  border-color: var(--border-default);
+  background: transparent;
+}
+
+/* ============ 警示条（错误态） ============ */
+.error-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-12);
+  padding: var(--space-8) var(--space-12);
+  background: var(--bg-inset);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: var(--fs-caption);
+}
+
+/* ============ prefers-reduced-motion 降级（§7） ============ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  /* 光标改为常亮；骨架与呼吸停止循环 */
+  .streaming-cursor {
+    animation: none;
+    opacity: 1;
+  }
+  .glow-breathe {
+    animation: none;
+    filter: none;
+  }
+  /* running 徽标/节点改为实线描边强调（§6.3） */
+  .status-badge--running,
+  .dag-node--running {
+    box-shadow: inset 0 0 0 1px var(--warning);
+  }
+  .bar-grow {
+    animation: none;
+    transform: none;
+  }
+}

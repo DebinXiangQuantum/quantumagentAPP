@@ -1,0 +1,31 @@
+# Change Log
+
+格式：新条目置顶。每次切片提交必须更新（Added / Changed / Fixed + Validation +
+Known defects）。scope 见 docs/DEVELOPMENT.md §2。
+
+## 2026-10-13 `frontend: 工程骨架、设计系统 tokens 与三栏布局框架（S1）`
+
+### Added
+
+- `frontend/` 工程骨架：Vite 5 手工配置（无 create-vite 向导）、TypeScript
+  strict（tsconfig 三件套 + `tsc -b`）、Vitest + @testing-library/react + jsdom。
+- `src/styles/tokens.ts`：设计系统唯一来源（色板 15 / 字体栈 3 / 字号 5 档 /
+  间距 7 档 / 圆角 / 阴影 / z-index / 动效 / 布局尺寸 / 线路格点几何），
+  `buildTokenCss()` 编译 `:root` CSS 变量块由 main.tsx 注入，CSS 与 TS 永远同源。
+- `src/styles/global.css`：reset、滚动条、focus-visible ring、按钮/输入/Tab
+  五态、骨架 shimmer(1.2s)、流式光标(530ms steps)、呼吸光晕(2s)、条形生长
+  (160ms)、错误警示条、`prefers-reduced-motion` 全量降级（含 running 实线描边）。
+- 三栏布局：`AppShell`（264px 侧栏 · 流体对话列 max 820px · 360px 检查器）+
+  `TopBar`（56px，产品名/Agent 选择器/租户徽标/连接灯/折叠按钮）+
+  `SessionSidebar` / `InspectorPanel`（硬件拓扑｜任务 DAG Tab）+ `ConnectionLight`；
+  <1280px 检查器浮层化、<960px 侧栏抽屉化（`layout.css` 媒体查询）。
+- `store/uiStore.ts`：侧栏折叠 / 检查器开关 / 检查器 Tab（zustand）。
+
+### Validation
+
+- `npm test`：11 用例全绿（tokens 契约逐字校验 7 + AppShell 布局 4）。
+- `npm run build`：`tsc -b` 零错误，产物 153.86 kB JS / 11.84 kB CSS。
+
+### Known defects
+
+- TopBar Agent 选择器/租户徽标/连接灯为静态占位，待 S2 数据切片接入 store。

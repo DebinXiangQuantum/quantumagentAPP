@@ -72,7 +72,39 @@ npm run dev          # 连接 http://127.0.0.1:8000 的真实后端
 
 *本节由 `feat/frontend` 分支的开发切片维护更新：组件清单、页面说明、测试结果。*
 
-（基线：尚未实现——见 `docs/design.md` 的目标设计。）
+技术栈：React 18 + TypeScript(strict) + Vite + zustand + vitest；**无 UI 组件库、
+无 Tailwind、无图表库、无 webfont**（依赖白名单见 docs/DEVELOPMENT.md 与
+frontend/package.json）。
+
+### 组件清单（随切片增长）
+
+- `src/styles/tokens.ts` —— 设计系统唯一来源：全部色板/字体栈/字号/间距/圆角/
+  阴影/z-index/动效/布局尺寸，编译为 `:root` CSS 变量注入（逐字对齐
+  docs/design.md §2–§5、§7）。
+- `src/styles/global.css` —— reset、五态按钮/输入、focus-visible ring、滚动条、
+  骨架 shimmer、流式光标闪烁(530ms)、呼吸光晕(2s)、条形生长(160ms)、
+  `prefers-reduced-motion` 全量降级。
+- `src/components/layout/` —— `AppShell`（三栏 Grid：264px 会话侧栏 · 流体对话区
+  max 820px · 360px 检查器）、`TopBar`（56px：产品名 / Agent 选择器 / 租户徽标 /
+  SSE 连接灯）、`SessionSidebar`、`InspectorPanel`（硬件拓扑｜任务 DAG Tab）、
+  `ConnectionLight`（绿/黄/红）。
+- 响应式：<1280px 检查器浮层化；<960px 侧栏抽屉化（`src/styles/layout.css`）。
+
+### 运行
+
+```bash
+cd frontend && npm install
+npm run build          # tsc -b && vite build
+npm test               # vitest run
+npm run dev            # 开发服务器（5173）
+```
+
+### 测试结果（S1 基线）
+
+`npm test`：2 个文件 11 个用例全绿（tokens 契约 7 + AppShell 布局 4）。
+`npm run build`：零 TS 错误。
+
+（进行中：S2 数据接入 / S3 对话区 / S4 线路与直方图 / S5 DAG 与硬件拓扑。）
 
 ## References
 
