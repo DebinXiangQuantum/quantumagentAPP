@@ -109,7 +109,8 @@ export function ChatPanel(): JSX.Element {
               <p className="empty-state__title">{t('chat.emptyMsg.title')}</p>
               <p className="empty-state__hint">
                 {t('chat.emptyMsg.hint', {
-                  scope: conv ? `${conv.title} · ` : '',
+                  // 标题为空时不拼接分隔点，避免出现「让 · Agent」的孤立点
+                  scope: conv && conv.title.length > 0 ? `${conv.title} · ` : '',
                 })}
               </p>
             </div>

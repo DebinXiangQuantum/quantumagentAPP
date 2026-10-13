@@ -360,7 +360,11 @@ class PluginRegistry:
                     "builtin": False,
                     "enabled": False,
                     "installed": True,
+                    # v1.1 契约对齐：source/version/broken_reason（前端 PluginInfo 期望）
+                    "source": "installed",
+                    "version": "",
                     "broken": reason,
+                    "broken_reason": reason,
                 }
             )
         return records
@@ -375,7 +379,12 @@ class PluginRegistry:
             "builtin": plugin_id in self._builtin_ids,
             "enabled": enabled,
             "installed": plugin_id in self._external_dirs,
+            # source：builtin | installed（前端徽标）；version：内置插件无清单
+            # 版本，取插件对象可选属性，缺省空串（前端隐藏空的 v 前缀）
+            "source": "builtin" if plugin_id in self._builtin_ids else "installed",
+            "version": str(getattr(plugin, "version", "") or ""),
             "broken": None,
+            "broken_reason": None,
         }
 
     # ---------- orchestrator 动态提示 ----------

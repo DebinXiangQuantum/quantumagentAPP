@@ -18,6 +18,9 @@ export const ja: Record<string, string> = {
   'topbar.currentThinking': '思考レベル',
   'topbar.tenant': 'テナント：{name}',
   'topbar.tenantUnknown': '不明',
+  'conn.online': '接続済み',
+  'conn.connecting': '接続中',
+  'conn.offline': '切断',
 
   // —— サイドバー ——
   'sidebar.title': 'セッション',

@@ -57,10 +57,10 @@ token 三主题共用。实现于 `tokens.ts` 的 `buildTokenCss()`：输出
 | `--border-strong` | `#C6CFDE` | `#CBBE9C` |
 | `--text-primary` | `#1F2733` | `#3E3A2F` |
 | `--text-secondary` | `#5A6577` | `#6E6753` |
-| `--text-faint` | `#8B95A6` | `#998F76` |
+| `--text-faint` | `#8B95A6` | `#6B6249`（2026-10-13 走查修订：原 #998F76 对纸底不足 4.5:1） |
 | `--accent-cyan` | `#0E8A9E` | `#2A7F8F` |
 | `--accent-violet` | `#6C5CE7` | `#7B6FD0` |
-| `--success` | `#1F9D66` | `#4E8A52` |
+| `--success` | `#1F9D66` | `#3E7345`（走查修订：原 #4E8A52 在线徽标对比不足） |
 | `--warning` | `#C77F1D` | `#B07C28` |
 | `--danger` | `#D24E4E` | `#B5544A` |
 | `--info` | `#2E7CD6` | `#3D6FA8` |

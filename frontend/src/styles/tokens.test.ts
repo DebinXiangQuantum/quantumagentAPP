@@ -142,10 +142,11 @@ describe('多主题（design.md §2.1：dark 默认 + light + sepia）', () => {
       borderStrong: '#CBBE9C',
       textPrimary: '#3E3A2F',
       textSecondary: '#6E6753',
-      textFaint: '#998F76',
+      // 2026-10-13 走查修订：faint/success 加深（纸底对比度 ≥4.5:1，见 design.md §2.1 表注）
+      textFaint: '#6B6249',
       accentCyan: '#2A7F8F',
       accentViolet: '#7B6FD0',
-      success: '#4E8A52',
+      success: '#3E7345',
       warning: '#B07C28',
       danger: '#B5544A',
       info: '#3D6FA8',

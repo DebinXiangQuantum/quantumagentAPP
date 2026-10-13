@@ -153,7 +153,9 @@ export function PluginsSection(): JSX.Element {
                 <span className="plugin-item__name">{plugin.name}</span>
                 <span className="plugin-item__meta">
                   <span className="mono">{plugin.id}</span>
-                  <span className="mono">v{plugin.version}</span>
+                  {plugin.version.length > 0 ? (
+                    <span className="mono">v{plugin.version}</span>
+                  ) : null}
                   <span
                     className={`plugin-badge${plugin.source === 'installed' ? ' plugin-badge--installed' : ''}`}
                   >

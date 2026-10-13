@@ -56,7 +56,8 @@
 /* 消息时间戳：等宽 + faint，给会话流一个时间锚点 */
 .message__time {
   font-size: var(--fs-caption);
-  color: var(--text-faint);
+  /* secondary：时间戳是有效信息，护眼/浅色主题下 faint 对比不足（v1.1 走查修订） */
+  color: var(--text-secondary);
 }
 .message__time--assistant {
   margin-top: calc(-1 * var(--space-4));

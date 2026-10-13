@@ -5,6 +5,35 @@ Validation（本切片测试结论）+ Known defects（已知缺陷，无则写�
 scope 与流程见 docs/DEVELOPMENT.md §2。
 
 
+## 2026-10-13 `integration: v1.1 真实 GLM 联调走查修复（插件字段契约/连接灯 i18n/空态/护眼对比度）`
+
+### Fixed
+- 后端 `GET /admin/plugins` 补齐前端 PluginInfo 期望字段：`source`
+  （builtin|installed）与 `version`（内置无清单版本为空串）；`broken_reason`
+  与既有 `broken` 并存对齐前端字段名（走查发现内置插件全显示"已安装"、
+  版本渲染裸 "v" 的根因）。
+- 前端 ConnectionLight 状态文案接入 i18n（conn.online/connecting/offline
+  三语键，走查发现"已连接"漏翻）。
+- ChatPanel 空态：会话标题为空时不再拼接分隔点（消除「让 · Agent」孤立点）。
+- 护眼主题对比度：--text-faint #998F76→#6B6249、--success #4E8A52→#3E7345
+  （纸底 ≥4.5:1，design.md §2.1 表同步修订）；消息时间戳 faint→secondary
+  （三主题可读）。
+- PluginsSection 版本为空时不渲染 v 前缀。
+
+### Validation
+- 后端 `pytest` 304 passed；前端 `npm test` 137 passed（护眼色板断言随
+  design.md 修订同步）、`npm run build` 零错误。
+- 真实浏览器复验：EN 语言下连接灯 "Connecting"、插件徽标 builtin、裸 v 消失。
+- 真实 GLM（glm-5.3-flash）E2E：orchestrator 自主 dispatch algorithm-designer
+  → circuit+counts artifacts + 3 步任务 succeeded；thinking=max 时思考过程
+  折叠块（508 字）正常展示。
+
+### Known defects
+- GLM thinking 档位行为（实测）：thinking.type 仅 enabled/disabled，档位走
+  顶层 reasoning_effort；low/high 不回传思考增量、max 回传（思考块可见性
+  依此，契约 §9 已注明）。
+
+
 ## 2026-10-13 `frontend: v2 全栈切片（F1–F6）——三主题/三语言/顶栏模型与思考/设置页四分区/思考过程/截断与 Mock 全链路`
 
 ### Added

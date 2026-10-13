@@ -20,6 +20,9 @@ export const zh: Record<string, string> = {
   'topbar.currentThinking': '思考程度',
   'topbar.tenant': '租户：{name}',
   'topbar.tenantUnknown': '未知',
+  'conn.online': '已连接',
+  'conn.connecting': '连接中',
+  'conn.offline': '已断开',
 
   // —— 侧栏 ——
   'sidebar.title': '会话',

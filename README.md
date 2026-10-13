@@ -190,6 +190,11 @@ curl 走通 §10 链路——health 返回 `{"status":"ok"}`；创建会话+发�
 以头为准）；集成测试新增 4 用例（全局/会话流查询参数鉴权、坏参数 401、
 头优先级），全量 **223 passed**。契约 §5 已同步修订。
 
+**v1.1（2026-10-13，main）**：渠道池（config.local.toml 覆盖层）+ admin API、
+ThinkingLevel 与思考流（message.reasoning）、orchestrator 编排 Agent +
+dispatch_agent、插件安装全生命周期；真实 GLM 冒烟走通全链路（详见 change.log）。
+`GET /admin/plugins` 含 source/version/broken_reason。pytest 304 passed。
+
 **B1（v1.1 渠道池与配置覆盖层）**：
 - `qap/core/config.py`：加载顺序改为 **config.toml（基底）← config.local.toml
   （同目录，gitignored）深合并**——dict 递归按键合并（models 按键覆盖/新增、
@@ -309,6 +314,12 @@ select 弹出层；⑤ Artifact 箭头展开旋转 90° affordance；⑥ 量子�
 MEASURE 表针后收束；⑦ 容量点增加 title 提示；⑧ DAG 依赖边提亮。测试
 **91 passed**（新增 formatHM×6 + DAG 纵向几何×1），build 零错误；
 DAG 面板/时间戳/占用徽标（"algorithm-designer · t-3/s-8"）截图复验通过。
+
+**v1.1（2026-10-13，main）**：三主题（浅/深/护眼）、三语言（中/EN/JA）、顶栏
+模型+思考程度选择器（移除 Agent 选择）、设置页四分区（外观/模型与思考/提供商
+渠道/插件管理）、思考过程折叠块、DAG 232×76 与侧栏截断修复、Mock 全链路含
+orchestrator 与 waveform。npm test 137 passed；连接灯/插件徽标/护眼对比度
+经真实浏览器走查修复。
 
 **v2 前端修订（2026-10-13，feat/frontend-v2，契约 v1.1）**：六个切片——
 ① **三主题**（§2.1）：`tokens.ts buildTokenCss()` 输出 `:root`(dark 默认) +

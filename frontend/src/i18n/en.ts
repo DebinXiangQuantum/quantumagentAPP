@@ -18,6 +18,9 @@ export const en: Record<string, string> = {
   'topbar.currentThinking': 'Thinking level',
   'topbar.tenant': 'Tenant: {name}',
   'topbar.tenantUnknown': 'unknown',
+  'conn.online': 'Connected',
+  'conn.connecting': 'Connecting',
+  'conn.offline': 'Disconnected',
 
   // —— Sidebar ——
   'sidebar.title': 'Sessions',
