@@ -110,6 +110,21 @@ GET /tenants/me 的用量视图。测试 15 用例（含时钟注入的跨日重
 - 测试 21 用例（容量不变量、offline 负样本、两种分配失败语义、事件载荷、
   模拟器生命周期与确定性）。
 
+**S5（DAG 校验 + 调度器）**：
+- `qap/orchestrator/dag.py`：通用 DAG 校验（重复 id/未知依赖/自环/Kahn
+  检测成环）+ 提交期 StepSpec（depends_on 用前序下标，结构性无环）+
+  `build_steps`（下标 → 全局唯一 `s-` id）。
+- `qap/orchestrator/scheduler.py`：asyncio 编排循环（事件唤醒 + 轮询兜底）——
+  kind→节点映射（classical→cpu / quantum→qpu / agent→gpu）、容量租约排队、
+  全局 max_parallel_steps 计数、step_timeout_seconds 步超时（failed + 下游
+  级联 cancelled + 独立分支照常）、retry_failed_steps 单次重试；每次状态迁移
+  发布全量 `task.updated`；终态触发回调（配额释放接缝）。
+- `qap/orchestrator/runners.py`：模拟执行器（按 kind 缺省时长，
+  `QAP_SIM_STEP_SECONDS` 可缩放；`never_finish_step` 供超时负样本）。
+- 测试 24 用例（环/自环/重复 id 拒绝、3 步演示链、capacity=1 GPU 两步
+  串行不重叠、全局并行峰值 ≤ 上限、超时级联、offline 直接失败、容量等待、
+  独立分支存活、重试恢复、事件 seq 单调）。
+
 ## 前端 (Frontend)
 
 *本节由 `feat/frontend` 分支的开发切片维护更新：组件清单、页面说明、测试结果。*

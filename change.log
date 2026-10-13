@@ -4,6 +4,31 @@
 Removed + Validation（本切片测试结论）+ Known defects（已知缺陷）。
 日期为提交日（ISO 8601）。
 
+## 2026-10-13 S5 DAG 校验与并行调度器 (backend)
+
+### Added
+- `qap/orchestrator/dag.py`：validate_dag（重复 id / 未知依赖 / 自环 /
+  Kahn 拓扑检测成环——契约 §4 不变量 1 的权威实现）；StepSpec 提交期
+  结构性校验（depends_on 前序下标 ⊂ [0, 自身下标)，构造性排除环与
+  未知引用）；build_steps 生成全局唯一 s- id 并翻译依赖。
+- `qap/orchestrator/scheduler.py`：Scheduler——asyncio 编排循环（步骤完成
+  wake 事件即时推进 + poll_interval 轮询兜底）；kind→节点映射
+  classical→cpu / quantum→qpu / agent→gpu；容量暂满排队等待、无在线节点
+  直接失败；全局 max_parallel_steps 跨任务计数；step_timeout_seconds
+  超时（步 failed、下游级联 cancelled、独立分支照常完成）；
+  retry_failed_steps 每步单次重试；每次迁移发布全量 task.updated；
+  终态 on_task_finished 回调（租户配额释放接缝）；租约兜底释放。
+- `qap/orchestrator/runners.py`：simulate_step（按 kind 缺省时长，
+  QAP_SIM_STEP_SECONDS 环境变量缩放）与 never_finish_step（超时负样本）。
+- `qap/hardware/allocator.py`：新增 node_id_of(step_id) 查询。
+- 测试 24 用例。
+
+### Validation
+- `pytest`：150 passed。
+
+### Known defects
+- 无。
+
 ## 2026-10-13 S4 硬件注册表、容量分配器与利用率模拟器 (backend)
 
 ### Added

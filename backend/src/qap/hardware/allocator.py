@@ -121,6 +121,13 @@ class Allocator:
             if len(node.allocations) != before:
                 self._publish_update()
 
+    def node_id_of(self, step_id: str) -> str | None:
+        """查询某步骤的租约所在节点 id（调度器回填 Step.node_id 用）。"""
+        for node_id in self._registry.all_ids():
+            if any(a.step_id == step_id for a in self._registry.get(node_id).allocations):
+                return node_id
+        return None
+
     # ---------- 内部 ----------
 
     def _publish_update(self) -> None:
