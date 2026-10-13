@@ -187,6 +187,7 @@ export const zh: Record<string, string> = {
   'form.error.thinking': '思考程度必须是 off / low / high / max',
   'form.error.timeout': '超时必须为正整数',
 
+  'task.syntheticName': '任务 {id}',
   // —— 错误文案（store 层）——
   'error.boot': '初始化失败（未知错误）',
   'error.messagesLoad': '消息加载失败',

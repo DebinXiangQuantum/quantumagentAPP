@@ -185,7 +185,7 @@ export const useAppStore = create<AppDataState>((set, get) => {
           id: taskId,
           conversation_id: s.activeConversationId ?? '',
           tenant_id: '',
-          name: `任务 ${taskId}`,
+          name: t('task.syntheticName', { id: taskId }),
           status,
           steps,
           created_at: new Date().toISOString(),

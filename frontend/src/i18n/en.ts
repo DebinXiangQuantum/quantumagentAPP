@@ -185,6 +185,7 @@ export const en: Record<string, string> = {
   'form.error.thinking': 'Thinking level must be off / low / high / max',
   'form.error.timeout': 'Timeout must be a positive integer',
 
+  'task.syntheticName': 'Task {id}',
   // —— Error strings (store layer) ——
   'error.boot': 'Initialization failed (unknown error)',
   'error.messagesLoad': 'Failed to load messages',

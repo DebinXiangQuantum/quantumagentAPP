@@ -185,6 +185,7 @@ export const ja: Record<string, string> = {
   'form.error.thinking': '思考レベルは off / low / high / max のいずれか',
   'form.error.timeout': 'タイムアウトは正の整数',
 
+  'task.syntheticName': 'タスク {id}',
   // —— エラー文言（store 層）——
   'error.boot': '初期化に失敗しました（不明なエラー）',
   'error.messagesLoad': 'メッセージの読み込みに失敗',
