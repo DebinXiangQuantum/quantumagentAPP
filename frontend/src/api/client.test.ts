@@ -8,7 +8,7 @@
  *  4. 非 2xx 抛出带状态码的 ApiError（401/404/429 语义）。
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ApiError, nextBackoffMs, RestClient, buildStreamUrl } from './client';
+import { ApiError, nextBackoffMs, RestClient, buildStreamUrl, buildGlobalStreamUrl } from './client';
 
 describe('SSE 断线重连退避', () => {
   it('1s 起步、指数增长、30s 封顶', () => {
@@ -36,6 +36,20 @@ describe('流 URL 构建', () => {
     expect(buildStreamUrl('http://x', 'c-1', 42)).toBe(
       'http://x/api/v1/conversations/c-1/stream?after=42',
     );
+  });
+  it('EventSource 鉴权：会话流 URL 携带 api_key（与 after 共存，after 在前）', () => {
+    expect(buildStreamUrl('http://x', 'c-1', 42, 'demo-key')).toBe(
+      'http://x/api/v1/conversations/c-1/stream?after=42&api_key=demo-key',
+    );
+    expect(buildStreamUrl('http://x', 'c-1', null, 'demo-key')).toBe(
+      'http://x/api/v1/conversations/c-1/stream?api_key=demo-key',
+    );
+  });
+  it('全局流 URL：/api/v1/events?api_key=<key>，key 缺省时无查询串', () => {
+    expect(buildGlobalStreamUrl('http://x/', 'demo-key')).toBe(
+      'http://x/api/v1/events?api_key=demo-key',
+    );
+    expect(buildGlobalStreamUrl('http://x')).toBe('http://x/api/v1/events');
   });
 });
 
@@ -74,5 +88,36 @@ describe('RestClient 请求头与错误语义', () => {
     expect(err).toBeInstanceOf(ApiError);
     expect((err as ApiError).status).toBe(429);
     expect((err as ApiError).retryAfterSeconds).toBe(7);
+  });
+
+  it('后端错误体 {"error":{code,message}} 的业务消息透传到 ApiError', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            error: { code: 'quota_exceeded', message: '并发任务配额超限' },
+          }),
+          { status: 429, headers: { 'Retry-After': '3' } },
+        ),
+      ) as unknown as typeof fetch,
+    );
+    const client = new RestClient('http://backend', 'k');
+    const err = await client.listAgents().catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect((err as ApiError).message).toContain('并发任务配额超限');
+    expect((err as ApiError).message).toContain('quota_exceeded');
+  });
+
+  it('非 JSON 错误体（网关 502 HTML）退回通用文案，不抛解析异常', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('<html>bad gateway</html>', { status: 502 })),
+    );
+    const client = new RestClient('http://backend', 'k');
+    const err = await client.listAgents().catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ApiError);
+    expect((err as ApiError).status).toBe(502);
+    expect((err as ApiError).message).toContain('HTTP 502');
   });
 });

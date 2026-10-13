@@ -20,7 +20,8 @@ import type {
 export const TENANT: TenantInfo = {
   id: 'demo',
   name: 'Demo 租户',
-  usage: { concurrent_tasks: 1, messages_today: 24 },
+  enabled: true,
+  usage: { active_tasks: 1, messages_today: 24 },
   quota: { max_concurrent_tasks: 2, max_messages_per_day: 1000 },
 };
 

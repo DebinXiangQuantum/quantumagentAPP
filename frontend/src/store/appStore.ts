@@ -32,6 +32,13 @@ import type {
 /** 利用率滚动窗口：2s tick × 30 = 60s（design.md §6.4）。 */
 export const UTIL_HISTORY_CAP = 30;
 
+/** 乐观上屏用户消息的本地序号（真实 id 由后端落库，刷新后替换）。 */
+let localMessageSeq = 0;
+function nextLocalSeq(): number {
+  localMessageSeq += 1;
+  return localMessageSeq;
+}
+
 interface StreamingMessage {
   messageId: string;
   text: string;
@@ -294,13 +301,17 @@ export const useAppStore = create<AppDataState>((set, get) => {
       const trimmed = content.trim();
       if (!cid || trimmed.length === 0) return;
       const conv = get().conversations.find((c) => c.id === cid);
-      const ack = await getApi().sendMessage(cid, trimmed);
-      // 202 语义：立即上屏用户消息（SSE 增量属于 assistant）
+      await getApi().sendMessage(cid, trimmed);
+      // 202 语义（契约 §5 修订）：ack.message_id 是后端**预创建的 assistant
+      // 消息** id（SSE 增量归属者），绝不能用作本地用户消息 id——否则
+      // message.completed 的按 id 去重会把 assistant 消息连同 artifacts 吞掉。
+      // 用户消息用本地临时 id 上屏；刷新后以后端落库的真实消息为准。
+      const localUserId = `local-user-${nextLocalSeq()}`;
       set((s) => {
         const list = s.messagesByCid[cid] ?? [];
-        if (list.some((m) => m.id === ack.message_id)) return s;
+        if (list.some((m) => m.id === localUserId)) return s;
         const userMsg: Message = {
-          id: ack.message_id,
+          id: localUserId,
           conversation_id: cid,
           role: 'user',
           content: trimmed,

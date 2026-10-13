@@ -200,8 +200,13 @@ export function createMockClient(): MockClient {
   intervals.add(tick);
 
   // —— 脚本：按 agent 分发 ——
-  function runAssistantScript(cid: string, agentId: string, atBase: number): void {
-    const script = agentId === 'calibration' ? calibrationScript(cid) : agentId === 'echo' ? echoScript(cid) : vqeScript(cid);
+  function runAssistantScript(cid: string, agentId: string, atBase: number, assistantMsgId: string): void {
+    const script =
+      agentId === 'calibration'
+        ? calibrationScript(cid, assistantMsgId)
+        : agentId === 'echo'
+          ? echoScript(cid, assistantMsgId)
+          : vqeScript(cid, assistantMsgId);
     let t = atBase;
     for (const action of script) {
       t += action.atMs;
@@ -211,8 +216,7 @@ export function createMockClient(): MockClient {
   }
 
   /** 生成 VQE 演示脚本（ARCHITECTURE §10 完整链路）。返回相对动作序列。 */
-  function vqeScript(cid: string): TimedAction[] {
-    const msgId = nextId('m-');
+  function vqeScript(cid: string, msgId: string): TimedAction[] {
     const agentId = 'algorithm-designer';
     const text =
       '收到。正在为该问题启动 VQE 流水线：\n' +
@@ -359,8 +363,7 @@ export function createMockClient(): MockClient {
     return actions;
   }
 
-  function calibrationScript(cid: string): TimedAction[] {
-    const msgId = nextId('m-');
+  function calibrationScript(cid: string, msgId: string): TimedAction[] {
     const text =
       '收到校准请求。合成 DRAG 脉冲（σ=20ns，α=-0.32）并执行 RB 序列：' +
       '波形已输出，任务将先在 GPU 上完成批量预拟合，再上 QPU 执行随机编译序列。';
@@ -463,8 +466,7 @@ export function createMockClient(): MockClient {
     return actions;
   }
 
-  function echoScript(cid: string): TimedAction[] {
-    const msgId = nextId('m-');
+  function echoScript(cid: string, msgId: string): TimedAction[] {
     const text = '（echo）已收到你的消息。当前为 Mock 回显：无 artifact、无任务。';
     const chunks = chunkText(text, 5);
     const actions: TimedAction[] = chunks.map((delta, i) => ({
@@ -528,11 +530,11 @@ export function createMockClient(): MockClient {
     },
     async sendMessage(cid: string, content: string): Promise<SendMessageAck> {
       const conv = requireConversation(cid);
-      const msgId = nextId('m-');
+      const userId = nextId('m-');
       messagesByCid.set(cid, [
         ...(messagesByCid.get(cid) ?? []),
         {
-          id: msgId,
+          id: userId,
           conversation_id: cid,
           role: 'user',
           content,
@@ -541,10 +543,13 @@ export function createMockClient(): MockClient {
           created_at: nowIso(),
         },
       ]);
+      // 202 语义对齐后端：预创建 assistant 消息 id 并作为 message_id 返回
+      // （SSE 增量/完成事件归属它），脚本以该 id 流式输出。
+      const assistantId = nextId('m-');
       // 先取消遗留 running 任务（释放容量），再启动新脚本
       cancelLingeringTasks(80);
-      runAssistantScript(cid, conv.agent_id, 150);
-      return { message_id: msgId, run_id: nextId('r-') };
+      runAssistantScript(cid, conv.agent_id, 150, assistantId);
+      return { message_id: assistantId, run_id: nextId('r-') };
     },
     async listTasks(conversationId?: string | null): Promise<Task[]> {
       const list = conversationId

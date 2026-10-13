@@ -185,6 +185,11 @@ curl 走通 §10 链路——health 返回 `{"status":"ok"}`；创建会话+发�
 事件；全局流只含 task/hardware；利用率模拟器驱动 utilization∈[0,1]；
 未知会话流 404；免鉴权端点仅 health，无 Bearer 一律 401。
 
+**集成修订（2026-10-13，main）**：浏览器 `EventSource` 无法携带 Authorization
+头，`require_tenant` 增加 `?api_key=` 查询参数兜底（头缺失时生效，头存在时
+以头为准）；集成测试新增 4 用例（全局/会话流查询参数鉴权、坏参数 401、
+头优先级），全量 **223 passed**。契约 §5 已同步修订。
+
 ## 前端 (Frontend)
 
 *本节由 `feat/frontend` 分支的开发切片维护更新：组件清单、页面说明、测试结果。*
@@ -192,6 +197,14 @@ curl 走通 §10 链路——health 返回 `{"status":"ok"}`；创建会话+发�
 技术栈：React 18 + TypeScript(strict) + Vite + zustand + vitest；**无 UI 组件库、
 无 Tailwind、无图表库、无 webfont**（依赖白名单见 docs/DEVELOPMENT.md 与
 frontend/package.json）。
+
+**集成修订（2026-10-13，main）**：与真实后端联调对齐四处契约——① SSE 流 URL
+携带 `?api_key=`（`buildStreamUrl`/新增 `buildGlobalStreamUrl`）；②
+`TenantInfo` 字段对齐后端 `usage_snapshot`（`active_tasks`/`enabled`）；③
+`sendMessage` 乐观用户消息改用本地临时 id（202 的 `message_id` 是后端预创建
+assistant id，误用会在 completed 去重时吞掉 artifacts），mock 引擎同步对齐该
+语义；④ ApiError 解析后端 `{"error":{code,message}}` 业务消息。测试
+**84 passed**（新增 4），build 零错误。
 
 ### 组件清单（随切片增长）
 

@@ -100,9 +100,14 @@ wire format + Mock）、SSE 实时事件。
 
 ## 5. REST API v1 契约
 
-鉴权：除 `/health` 外均需 `Authorization: Bearer <api_key>`。
+鉴权：除 `/health` 外均需 `Authorization: Bearer <api_key>`；
+**SSE 修订**：浏览器 `EventSource` 无法携带自定义请求头（MDN 限制），故两个
+流端点在 Authorization 头**缺失**时接受 `?api_key=` 查询参数兜底（头存在时
+以头为准，不允许用参数"抢救"坏头）。已知权衡：查询参数可能进入访问日志，
+生产部署应换一次性 ticket 或 Cookie（§13）。
 错误：401 未知/缺失 Key；403 租户禁用；404 资源不存在且**不得跨租户访问**；
-422 请求体畸形；429 超配额（`Retry-After` 头，秒）。
+422 请求体畸形；429 超配额（`Retry-After` 头，秒）；错误体统一
+`{"error": {"code", "message"}}`。
 
 | 方法 | 路径 | 请求体 | 响应 |
 |---|---|---|---|
@@ -120,7 +125,10 @@ wire format + Mock）、SSE 实时事件。
 | GET | `/api/v1/events` | — | 全局 SSE（task/hardware 事件） |
 
 `POST …/messages` 语义：立即落库用户消息并返回 202，Agent 运行异步执行，
-产物经该会话 SSE 流推送（前端用返回的 `message_id` 归属增量）。
+产物经该会话 SSE 流推送。返回的 `message_id` 是后端**预创建的 assistant
+消息 id**（SSE 增量与完成事件的归属者）——前端不得将其用作本地用户消息 id
+（否则 `message.completed` 按 id 去重会吞掉 assistant 消息与 artifacts），
+用户消息应以本地临时 id 乐观上屏，刷新后以后端落库数据为准。
 
 ## 6. Artifact 契约（消息携带的可视化数据）
 

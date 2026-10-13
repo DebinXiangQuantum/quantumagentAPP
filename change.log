@@ -5,6 +5,33 @@ Validation（本切片测试结论）+ Known defects（已知缺陷，无则写�
 scope 与流程见 docs/DEVELOPMENT.md §2。
 
 
+## 2026-10-13 `integration: 前后端契约联调修复（SSE 鉴权/租户字段/202 语义/错误体）`
+
+### Fixed
+- 后端 `qap/api/deps.py`：Authorization 头缺失时接受 `?api_key=` 查询参数
+  （浏览器 EventSource 无法携带自定义头，MDN）；头存在时以头为准。
+- 前端 `api/client.ts`：会话流/全局流 URL 携带 api_key；ApiError 解析后端
+  `{"error":{code,message}}` 业务消息；`VITE_API_BASE` 可覆盖后端地址。
+- 前端 `types/domain.ts` + mock fixtures：`TenantInfo.usage.active_tasks`
+  /`enabled` 对齐后端 `usage_snapshot` 实际字段。
+- 前端 `store/appStore.ts` `sendMessage`：乐观用户消息改用本地临时 id——
+  后端 202 的 `message_id` 是预创建 assistant id，原实现会在
+  `message.completed` 按 id 去重时吞掉 assistant 消息与 artifacts。
+- mock 引擎 `sendMessage`/三个脚本：对齐后端 202 语义（返回预创建
+  assistant id，脚本以该 id 流式输出）。
+- `docs/ARCHITECTURE.md` §5：SSE 查询参数鉴权与 202 message_id 语义入契约。
+
+### Validation
+- 后端：TDD（先红后绿）——`TestSseQueryParamAuth` 4 用例（全局/会话流
+  查询参数鉴权 200+ping、坏参数 401、头优先不允许参数抢救坏头）；
+  全量 `pytest` **223 passed**。
+- 前端：`npm test` **84 passed**（新增流 URL 鉴权参数、全局流 URL、错误体
+  解析 3 组用例）；`npm run build` 零 TS 错误。
+
+### Known defects
+- 查询参数鉴权可能进入访问日志（原型接受，生产换一次性 ticket/Cookie）。
+
+
 ## 2026-10-13 `frontend: 样式文件拆分（global.css → states.css）`
 
 ### Changed

@@ -136,12 +136,13 @@ export interface HardwareNode {
   allocations: Allocation[];
 }
 
-/** GET /api/v1/tenants/me —— 租户信息 + 用量/配额（契约仅约定语义，字段取保守超集） */
+/** GET /api/v1/tenants/me —— 租户信息 + 用量/配额（字段名对齐后端 usage_snapshot） */
 export interface TenantInfo {
   id: string;
   name: string;
+  enabled: boolean;
   usage: {
-    concurrent_tasks: number;
+    active_tasks: number;
     messages_today: number;
   };
   quota: {

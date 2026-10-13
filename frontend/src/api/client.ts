@@ -53,10 +53,31 @@ export function nextBackoffMs(attempt: number): number {
   return Math.min(1000 * 2 ** a, 30_000);
 }
 
-/** 会话流 URL：/api/v1/conversations/{cid}/stream[?after=<seq>] */
-export function buildStreamUrl(base: string, cid: string, after: number | null): string {
-  const suffix = after !== null && Number.isFinite(after) ? `?after=${Math.max(0, Math.floor(after))}` : '';
+/**
+ * 会话流 URL：/api/v1/conversations/{cid}/stream[?after=<seq>&api_key=<key>]。
+ * api_key：EventSource 无法携带 Authorization 头（浏览器 API 限制，MDN），
+ * SSE 鉴权必须经查询参数兜底（后端契约 §5 修订，头存在时以头为准）。
+ */
+export function buildStreamUrl(
+  base: string,
+  cid: string,
+  after: number | null,
+  apiKey?: string,
+): string {
+  const params = new URLSearchParams();
+  if (after !== null && Number.isFinite(after)) {
+    params.set('after', String(Math.max(0, Math.floor(after))));
+  }
+  if (apiKey) params.set('api_key', apiKey);
+  const qs = params.toString();
+  const suffix = qs ? `?${qs}` : '';
   return `${base.replace(/\/+$/, '')}/api/v1/conversations/${encodeURIComponent(cid)}/stream${suffix}`;
+}
+
+/** 全局流 URL：/api/v1/events[?api_key=<key>]（鉴权同上，无 after 续传）。 */
+export function buildGlobalStreamUrl(base: string, apiKey?: string): string {
+  const suffix = apiKey ? `?api_key=${encodeURIComponent(apiKey)}` : '';
+  return `${base.replace(/\/+$/, '')}/api/v1/events${suffix}`;
 }
 
 /** 平台统一 API 面（真实后端与 Mock 实现同一契约）。 */
@@ -79,7 +100,9 @@ export interface ApiClient {
   openGlobalStream(cb: StreamCallbacks<GlobalStreamEvent>): StreamHandle;
 }
 
-const DEFAULT_BASE = 'http://127.0.0.1:8000';
+/** 后端地址：可用 VITE_API_BASE 覆盖（部署/联调），默认本机 8000。 */
+const DEFAULT_BASE =
+  (import.meta.env.VITE_API_BASE as string | undefined) ?? 'http://127.0.0.1:8000';
 const DEFAULT_KEY = 'demo-key';
 
 /** localStorage 键（允许演示时覆盖 Bearer，不写死在代码里）。 */
@@ -109,10 +132,22 @@ export class RestClient implements ApiClient {
       },
     });
     if (!res.ok) {
+      // 后端错误体为 {"error":{code,message}}（ARCHITECTURE §5）——优先取
+      // 业务消息；非 JSON 体（网关/代理错误）退回通用文案。
+      let message = `API ${path} 失败：HTTP ${res.status}`;
+      try {
+        const body = (await res.json()) as { error?: { code?: string; message?: string } };
+        if (body?.error?.message) {
+          const code = body.error.code ? `（${body.error.code}）` : '';
+          message = `${body.error.message}${code}`;
+        }
+      } catch {
+        /* 保留通用文案 */
+      }
       const retryAfter = res.headers.get('Retry-After');
       throw new ApiError(
         res.status,
-        `API ${path} 失败：HTTP ${res.status}`,
+        message,
         retryAfter !== null ? Number(retryAfter) : null,
       );
     }
@@ -170,12 +205,12 @@ export class RestClient implements ApiClient {
     after: number | null,
     cb: StreamCallbacks<ConversationStreamEvent>,
   ): StreamHandle {
-    return new ConversationStream(this.base, cid, after, cb);
+    return new ConversationStream(this.base, cid, after, cb, this.apiKey);
   }
 
   openGlobalStream(cb: StreamCallbacks<GlobalStreamEvent>): StreamHandle {
     return new ReconnectingStream(
-      () => `${this.base}/api/v1/events`,
+      () => buildGlobalStreamUrl(this.base, this.apiKey),
       ['task.updated', 'hardware.updated', 'error'],
       cb as StreamCallbacks<never>,
     );
@@ -257,16 +292,17 @@ class ReconnectingStream {
   }
 }
 
-/** 会话流：URL 携带 ?after=<lastSeq> 断线续传。 */
+/** 会话流：URL 携带 ?after=<lastSeq> 续传与 ?api_key= 鉴权（EventSource 限制）。 */
 class ConversationStream extends ReconnectingStream {
   constructor(
     base: string,
     cid: string,
     after: number | null,
     cb: StreamCallbacks<ConversationStreamEvent>,
+    apiKey: string,
   ) {
     super(
-      (seq) => buildStreamUrl(base, cid, seq),
+      (seq) => buildStreamUrl(base, cid, seq, apiKey),
       ['message.delta', 'message.completed', 'error'],
       cb as StreamCallbacks<never>,
       after,

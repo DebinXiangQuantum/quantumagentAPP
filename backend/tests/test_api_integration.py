@@ -244,6 +244,62 @@ class TestBasics:
         assert body["quota"]["max_concurrent_tasks"] == 2
 
 
+class TestSseQueryParamAuth:
+    """SSE 查询参数鉴权兜底。
+
+    动机：浏览器 ``EventSource`` API 不支持自定义请求头（MDN），前端无法在
+    SSE 订阅上携带 ``Authorization: Bearer``；契约 §5 修订——Authorization
+    头缺失时接受 ``?api_key=`` 查询参数兜底。头存在时仍以头为准（权威性）。
+
+    注意：read_sse 的 ``headers or DEMO_HEADERS`` 会把空 dict 当"未传"回退，
+    故用哑头显式覆盖以构造"无 Authorization"的 scope。
+    """
+
+    #: 哑头：使 read_sse 不回退默认鉴权头，真实模拟 EventSource 场景
+    NO_AUTH_HEADERS = {"X-Sse-Test": "eventsource"}
+
+    async def test_global_stream_with_query_param_only(self, bundle: ClientBundle) -> None:
+        frames = await read_sse(
+            bundle,
+            "/api/v1/events?api_key=demo-key",
+            headers=self.NO_AUTH_HEADERS,
+            until=lambda fs: any(f.event == "ping" for f in fs),
+        )
+        assert any(f.event == "ping" for f in frames)
+
+    async def test_conversation_stream_with_query_param_only(
+        self, bundle: ClientBundle
+    ) -> None:
+        created = await bundle.http.post(
+            "/api/v1/conversations",
+            headers=DEMO_HEADERS,
+            json={"agent_id": "echo", "title": "qp-auth"},
+        )
+        cid = created.json()["id"]
+        frames = await read_sse(
+            bundle,
+            f"/api/v1/conversations/{cid}/stream?api_key=demo-key",
+            headers=self.NO_AUTH_HEADERS,
+            until=lambda fs: any(f.event == "ping" for f in fs),
+        )
+        assert any(f.event == "ping" for f in frames)
+
+    async def test_wrong_query_param_key_401(self, bundle: ClientBundle) -> None:
+        response = await bundle.http.get("/api/v1/events?api_key=wrong-key")
+        assert response.status_code == 401
+        assert response.json()["error"]["code"] == "unauthorized"
+
+    async def test_header_takes_precedence_over_query_param(
+        self, bundle: ClientBundle
+    ) -> None:
+        # 头与参数同时存在但头无效：以头为准 → 401（不允许用参数"抢救"坏头）
+        response = await bundle.http.get(
+            "/api/v1/events?api_key=demo-key",
+            headers={"Authorization": "Bearer wrong-key"},
+        )
+        assert response.status_code == 401
+
+
 # ---------- 会话 CRUD ----------
 
 class TestConversations:
