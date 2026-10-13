@@ -39,6 +39,27 @@ model = "claude-sonnet-4-5"
 base_url = "https://api.anthropic.com"
 api_key_env = "ANTHROPIC_API_KEY"
 timeout_seconds = 120
+default_thinking = "off"
+
+# ----- GLM 渠道池（OpenAI 兼容；实测 2026-10-13，thinking.type 支持
+# enabled/disabled/low/high/max；glm-5.3 系不接受 disabled，思考增量走
+# delta.reasoning_content）。密钥从环境变量 GLM_API_KEY 读取。 -----
+
+[models.glm-5.3-flash]
+provider = "openai"
+model = "glm-5.3-flash"
+base_url = "https://open.bigmodel.cn/api/paas/v4"
+api_key_env = "GLM_API_KEY"
+timeout_seconds = 180
+default_thinking = "low"
+
+[models.glm-5.3]
+provider = "openai"
+model = "glm-5.3"
+base_url = "https://open.bigmodel.cn/api/paas/v4"
+api_key_env = "GLM_API_KEY"
+timeout_seconds = 300
+default_thinking = "high"
 
 [models.openai-compatible]
 provider = "openai"
@@ -46,20 +67,27 @@ model = "gpt-4o-mini"
 base_url = "https://api.openai.com/v1"
 api_key_env = "OPENAI_API_KEY"
 timeout_seconds = 120
+default_thinking = "off"
 
 [models.mock]
 provider = "mock"
 model = "scripted-demo"
+default_thinking = "off"
 
 # -----------------------------------------------------------------------------
 # Agent 运行时与内置演示插件
 # -----------------------------------------------------------------------------
 
 [agents]
-# 未显式绑定模型时使用的模型引用（指向 [models.<key>]）
+# 未显式绑定模型时使用的模型引用（指向 [models.<key>]）。
+# 本机真实运行 GLM：在 config.local.toml（gitignored）覆盖为 "glm-5.3-flash"。
 default_model_ref = "default"
-# 可选：外部插件目录（如 pulseagent 所在目录；为空则仅加载内置插件）
-plugins_dir = ""
+# 插件安装目标目录（运行时安装内容，gitignored；管理平台"插件管理"写入此处）
+plugins_dir = "plugins"
+
+[agents.builtin.orchestrator]
+enabled = true
+model_ref = "default"
 
 [agents.builtin.algorithm-designer]
 enabled = true

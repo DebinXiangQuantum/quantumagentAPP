@@ -45,3 +45,6 @@ secrets/
 
 # ---- 临时 worktree 目录（若放在仓库内）----
 .worktrees/
+
+# ---- 运行时安装的插件目录（管理平台安装目标，ARCHITECTURE §8 v1.1）----
+/plugins/

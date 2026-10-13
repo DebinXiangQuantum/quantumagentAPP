@@ -56,6 +56,21 @@ wire format + Mock）、SSE 实时事件。
 `scheduler.{max_parallel_steps,step_timeout_seconds,retry_failed_steps}` ·
 `tenancy.{default_tenant, tenants[].{id,name,api_key,max_concurrent_tasks,max_messages_per_day}}`
 
+**v1.1 渠道池与本地覆盖**：
+- `[models.<ref>]` 新增可选键 `default_thinking`（`"off"|"low"|"high"|"max"`，
+  缺省 `"high"`）——该渠道的默认思考程度；主页/每条消息可再覆盖。
+- **加载顺序 = 配置覆盖（overlay）**：`config.toml`（提交入库的默认渠道池）为
+  基底，若存在 `config.local.toml`（**已被 .gitignore 排除**）则深合并覆盖其上
+  （models 字典按键覆盖/新增、标量直接覆盖）。管理平台（§5 admin API）的
+  "提供商渠道"编辑即写回 `config.local.toml`——因此**内联 api_key 只会落在
+  该 gitignored 文件**，仓库永不出现密钥。
+- GLM 渠道（OpenAI 兼容，实测 2026-10-13）：base_url
+  `https://open.bigmodel.cn/api/paas/v4`，密钥经 `api_key_env = "GLM_API_KEY"`
+  从环境读取；可用模型实测含 glm-4.5/4.5-air/4.6/4.7/5/5-turbo/5.1/5.2/
+  **5.3/5.3-flash/5.3-flashx**。思考控制 `thinking.type ∈ {enabled,disabled,
+  low,high,max}`；**glm-5.3 系列不接受 disabled**（服务端错误码 1210），其
+  思考内容以流式 `delta.reasoning_content` 增量返回（OpenAI 扩展字段）。
+
 ## 4. 领域模型（序列化 JSON 契约）
 
 ```jsonc
@@ -64,12 +79,16 @@ wire format + Mock）、SSE 实时事件。
   "capabilities": ["problem-modeling","circuit-synthesis"], "model_ref": "default",
   "builtin": true }
 
-// Conversation / Message
-{ "id": "c-1", "title": "…", "agent_id": "algorithm-designer",
+// Conversation / Message（v1.1：agent_id 可缺省 = "orchestrator" 编排入口；
+// Message 新增 reasoning 字段承载思考过程全文，可为空串）
+{ "id": "c-1", "title": "…", "agent_id": "orchestrator",
   "tenant_id": "demo", "created_at": "2026-10-13T06:00:00Z" }
 { "id": "m-7", "conversation_id": "c-1", "role": "user"|"assistant",
-  "content": "文本", "agent_id": "algorithm-designer",
+  "content": "文本", "reasoning": "思考过程文本（可为空串）",
+  "agent_id": "orchestrator",
   "artifacts": [ /* Artifact[]，见 §6 */ ], "created_at": "…" }
+
+// ThinkingLevel —— 思考程度（v1.1）："off" | "low" | "high" | "max"
 
 // Task / Step —— 编排单位
 { "id": "t-1", "conversation_id": "c-1", "tenant_id": "demo", "name": "VQE 全流程",
@@ -115,9 +134,27 @@ wire format + Mock）、SSE 实时事件。
 | GET | `/api/v1/agents` | — | `AgentInfo[]` |
 | GET | `/api/v1/tenants/me` | — | 租户信息 + 用量/配额 |
 | GET | `/api/v1/conversations` | query: `?limit=` | `Conversation[]` |
-| POST | `/api/v1/conversations` | `{"agent_id":"…","title":"…"}` | `Conversation`(201) |
+| POST | `/api/v1/conversations` | `{"title":"…"}`（`agent_id` 可选，缺省 `orchestrator`） | `Conversation`(201) |
 | GET | `/api/v1/conversations/{cid}` | — | `Conversation` + `messages: Message[]` |
-| POST | `/api/v1/conversations/{cid}/messages` | `{"content":"…"}` | `202 {"message_id","run_id"}` |
+| POST | `/api/v1/conversations/{cid}/messages` | `{"content":"…","model_ref":"glm-5.3-flash","thinking_level":"high"}`（后两项可选覆盖） | `202 {"message_id","run_id"}` |
+| GET | `/api/v1/admin/models` | — | `{"models": ModelChannel[]}`（v1.1 管理平台渠道池） |
+| PUT | `/api/v1/admin/models/{ref}` | `ModelChannelInput` | `ModelChannel`(200)，并持久化到 `config.local.toml` |
+| DELETE | `/api/v1/admin/models/{ref}` | — | `204`（删除本地覆盖渠道；基底渠道不可删 → 409） |
+
+**v1.1 ModelChannel（渠道池条目，密钥脱敏）**：
+
+```jsonc
+// GET 返回（绝不回传密钥明文，只报"是否已设置"）
+{ "ref": "glm-5.3-flash", "provider": "openai", "model": "glm-5.3-flash",
+  "base_url": "https://open.bigmodel.cn/api/paas/v4",
+  "api_key_env": "GLM_API_KEY",      // 与 api_key_inline 二选一（见 PUT）
+  "has_api_key": true,                // env 已解析到非空值，或本地文件内联了密钥
+  "default_thinking": "high", "timeout_seconds": 120 }
+// PUT 请求体（ModelChannelInput）：上字段除 has_api_key 外均可写；
+// 额外接受 "api_key_inline": "<明文>" —— 只写入 config.local.toml，响应与
+// GET 中同样只体现为 has_api_key: true。provider ∈ openai|anthropic|mock，
+// default_thinking ∈ off|low|high|max，非法值 422。
+```
 | GET | `/api/v1/conversations/{cid}/stream` | query: `?after=<eventId>` | SSE 流（§7） |
 | GET | `/api/v1/tasks` | query: `?conversation_id=` | `Task[]` |
 | GET | `/api/v1/tasks/{tid}` | — | `Task` |
@@ -165,7 +202,8 @@ wire format + Mock）、SSE 实时事件。
 | event | data 载荷 |
 |---|---|
 | `message.delta` | `{conversation_id, message_id, delta, seq}` |
-| `message.completed` | `{conversation_id, message_id, artifacts}` |
+| `message.reasoning` | `{conversation_id, message_id, delta, seq}`（v1.1：思考过程增量，先于正文 delta 到达） |
+| `message.completed` | `{conversation_id, message_id, artifacts, reasoning}`（reasoning 为思考全文，可为空串） |
 | `task.updated` | `{task_id, status, steps}`（每次状态迁移全量推送该 Task） |
 | `hardware.updated` | `{nodes}`（利用率/分配变化时推送全量节点） |
 | `error` | `{code, message}`（如 provider 超时、步骤失败摘要） |
@@ -187,9 +225,30 @@ class AgentPlugin(Protocol):
 - 清单对齐 [agent-plugins.org schema 1.0.0](https://agent-plugins.org/schemas/1.0.0/plugin.schema.json)
   （与 pulseagent/plugin.json 同构）：外部插件目录（`agents.plugins_dir`）下含
   `plugin.json` + Python 入口即被发现加载；原型阶段外部加载可先抛"未实现"。
+- **v1.1 内置编排 Agent（`orchestrator`）**：会话不再要求用户选择具体 Agent
+  （`agent_id` 缺省即 orchestrator）。其系统提示描述平台能力与可用专家清单，
+  由模型按任务自主决定调用哪个专家；独占平台工具 `dispatch_agent`。
+- **v1.1 插件安装机制（对齐 pi agent 的扩展加载范式；pi 为 TS 扩展目录自动
+  发现，本平台为 Python 等价物）**：
+  - 安装目标目录 = `agents.plugins_dir`（缺省 `./plugins/`，**gitignored**，
+    运行时安装内容不入库）；安装 = 复制来源目录（本地路径）到目标目录。
+  - `plugin.json`（agent-plugins.org 1.0.0 基础字段 name/version/description）
+    扩展键 `"qap": {"entry": "<module>:<factory>"}`——`importlib` 导入工厂
+    函数（签名 `() -> AgentPlugin`，抛异常则该插件注册为 broken 并在 API
+    返回错误详情，**不拖垮平台**）。
+  - 管理端点：`POST /api/v1/admin/plugins/install {"source_path": "…"}`
+    （重名 409；清单缺失/entry 无法导入 → 422 带原因）；
+    `GET /api/v1/admin/plugins`（含 builtin 与 installed、enabled、broken 原因）；
+    `PUT /api/v1/admin/plugins/{id} {"enabled": bool}`（状态持久化到
+    config.local.toml `[agents.plugin_state]`）；`DELETE …/{id}` 卸载
+    （builtin → 409）。
+  - 启动时自动扫描 plugins_dir 并按持久化状态恢复 enabled/disabled。
 - **平台级工具**（所有 Agent 可用，Runtime 注入）：
   `emit_artifact(artifact)` 附加可视化产物到当前消息；`submit_task(name, steps)`
-  提交 DAG；`query_hardware()` 返回节点与分配。
+  提交 DAG；`query_hardware()` 返回节点与分配；
+  **`dispatch_agent(agent_id, instruction)`（v1.1，仅 orchestrator）**——以目标
+  专家 Agent 的 system_prompt+tools 运行一次子推理，返回其回复文本与 artifacts
+  （自动附加到当前消息）；**嵌套深度 = 1**（子 Agent 不可再 dispatch，防递归）。
 - Runtime 工具循环：`system_prompt + 历史 → provider 流式 → tool_call → 执行 →
   回填 → 直至纯文本`；每轮 text delta 实时进 SSE。
 
@@ -203,9 +262,23 @@ class LLMProvider(Protocol):
 
 | provider | 端点 | 鉴权/头 | 流式解析要点 |
 |---|---|---|---|
-| `openai` | `POST {base_url}/chat/completions`，`stream:true` | `Authorization: Bearer $KEY` | SSE `data:` 行 → `choices[0].delta.content` 与 `delta.tool_calls`（增量拼接 arguments） |
-| `anthropic` | `POST {base_url}/v1/messages`，`stream:true` | `x-api-key`、`anthropic-version: 2023-06-01` | 事件 `content_block_delta`（`text_delta` / `input_json_delta` 拼接工具入参） |
-| `mock` | 进程内 | — | 脚本化：演示场景依次产出 text/tool_call，驱动 §10 全链路 |
+| `openai` | `POST {base_url}/chat/completions`，`stream:true` | `Authorization: Bearer $KEY` | SSE `data:` 行 → `choices[0].delta.content` 与 `delta.tool_calls`（增量拼接 arguments）；**v1.1：`delta.reasoning_content`（GLM/DeepSeek 式思考增量）→ `thought_delta` 事件** |
+| `anthropic` | `POST {base_url}/v1/messages`，`stream:true` | `x-api-key`、`anthropic-version: 2023-06-01` | 事件 `content_block_delta`（`text_delta` / `input_json_delta` 拼接工具入参；`thinking_delta` → `thought_delta`） |
+| `mock` | 进程内 | — | 脚本化：演示场景依次产出 reasoning/text/tool_call，驱动 §10 全链路 |
+
+**v1.1 思考程度（ThinkingLevel）→ 请求参数映射**（归一化枚举 `off|low|high|max`）：
+
+| ThinkingLevel | openai 兼容（GLM） | anthropic |
+|---|---|---|
+| `off` | `thinking: {"type":"disabled"}`（GLM-5.3 系拒绝，服务端错误码 1210 会透传为 error 事件） | 不发送 thinking 块 |
+| `low` | `{"type":"low"}` | `thinking: {"type":"enabled","budget_tokens":2048}` |
+| `high` | `{"type":"high"}` | `… budget_tokens:8192` |
+| `max` | `{"type":"max"}` | `… budget_tokens:16384` |
+
+取值优先级：消息级 `thinking_level` > 会话/请求 `model_ref` 渠道的
+`default_thinking` > `"high"`。`ProviderEvent` 新增 `thought_delta{text}`
+（思考增量），Runtime 将其作为 `message.reasoning` SSE 事件转发并累加入
+`Message.reasoning` 全文。
 
 测试策略：openai/anthropic 两个 provider 的解析逻辑用 httpx `MockTransport`
 回放**规范样例与畸形样例**（非法 JSON 行、流中断、非 200），不发真实网络请求。

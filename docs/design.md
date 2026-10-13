@@ -40,6 +40,43 @@
 Node `kind` → `gpu=accent-cyan`、`qpu=accent-violet`、`cpu=text-secondary`。
 对比度要求：正文对 `--bg-surface` ≥ 7:1，次级 ≥ 4.5:1（WCAG AA/AAA）。
 
+### §2.1 多主题（v1.1：浅色 / 深色 / 护眼，`<html data-theme="…">` 切换）
+
+深色为默认（上表）；浅色与护眼（sepia）**只覆盖颜色 token**，几何/字号/间距
+token 三主题共用。实现于 `tokens.ts` 的 `buildTokenCss()`：输出
+`:root{…}`（=dark）+ `[data-theme="light"]{…}` + `[data-theme="sepia"]{…}`。
+所有组件继续只引用 `var(--*)`（既有铁律），SVG 可视化同理——主题天然全局生效。
+
+| token | light | sepia（护眼） |
+|---|---|---|
+| `--bg-base` | `#F5F7FA` | `#F5F0E1` |
+| `--bg-surface` | `#FFFFFF` | `#FBF7EC` |
+| `--bg-elevated` | `#FFFFFF` | `#FFFCF2` |
+| `--bg-inset` | `#EEF1F6` | `#EFE7D2` |
+| `--border-default` | `#D9DFEA` | `#E0D5B8` |
+| `--border-strong` | `#C6CFDE` | `#CBBE9C` |
+| `--text-primary` | `#1F2733` | `#3E3A2F` |
+| `--text-secondary` | `#5A6577` | `#6E6753` |
+| `--text-faint` | `#8B95A6` | `#998F76` |
+| `--accent-cyan` | `#0E8A9E` | `#2A7F8F` |
+| `--accent-violet` | `#6C5CE7` | `#7B6FD0` |
+| `--success` | `#1F9D66` | `#4E8A52` |
+| `--warning` | `#C77F1D` | `#B07C28` |
+| `--danger` | `#D24E4E` | `#B5544A` |
+| `--info` | `#2E7CD6` | `#3D6FA8` |
+
+浅色/护眼下阴影降为 `0 1px 2px rgba(15,23,42,.08)` 档（`--shadow-1/2` 同名
+覆盖）；对比度门槛同 §2（正文 ≥7:1、次级 ≥4.5:1，两套新主题逐一达标）。
+
+### §2.2 多语言（v1.1：中文 / English / 日本語）
+
+- 轻量自研 i18n：`src/i18n/`（`zh.ts`/`en.ts`/`ja.ts` 字典 + `t(key, params?)`），
+  不引入 i18next 等重依赖；语言存 uiStore + localStorage，切换即时生效。
+- **只覆盖界面 chrome 文案**（顶栏/侧栏/设置页/空态/按钮/标签/主题名等）；
+  用户与 Agent 产生的内容（消息、任务名、Artifact 标题）不做翻译。
+- 字体栈三语言通用（微软雅黑/Arial + PingFang SC；日文回退到系统日文字体，
+  栈尾 sans-serif 兜底已覆盖）；等宽/衬线用途不变。
+
 ## 3. 字体（用户指定，逐字执行）
 
 ```css
@@ -66,21 +103,45 @@ Node `kind` → `gpu=accent-cyan`、`qpu=accent-violet`、`cpu=text-secondary`�
   `--shadow-2: 0 8px 24px rgba(0,0,0,.45), 0 0 0 1px rgba(255,255,255,.04)`。
 - z-index 阶：`--z-base:0 / --z-sticky:10 / --z-drawer:100 / --z-toast:200`。
 
-## 5. 布局（三栏 + 顶栏）
+## 5. 布局（三栏 + 顶栏，v1.1 修订）
 
 ```
-┌──────────────────────── 56px 顶栏：产品名 · 当前 Agent · 租户 · 连接状态 ───────────────┐
+┌──────── 56px 顶栏：产品名 · 模型选择器 · 思考程度 · 租户 · 连接状态 ────────────────┐
 ├──────────┬──────────────────────────────────────┬──────────────────────────┤
 │ 会话侧栏   │            对话区（流体，max 820px）      │  检查器 360px（可折叠）      │
-│ 264px    │  消息流 · Artifact 卡片 · 流式光标        │  Tab: 硬件拓扑│任务 DAG      │
+│ 264px    │  消息流（含思考过程折叠块）· Artifact 卡片  │  Tab: 硬件拓扑│任务 DAG      │
 │ (可折叠)   │  ─────────────────────────────        │  （详情抽屉从右滑入）        │
-│          │  输入区：多行 + 发送(⏎) + Agent 快捷切换    │                          │
+│ 底部:     │  输入区：多行 + 发送(⏎)                  │                          │
+│ ⚙ 设置    │                                      │                          │
 └──────────┴──────────────────────────────────────┴──────────────────────────┘
 ```
 
+- **v1.1 顶栏**：移除 Agent 选择器（编排 Agent 自动调度，用户不选）；改为
+  **模型选择器**（渠道池列表）+ **思考程度选择器**（off/low/high/max，
+  跟随所选渠道 default_thinking）；两者随消息发送（`model_ref`/`thinking_level`）。
+- **v1.1 侧栏底部设置入口**：齿轮 + 「设置/Settings/設定」→ 设置页覆盖左栏+对话区
+  （检查器保留），含三个分区：
+  1. **外观**：主题（浅色/深色/护眼，三选一卡片即时预览）+ 语言（中/EN/JA）；
+  2. **模型与思考**：默认模型、默认思考程度（全局默认，写入偏好）；
+  3. **提供商渠道**（admin API）：渠道列表（ref/provider/model/base_url/
+     密钥已设置√/default_thinking）+ 新建/编辑表单（api_key 仅写入框，
+     保存后永不回显）；
+  4. **插件管理**（v1.1）：已装插件列表（名称/版本/启用开关/来源 builtin·installed/
+     broken 原因）+ 「安装插件」（输入本地 source_path 调 install）+ 卸载。
 - 断点：<1280px 检查器浮层化；<960px 侧栏抽屉化；不追求移动端（科学工具）。
 - 对话气泡：用户右对齐 `--bg-elevated`；助手左对齐无底色、以头像+细分隔线分组；
+  **思考过程（v1.1）**：助手消息顶部"🧠 思考过程"折叠块（默认收起，一行摘要+
+  chevron；展开后 mono/caption、--text-secondary、max-height 240px 内滚动）；
   Artifact 卡片通栏，带类型徽标（线路/计数/波形）与展开收起。
+
+### §5.1 截断与压缩规则（v1.1 修订——修复"标题被压缩看不见"）
+
+- 长文本容器一律 `{min-width: 0; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap}`（单行）或 `-webkit-line-clamp`（多行）；flex 子项必须
+  `min-width: 0`，否则被压缩到 0 宽不可见（本次边栏/DAG 的根因）。
+- **DagView 节点（v1.1）**：宽 232px、高 76px；名称最多 2 行（line-clamp:2），
+  id/节点号单行截断；任务标题（header）`min-width: 0` + 截断，徽标不换行。
+- **会话侧栏条目**：标题单行截断 + `min-width: 0`；副行同。
 
 ## 6. 可视化组件规范（全部手写 SVG，禁用图表库）
 
