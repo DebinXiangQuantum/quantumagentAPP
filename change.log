@@ -4,6 +4,41 @@
 Removed + Validation（本切片测试结论）+ Known defects（已知缺陷）。
 日期为提交日（ISO 8601）。
 
+## 2026-10-13 S6 三种 LLM Provider 流式解析 (backend)
+
+### Added
+- `qap/agents/providers/base.py`：CompletionRequest（provider 无关中间
+  消息表示，含 tool_calls/tool 记录）/ ProviderEvent 四态 / LLMProvider
+  Protocol；约定：错误一律事件化（ProviderErrorEvent 后流终止、无
+  TurnCompleted），绝不向调用方抛网络异常。
+- `qap/agents/providers/openai_provider.py`：chat/completions 流式解析
+  ——delta.content 文本增量；delta.tool_calls 按 index 分片拼接
+  arguments（name 首片出现）；[DONE] 与 finish_reason 终止语义；
+  非 200（附体摘要）/非法 JSON 行/流中断 → ProviderErrorEvent。
+- `qap/agents/providers/anthropic_provider.py`：messages 流式解析——
+  content_block_start(tool_use) 打开累积器；content_block_delta 的
+  text_delta 与 input_json_delta(partial_json) 逐片拼接；
+  content_block_stop 产出完整 ToolCall；message_delta.stop_reason /
+  message_stop 终止；x-api-key + anthropic-version 头；中间表示 →
+  tool_use/tool_result 块翻译。
+- `qap/agents/providers/mock_provider.py`：剧本化 provider（agent_id →
+  轮列表，run_key 游标推进，轮内 text/tool/error 脚本项）；内置 §10
+  演示剧本（VQE 文本 + emit_artifact(circuit) + emit_artifact(counts) +
+  submit_task(3 步链式 DAG) + 收束文本）、calibration 波形剧本、echo
+  回声、剧本耗尽回退；default_demo_artifacts() 供联调。
+- `qap/agents/providers/sse.py`：SSE 行折叠共用工具（event/data 行）。
+- `qap/agents/providers/factory.py`：create_provider（密钥闭包调用时读
+  环境变量；transport 可注入供 MockTransport 回放）。
+- 测试 25 用例：openai/anthropic 规范与畸形样例回放（非法 JSON、非 200、
+  流中断、密钥缺失、请求体形状与鉴权头）、mock 剧本推进/run_key 隔离/
+  演示产物载荷自证/故障注入。
+
+### Validation
+- `pytest`：175 passed。
+
+### Known defects
+- 无。
+
 ## 2026-10-13 S5 DAG 校验与并行调度器 (backend)
 
 ### Added

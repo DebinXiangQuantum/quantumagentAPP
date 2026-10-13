@@ -125,6 +125,23 @@ GET /tenants/me 的用量视图。测试 15 用例（含时钟注入的跨日重
   串行不重叠、全局并行峰值 ≤ 上限、超时级联、offline 直接失败、容量等待、
   独立分支存活、重试恢复、事件 seq 单调）。
 
+**S6（三 Provider 流式解析）**：`qap/agents/providers/`
+- `base.py`：CompletionRequest（provider 无关中间消息表示）/ ProviderEvent
+  四态（TextDelta / ToolCall / ProviderErrorEvent / TurnCompleted）/ LLMProvider
+  Protocol；错误一律事件化，绝不外抛网络异常。
+- `openai_provider.py`：chat/completions 流式——`delta.content` 文本增量、
+  `delta.tool_calls` 按 index 分片拼接 arguments、`[DONE]`/finish_reason 终止；
+  非 200/非法 JSON/流中断 → ProviderErrorEvent。
+- `anthropic_provider.py`：messages 流式——`content_block_delta` 的
+  text_delta 与 input_json_delta 拼接、content_block_stop 产完整 ToolCall、
+  message_stop 终止；x-api-key + anthropic-version 头；tool_result 块翻译。
+- `mock_provider.py`：剧本化（agent_id → 轮列表，run_key 推进游标），内置
+  §10 演示剧本（文本 + emit_artifact(circuit/counts) + submit_task(3 步 DAG)
+  + 收束文本）、calibration 波形剧本、echo 回声、error 注入。
+- `factory.py`：ModelConfig → Provider；密钥闭包"调用时读环境变量"。
+- 测试 25 用例（规范/畸形样例回放、头与请求体形状、剧本推进与隔离、
+  演示产物载荷自证）。
+
 ## 前端 (Frontend)
 
 *本节由 `feat/frontend` 分支的开发切片维护更新：组件清单、页面说明、测试结果。*
