@@ -101,6 +101,11 @@ frontend/package.json）。
   `MessageInput`（Enter 发送 / Shift+Enter 换行 / Agent 快捷切换）、
   `StreamingCursor`（530ms 闪烁光标）、`ArtifactCard`（类型徽标+展开收起，
   未知/畸形 type 降级为原始 JSON 视图，永不崩溃）。
+- `src/components/viz/` —— 可视化渲染器（全部手写 SVG，禁图表库）：
+  `CircuitCanvas`（qubit 横线等距编号、格点门 44×36、CNOT 控制点+⊕、MEASURE
+  表针、悬停 tooltip、列压缩无空列、>32 qubits 截断）、`CountsHistogram`
+  （归一化不变量 max 条高==绘图高、160ms 条形生长、hover 计数/占比、降序排列、
+  空/畸形降级）、`WaveformCanvas`（I/Q 多通道折线 + 图例）。
 - 响应式：<1280px 检查器浮层化；<960px 侧栏抽屉化（`src/styles/layout.css`）。
 
 ### 运行
@@ -113,12 +118,12 @@ npm run dev            # 开发服务器（5173），连接 http://127.0.0.1:800
 VITE_USE_MOCK=1 npm run dev   # Mock 模式：后端未启动也可完整演示
 ```
 
-### 测试结果（S3 后）
+### 测试结果（S4 后）
 
-`npm test`：8 个文件 42 个用例全绿（+13：Artifact 降级 5 / 输入键盘 4 / 对话区 4）。
+`npm test`：11 个文件 54 个用例全绿（+12：线路 6 / 直方图 4 / 波形 2）。
 `npm run build`：零 TS 错误。
 
-（进行中：S4 线路与直方图渲染器 / S5 DAG 与硬件拓扑。）
+（进行中：S5 DAG 与硬件拓扑 / S6 打磨。）
 
 ## References
 

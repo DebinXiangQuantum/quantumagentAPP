@@ -1,0 +1,153 @@
+/**
+ * viz.css —— 可视化组件公共样式（线路/直方图/波形，design.md §6）。
+ * 约束：颜色一律 var(--*)；SVG 描边/填充类在此集中定义。
+ */
+
+/* 提示条（截断/丢弃/空态/错误） */
+.viz-note {
+  padding: var(--space-8) var(--space-12);
+  font-size: var(--fs-caption);
+  color: var(--text-secondary);
+  background: var(--bg-inset);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+}
+.viz-note--error {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+/* 悬浮 tooltip（线路/直方图共用） */
+.viz-tooltip {
+  position: absolute;
+  z-index: var(--z-sticky);
+  padding: var(--space-4) var(--space-8);
+  font-size: var(--fs-caption);
+  color: var(--text-primary);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-1);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+/* ============ 线路 ============ */
+.circuit-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+}
+.circuit-scroll {
+  position: relative;
+  overflow-x: auto;
+  padding: var(--space-4) 0;
+}
+.circuit-wire {
+  stroke: var(--border-strong);
+  stroke-width: 1.4;
+}
+.circuit-qubit-label {
+  font-size: var(--fs-caption);
+  fill: var(--text-secondary);
+}
+.circuit-gate-label {
+  font-size: var(--fs-caption);
+  fill: var(--text-primary);
+}
+.circuit-box {
+  fill: var(--bg-elevated);
+  stroke: var(--accent-violet);
+  stroke-width: 1.4;
+}
+.circuit-gate:hover .circuit-box {
+  stroke: var(--accent-cyan);
+  fill: var(--bg-inset);
+}
+.circuit-stroke-violet {
+  stroke: var(--accent-violet);
+}
+.circuit-fill-violet {
+  fill: var(--accent-violet);
+}
+.circuit-stroke-accent {
+  stroke: var(--accent-cyan);
+}
+
+/* ============ 直方图 ============ */
+.counts-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+}
+.counts-subtitle {
+  font-size: var(--fs-caption);
+  color: var(--text-secondary);
+}
+.counts-subtitle__value {
+  color: var(--text-primary);
+}
+.counts-scroll {
+  position: relative;
+  overflow-x: auto;
+  padding: var(--space-4) 0;
+}
+.counts-grid {
+  stroke: var(--border-default);
+  stroke-width: 1;
+}
+.counts-axis {
+  stroke: var(--border-strong);
+  stroke-width: 1.2;
+}
+.counts-axis-label {
+  font-size: var(--fs-caption);
+  fill: var(--text-faint);
+}
+.counts-x-label {
+  font-size: var(--fs-caption);
+  fill: var(--text-secondary);
+}
+.counts-bar {
+  fill: var(--accent-cyan);
+  opacity: 0.85;
+  cursor: default;
+}
+.counts-bar--hover {
+  opacity: 1;
+  fill: var(--accent-violet);
+}
+
+/* ============ 波形 ============ */
+.waveform-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+}
+.waveform-stroke-a {
+  stroke: var(--accent-cyan);
+}
+.waveform-stroke-b {
+  stroke: var(--accent-violet);
+}
+.waveform-legend {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-16);
+  font-size: var(--fs-caption);
+  color: var(--text-secondary);
+}
+.waveform-legend__dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: var(--space-4);
+  border-radius: 50%;
+}
+.waveform-legend__dot--a {
+  background: var(--accent-cyan);
+}
+.waveform-legend__dot--b {
+  background: var(--accent-violet);
+}

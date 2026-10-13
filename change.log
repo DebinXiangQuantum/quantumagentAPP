@@ -3,6 +3,34 @@
 格式：新条目置顶。每次切片提交必须更新（Added / Changed / Fixed + Validation +
 Known defects）。scope 见 docs/DEVELOPMENT.md §2。
 
+## 2026-10-13 `frontend: 量子线路、测量直方图与波形渲染器（S4）`
+
+### Added
+
+- `utils/circuit.ts`：线路布局纯函数——防御式解析（畸形 op 丢弃计数）、
+  贪心列压缩（qubit 掩码求首个无冲突列，保证无空列）、>32 qubits 截断、
+  门分类（measure/controlled/box）。
+- `CircuitCanvas`：qubit 横线等距编号（等宽 q0…）、格点方块（单位格 44×36
+  token）、CNOT 控制点+竖线+⊕、MEASURE 半圆表针、悬停 tooltip（gate/位号）、
+  截断与丢弃提示；畸形载荷降级文案不崩溃。
+- `CountsHistogram`：归一化条形（不变量：最高条高 == 绘图高 160px）、
+  全条 160ms 生长动画（reduced-motion 降级）、降序+比特串并列稳定排序、
+  hover tooltip（比特串·计数·占比）、纵轴计数刻度、总 shots 副标题、
+  空/畸形载荷降级。
+- `WaveformCanvas`：I/Q 多通道折线（全局最大绝对值归一化）、图例、采样率/
+  单位副标题、畸形降级。
+- `renderers.tsx` 接入三类渲染器分发；`src/styles/viz.css`（全部 token 化）。
+
+### Validation
+
+- `npm test`：54 用例全绿（新增 12：线路对齐/截断/列压缩/丢弃/tooltip/畸形 6，
+  归一化不变量/排序/hover/空与畸形 4，波形结构与畸形 2）。
+- `npm run build`：零 TS 错误。
+
+### Known defects
+
+- 检查器（硬件拓扑/任务 DAG）仍为占位（S5）。
+
 ## 2026-10-13 `frontend: 对话区——消息流、流式光标与 Artifact 卡片（S3）`
 
 ### Added
