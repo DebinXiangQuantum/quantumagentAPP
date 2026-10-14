@@ -5,6 +5,46 @@ Validation（本切片测试结论）+ Known defects（已知缺陷，无则写�
 scope 与流程见 docs/DEVELOPMENT.md §2。
 
 
+## 2026-10-14 `frontend: W1 Markdown+公式+表格渲染管线（v5 轮，用户反馈缺陷 1/2）`
+
+### Added
+- `frontend/src/components/chat/MarkdownContent.tsx`：消息正文 Markdown 渲染
+  管线（design.md §6.1 v1.5）——react-markdown + remark-gfm（表格/删除线/
+  任务列表）+ remark-math/rehype-katex（行内 `$…$`、块级 `$$…$$`）；
+  独立成段的**单行** `$$…$$` 归一为围栏形式（remark-math 单行段是行内数学，
+  GLM 常这么写，归一后才能产出 katex-display 居中块）。
+- 依赖增补（design.md v1.5 白名单）：react-markdown/remark-gfm/remark-math/
+  rehype-katex/katex（katex 对齐 rehype-katex 的 ^0.16，避免双实例）+
+  devDependency @types/node（测试读样式源文本）。
+
+### Changed
+- MessageBubble 助手正文与用户气泡、ChatPanel 流式正文均走 Markdown 管线
+  （`.message__bubble`/`.message__text` 撤销 pre-wrap，换行由块级元素承载）；
+  chat.css 新增 `.md-body` 段——标题 --fs-* 阶、代码块 mono+--bg-inset+圆角、
+  表格边框 --border-default/表头 --bg-inset/行 hover --bg-elevated/横向滚动
+  容器、引用左 --border-strong、链接 --accent-cyan、KaTeX 配色 CSS 变量
+  （含 katex-error → --danger）适配三主题；
+- vite.config.ts：katex/markdown 独立 vendor chunk（440KB 与主包分离，缓存友好）。
+
+### Fixed
+- **用户反馈缺陷 1/2**：助手消息 Markdown 原样输出（星号/井号/表格管道符
+  直显）、LaTeX 公式不渲染——正文经管线渲染后 strong/table/.katex 节点真实
+  产出（MessageBubble 测试断言原文语法不再出现在 DOM 文本）。
+- 流式健壮性：截断表格/未闭合公式/半截代码围栏渲染不抛异常（MarkdownContent
+  内部 ErrorBoundary 兜底为原始文本 pre，content 变化自动重试完整管线）；
+  raw HTML 默认禁用（不引入 rehype-raw，`<b>/<script>` 不产出元素）。
+
+### Validation
+- 全量 **235 passed**（基线 223 + 新增 12：MarkdownContent 10——表格列/
+  行内与块级公式/代码块类名/标题引用/raw HTML 禁用/截断不崩/空内容降级/
+  链接与 KaTeX token 样式源断言；MessageBubble +2——助手与用户气泡管线
+  集成）。`npm run build` 零错误。
+
+### Known defects
+- `RX(0.11)` 类带角度标签宽于 44px 单元格（W2 引入后同列相邻门可能轻微
+  视觉重叠，见 W2 说明）。
+
+
 
 ## 2026-10-14 `backend: 冒烟修正 II——门名大小写归一（GLM 实测产出小写 h/cx）`
 

@@ -4,7 +4,8 @@
  * 职责：
  *  - 用户：右对齐、--bg-elevated 底色圆角气泡；§5.2 v1.3 附件条内嵌气泡
  *    （复用 AttachmentStrip：image 缩略图 / 文件卡，只读无移除）；
- *  - 助手：左对齐、无底色，组首条带头像（Q 标识），正文 pre-wrap；
+ *  - 助手：左对齐、无底色，组首条带头像（Q 标识），正文经 Markdown 管线
+ *    渲染（v1.5：MarkdownContent——GFM 表格 + KaTeX 公式，见 §6.1）；
  *    消息顶部渲染「思考过程」折叠块（message.reasoning 非空时，见
  *    ReasoningBlock——默认收起、摘要 + chevron、展开 240px 滚动）；
  *    v1.4：思考块之后内嵌「专家工作区」渐进块（activities 非空时，每个
@@ -25,6 +26,7 @@ import { getApi } from '../../api';
 import type { SubagentActivity } from '../../store/appStore';
 import { ArtifactCard } from './ArtifactCard';
 import { AttachmentStrip } from './AttachmentStrip';
+import { MarkdownContent } from './MarkdownContent';
 import { ReasoningBlock } from './ReasoningBlock';
 import { SubagentWorkspace } from './SubagentWorkspace';
 
@@ -63,7 +65,8 @@ export function MessageBubble(props: {
               {attachments.length > 0 ? (
                 <AttachmentStrip items={attachments} imageUrls={imageUrlsOf(attachments)} />
               ) : null}
-              {content}
+              {/* v1.5：用户气泡同样走 Markdown 管线（design.md §6.1） */}
+              <MarkdownContent content={content} />
             </div>
             <time className="message__time mono" dateTime={message.created_at || undefined}>
               {time}
@@ -96,7 +99,10 @@ export function MessageBubble(props: {
                 />
               ))
             : null}
-          <div className="message__text">{content}</div>
+          {/* v1.5：助手正文经 Markdown 管线渲染（标题/列表/表格/公式） */}
+          <div className="message__text">
+            <MarkdownContent content={content} />
+          </div>
           {artifacts.length > 0 ? (
             <div className="message__artifacts">
               {artifacts.map((artifact, i) => (

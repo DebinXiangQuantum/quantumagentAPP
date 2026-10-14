@@ -50,7 +50,7 @@
   border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
   border-bottom-right-radius: var(--radius-sm);
-  white-space: pre-wrap;
+  /* v1.5：正文经 Markdown 管线渲染，pre-wrap 撤销（换行由块级元素承载） */
   word-break: break-word;
 }
 /* 消息时间戳：等宽 + faint，给会话流一个时间锚点 */
@@ -94,7 +94,7 @@
   gap: var(--space-12);
 }
 .message__text {
-  white-space: pre-wrap;
+  /* v1.5：Markdown 管线承载换行与块级间距；此处仅兜底长词折行 */
   word-break: break-word;
   line-height: var(--lh-body);
 }
@@ -515,6 +515,142 @@
     transparent 80%
   );
   animation: qap-shimmer 1.2s var(--ease-out) infinite;
+}
+
+/* ============ v1.5 Markdown 正文管线（design.md §6.1） ============ */
+/* 消息正文（用户气泡/助手消息）经 react-markdown 渲染；全部 token 化。 */
+.md-body {
+  min-width: 0;
+  word-break: break-word;
+}
+.md-body > :first-child,
+.md-body > :first-child > :first-child {
+  margin-top: 0;
+}
+.md-body > :last-child,
+.md-body > :last-child > :last-child {
+  margin-bottom: 0;
+}
+.md-body p {
+  margin: 0 0 var(--space-8);
+  line-height: var(--lh-body);
+}
+/* 标题层级：聊天正文不使用 display 档，最大 title；h3 以下统一 body 档 */
+.md-body h1 {
+  margin: var(--space-16) 0 var(--space-8);
+  font-size: var(--fs-title);
+  line-height: var(--lh-title);
+}
+.md-body h2 {
+  margin: var(--space-12) 0 var(--space-8);
+  font-size: var(--fs-body-lg);
+  line-height: var(--lh-title);
+}
+.md-body h3,
+.md-body h4,
+.md-body h5,
+.md-body h6 {
+  margin: var(--space-12) 0 var(--space-4);
+  font-size: var(--fs-body);
+  line-height: var(--lh-title);
+}
+.md-body ul,
+.md-body ol {
+  margin: 0 0 var(--space-8);
+  padding-left: var(--space-24);
+  line-height: var(--lh-body);
+}
+.md-body li {
+  margin: var(--space-4) 0;
+}
+/* 引用块：左边框 + 弱化文字 */
+.md-body blockquote {
+  margin: 0 0 var(--space-8);
+  padding: var(--space-4) var(--space-12);
+  border-left: 3px solid var(--border-strong);
+  color: var(--text-secondary);
+}
+.md-body blockquote p {
+  margin: 0;
+}
+/* 链接：accent-cyan（三主题各自覆盖该变量） */
+.md-body a {
+  color: var(--accent-cyan);
+}
+/* 代码块：mono + --bg-inset + 圆角；行内 code 同底色轻内边距 */
+.md-body pre.md-codeblock {
+  margin: 0 0 var(--space-8);
+  padding: var(--space-8);
+  background: var(--bg-inset);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  overflow-x: auto;
+}
+.md-body code {
+  font-family: var(--font-data);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-data);
+}
+.md-body :not(pre) > code {
+  padding: 0 var(--space-4);
+  background: var(--bg-inset);
+  border-radius: var(--radius-sm);
+}
+/* 表格：边框 token + 表头 inset + 行 hover elevated + 横向滚动容器 */
+.md-table-wrap {
+  margin: 0 0 var(--space-8);
+  overflow-x: auto;
+  max-width: 100%;
+}
+.md-body table {
+  border-collapse: collapse;
+  font-size: var(--fs-caption);
+  line-height: var(--lh-data);
+}
+.md-body th,
+.md-body td {
+  padding: var(--space-4) var(--space-8);
+  border: 1px solid var(--border-default);
+  text-align: left;
+  white-space: nowrap;
+}
+.md-body th {
+  background: var(--bg-inset);
+  color: var(--text-primary);
+}
+.md-body tr:hover td {
+  background: var(--bg-elevated);
+}
+/* KaTeX：配色走 CSS 变量适配三主题（衬线字体与 --font-serif 语义一致） */
+.md-body .katex {
+  color: var(--text-primary);
+  font-size: 1.02em;
+}
+.md-body .katex-display {
+  margin: var(--space-8) 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+/* KaTeX 解析错误（流式半截公式）：按 danger 档着色（内联样式需 !important） */
+.md-body .katex-error {
+  color: var(--danger) !important;
+}
+/* 任务列表复选框：跟随文字色 */
+.md-body input[type='checkbox'] {
+  accent-color: var(--accent-cyan);
+}
+/* 渲染异常兜底：原始文本视图 */
+.md-fallback {
+  margin: 0;
+  padding: var(--space-8);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-data);
+  color: var(--text-secondary);
+  background: var(--bg-inset);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 /* ---- v1.4 composer 演示徽标（mock 渠道防误用，warning 小标签） ---- */

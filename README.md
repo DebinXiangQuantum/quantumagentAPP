@@ -529,7 +529,20 @@ glm}.env; set +a`（lqcloud.env 键名 APIkey → `export LQCLOUD_API_KEY=$APIke
 
 技术栈：React 18 + TypeScript(strict) + Vite + zustand + vitest；**无 UI 组件库、
 无 Tailwind、无图表库、无 webfont**（依赖白名单见 docs/DEVELOPMENT.md 与
-frontend/package.json）。
+frontend/package.json；v1.5 增补 react-markdown/remark-gfm/remark-math/
+rehype-katex/katex——用户明确要求的 Markdown/公式渲染管线）。
+
+**v5 前端（2026-10-14，feat/frontend-v5，契约 v1.5，进行中）**：渲染缺陷修复轮，
+四片 TDD 提交。① **W1 Markdown+公式+表格管线**（用户反馈"星号井号原样输出/
+公式表格不渲染"）：新增 `components/chat/MarkdownContent.tsx`——react-markdown +
+remark-gfm + remark-math + rehype-katex（行内 `$…$`、块级 `$$…$$`；独立成段的
+单行 `$$…$$` 归一为围栏形式保证 katex-display）；样式全 token（标题 --fs-*、
+代码块 mono+--bg-inset+圆角、表格边框 --border-default/表头 --bg-inset/行 hover
+--bg-elevated/横向滚动容器、引用 --border-strong、链接 --accent-cyan、KaTeX 配色
+CSS 变量适配三主题）；默认禁 raw HTML；内部 ErrorBoundary 兜底流式截断 Markdown
+不崩溃（content 变化自动重试）；MessageBubble 助手正文与用户气泡、ChatPanel 流式
+正文均走该管线（pre-wrap 撤销）。构建分包 katex/markdown 独立 chunk（缓存友好）。
+**W1 后测试 235 passed**（基线 223 + 新增 12：MarkdownContent 10 + MessageBubble 2）。
 
 **v4 前端（2026-10-14，feat/frontend-v4，契约 v1.4，进行中）**：四片 TDD 提交。
 ① **类型与事件归并（W1）**：`Step` 增 `circuit/cloud_job_id/queue_position`；

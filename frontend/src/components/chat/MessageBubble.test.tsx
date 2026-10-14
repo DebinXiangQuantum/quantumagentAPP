@@ -1,10 +1,12 @@
 /**
- * MessageBubble.test.tsx —— 消息气泡附件条内嵌测试（design.md §5.2 v1.3）。
+ * MessageBubble.test.tsx —— 消息气泡测试（design.md §5.2 v1.3 + §6.1 v1.5）。
  *
  * 覆盖：
  *  1. 用户消息 attachments → 气泡内嵌附件条（复用 AttachmentStrip）：
  *     image → 缩略图（URL 来自 api.attachmentRawUrl）；file → 名称+大小；
- *  2. 无 attachments / 畸形数组 → 不渲染附件条，不崩溃。
+ *  2. 无 attachments / 畸形数组 → 不渲染附件条，不崩溃；
+ *  3. v1.5 Markdown 管线：助手正文加粗/表格/公式渲染（不再原样输出星号）；
+ *     用户气泡同样走管线；星号原文不再出现在 DOM 文本中。
  */
 import { describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
@@ -50,5 +52,38 @@ describe('MessageBubble 附件条（v1.3）', () => {
     expect(screen.queryByTestId(/^attachment-/)).toBeNull();
     rerender(<MessageBubble message={{ ...base, attachments: 'broken' as never }} />);
     expect(screen.queryByTestId(/^attachment-/)).toBeNull();
+  });
+});
+
+describe('MessageBubble Markdown 管线（v1.5）', () => {
+  it('助手正文：加粗 → strong、表格 → table、公式 → katex（星号井号不外露）', () => {
+    render(
+      <MessageBubble
+        message={{
+          ...base,
+          id: 'm-2',
+          role: 'assistant',
+          content:
+            '## 收敛结果\n\n**能量** $E_0$ 已收敛：\n\n| 参数 | 值 |\n|---|---|\n| θ₀ | 0.11 |',
+        }}
+      />,
+    );
+    const body = document.querySelector('.message--assistant .message__text');
+    expect(body).not.toBeNull();
+    expect(body?.querySelector('strong')).toHaveTextContent('能量');
+    expect(body?.querySelector('table')).not.toBeNull();
+    expect(body?.querySelector('.katex')).not.toBeNull();
+    expect(body?.querySelector('h2')).toHaveTextContent('收敛结果');
+    // 原始 Markdown 语法不再以文本形式出现
+    expect(body?.textContent).not.toContain('**能量**');
+    expect(body?.textContent).not.toContain('## 收敛结果');
+    expect(body?.textContent).not.toContain('|---|---|');
+  });
+
+  it('用户气泡同样走 Markdown 管线（加粗渲染为 strong）', () => {
+    render(<MessageBubble message={{ ...base, content: '请估算 **H2 基态能量**' }} />);
+    const bubble = document.querySelector('.message__bubble');
+    expect(bubble?.querySelector('strong')).toHaveTextContent('H2 基态能量');
+    expect(bubble?.textContent).not.toContain('**');
   });
 });

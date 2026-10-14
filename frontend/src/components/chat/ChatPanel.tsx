@@ -19,6 +19,7 @@ import { useAppStore } from '../../store/appStore';
 import type { Message } from '../../types/domain';
 import { MessageBubble } from './MessageBubble';
 import { ArtifactCard } from './ArtifactCard';
+import { MarkdownContent } from './MarkdownContent';
 import { MessageInput } from './MessageInput';
 import { StreamingCursor } from './StreamingCursor';
 import { ReasoningBlock } from './ReasoningBlock';
@@ -162,7 +163,9 @@ export function ChatPanel(): JSX.Element {
                     ))}
                     <div className="message__text">
                       {streaming.text.length > 0 ? (
-                        streaming.text
+                        // v1.5：流式正文同样走 Markdown 管线；截断/未闭合语法
+                        // 由 MarkdownContent 边界兜底，不得崩溃
+                        <MarkdownContent content={streaming.text} />
                       ) : (
                         <span className="message__thinking">{t('reasoning.thinking')}</span>
                       )}
