@@ -5,6 +5,125 @@ Validation（本切片测试结论）+ Known defects（已知缺陷，无则写�
 scope 与流程见 docs/DEVELOPMENT.md §2。
 
 
+
+## 2026-10-14 `frontend: W4 测试与 i18n 收尾——v5 轮全绿（250 passed）`
+
+### Added
+- ChatPanel 流式 Markdown 集成测试：流式中段（加粗完成 + 行内公式闭合 + 表格
+  仅到一半的真实增量形态）渲染出 strong/.katex/.md-table-wrap 且不抛异常；
+- i18n「三语互异」清单纳入 v5 新 key（circuit.note.postMeasure /
+  circuit.note.dropped）；key 集合一致性由既有 i18n 契约测试锁定（新文案已
+  zh/en/ja 三语同步）。
+
+### Validation
+- **全量 250 passed**（基线 223 + v5 新增 27：MarkdownContent 10、
+  MessageBubble 2、utils/circuit 6、CircuitCanvas 6、fixtures 2、ChatPanel 1）；
+  `npm run build` 零错误（katex/markdown 独立 vendor chunk，主包 267KB）；
+  `VITE_USE_MOCK=1 npm run dev` 冒烟：页面 200、katex CSS 可达、组件变换链
+  无错误。
+
+### Known defects
+- `RX(0.11)` 等带角度标签宽于 44px 格点，同列相邻同排门可能轻微视觉重叠
+  （格点几何由 token 锁定，不为长标签破坏网格；语义与符号不受影响）。
+
+
+## 2026-10-14 `frontend: W3 Mock 演示升级——完整 Markdown 样例 + v1.5 电路载荷（v5 轮）`
+
+### Changed
+- fixtures c-1（m-2）助手回复改为完整 Markdown 样例：二级标题（能量收敛/
+  最优参数）、加粗、无序列表、三行参数表（θ/作用位/最优值/梯度）、行内公式
+  $E(\theta)=\langle\psi|\hat H|\psi\rangle$ 与块级基态能量
+  $E_0 \approx -1.1373\,\mathrm{Ha}$；
+- c-1 circuit 载荷改 v1.5 形态：RY(0.11)/RZ(0.23) 带 params、CNOT、CZ
+  （两点符号）、RZZ(0.31)（线中点标签）、MEASURE 收尾——测量后无操作，
+  不触发渲染层兜底提示（演示"合法线路"形态）；
+- c-2 校准回复（m-4）与 calibrationScript 正文带行内公式；vqeScript 正文
+  升级为 Markdown（标题/列表/表格），流式 chunk 增量直接驱动 Markdown 管线
+  （半截语法由渲染层兜底）。
+
+### Validation
+- 全量 **249 passed**（W2 后 247 + fixtures 新增 2：① Markdown 样例结构
+  断言（标题/加粗/表格分隔行/行内与块级公式/列表）；② v1.5 电路载荷契约
+  断言（params 非负、含 CZ/RZZ、RZZ 两比特无 controls、测量后 dropped=0））。
+  既有 mock 引擎/流式测试全部保持。`VITE_USE_MOCK=1` 演示链路直接可见
+  公式/表格/新符号三类渲染效果。
+
+### Known defects
+- 无。
+
+
+## 2026-10-14 `frontend: W2 电路符号 v1.5——CZ 两点/RZZ/角度标签/测量后防御（v5 轮，用户反馈缺陷 3）`
+
+### Added
+- `CircuitOperation.params?: number[]`（types/domain.ts，逐字对齐 ARCHITECTURE §6
+  v1.5 载荷）；utils/circuit 解析时滤除非有限值，空/全畸形 → undefined。
+- `utils/circuit.angleLabelOf`：params[0] 两位小数；缺失/NaN/**负值** → null
+  （退化为仅门名——负角度按畸形降级为渲染层约定）。
+- 测量后防御：layoutCircuit 维护 measured 集合，某比特 MEASURE 之后仍作用该
+  比特（targets ∪ controls）的操作剔除，计入 `dropped` 与新字段
+  `droppedAfterMeasure`（后端校验第一道闸，渲染层兜底——真实反馈"测量后又画
+  CNOT 属非法线路"）。
+
+### Changed
+- CircuitCanvas 符号（design.md §6.1 v1.5）：**CZ = 竖线 + 两端实心圆点**
+  （复用控制点样式，无 ⊕ 无方块无标签；缺 controls 的宽容形态同样两点）；
+  **RZZ = 竖线 + 两端实心点 + 线中点等宽标签 RZZ(θ)**；RX/RY/RZ 标签带角度
+  `RX(0.11)`；tooltip 含角度（`RX(0.11) · q0`）；门名大小写归一显示（后端
+  真机实测小写 h/cx）。
+- CircuitCanvas 四条提示（非法载荷/截断/丢弃/测量后剔除）与 aria-label 迁入
+  i18n 字典（`circuit.note.*`/`circuit.aria`，zh 文案保留原文案子串，既有测试
+  断言不变；en/ja 同步）。
+
+### Validation
+- 全量 **247 passed**（W1 后 235 + 新增 12：utils/circuit.test 6——params
+  合法保留/畸形降级/测量后剔除×2/gateShape 分类/角度标签边界；CircuitCanvas 6
+  ——CZ 两点无 ⊕/RZZ 标签与中点位置/旋转门角度与退化/tooltip 角度/测量后
+  提示与剔除/params 畸形不崩）。`npm run build` 零错误。
+
+### Known defects
+- `RX(0.11)` 标签（8 字符等宽）宽于 44px 格点，同列相邻同排门可能轻微视觉
+  重叠；符号与语义不受影响（格点几何由 token 锁定，不为长标签破坏网格）。
+
+
+## 2026-10-14 `frontend: W1 Markdown+公式+表格渲染管线（v5 轮，用户反馈缺陷 1/2）`
+
+### Added
+- `frontend/src/components/chat/MarkdownContent.tsx`：消息正文 Markdown 渲染
+  管线（design.md §6.1 v1.5）——react-markdown + remark-gfm（表格/删除线/
+  任务列表）+ remark-math/rehype-katex（行内 `$…$`、块级 `$$…$$`）；
+  独立成段的**单行** `$$…$$` 归一为围栏形式（remark-math 单行段是行内数学，
+  GLM 常这么写，归一后才能产出 katex-display 居中块）。
+- 依赖增补（design.md v1.5 白名单）：react-markdown/remark-gfm/remark-math/
+  rehype-katex/katex（katex 对齐 rehype-katex 的 ^0.16，避免双实例）+
+  devDependency @types/node（测试读样式源文本）。
+
+### Changed
+- MessageBubble 助手正文与用户气泡、ChatPanel 流式正文均走 Markdown 管线
+  （`.message__bubble`/`.message__text` 撤销 pre-wrap，换行由块级元素承载）；
+  chat.css 新增 `.md-body` 段——标题 --fs-* 阶、代码块 mono+--bg-inset+圆角、
+  表格边框 --border-default/表头 --bg-inset/行 hover --bg-elevated/横向滚动
+  容器、引用左 --border-strong、链接 --accent-cyan、KaTeX 配色 CSS 变量
+  （含 katex-error → --danger）适配三主题；
+- vite.config.ts：katex/markdown 独立 vendor chunk（440KB 与主包分离，缓存友好）。
+
+### Fixed
+- **用户反馈缺陷 1/2**：助手消息 Markdown 原样输出（星号/井号/表格管道符
+  直显）、LaTeX 公式不渲染——正文经管线渲染后 strong/table/.katex 节点真实
+  产出（MessageBubble 测试断言原文语法不再出现在 DOM 文本）。
+- 流式健壮性：截断表格/未闭合公式/半截代码围栏渲染不抛异常（MarkdownContent
+  内部 ErrorBoundary 兜底为原始文本 pre，content 变化自动重试完整管线）；
+  raw HTML 默认禁用（不引入 rehype-raw，`<b>/<script>` 不产出元素）。
+
+### Validation
+- 全量 **235 passed**（基线 223 + 新增 12：MarkdownContent 10——表格列/
+  行内与块级公式/代码块类名/标题引用/raw HTML 禁用/截断不崩/空内容降级/
+  链接与 KaTeX token 样式源断言；MessageBubble +2——助手与用户气泡管线
+  集成）。`npm run build` 零错误。
+
+### Known defects
+- `RX(0.11)` 类带角度标签宽于 44px 单元格（W2 引入后同列相邻门可能轻微
+  视觉重叠，见 W2 说明）。
+
 ## 2026-10-14 `backend: v1.4 联调修复（model_ref 别名/模糊节点归一化）+ v1.5 电路契约（params/RZZ/测量后不变式）`
 
 ### Fixed（v1.4 真实联调暴露）
@@ -36,6 +155,7 @@ scope 与流程见 docs/DEVELOPMENT.md §2。
 ### Known defects
 - GLM 若不传 shots 则用默认 1024（其文本声称 4096 与实际不符——后续可在
   专家提示中强调随任务显式传 shots）。
+
 
 
 

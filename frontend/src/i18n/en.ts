@@ -146,6 +146,13 @@ export const en: Record<string, string> = {
   'hw.topo.legend.poor': 'Poor (2Q<0.985 · 1Q<0.995 · readout<0.95)',
   'hw.topo.unavailable': 'Topology unavailable (legacy backend or malformed data)',
 
+  // —— Circuit renderer (v1.5: notes moved into dictionaries) ——
+  'circuit.note.invalid': 'Cannot render circuit: invalid payload (qubits/operations missing or wrong type)',
+  'circuit.note.truncated': 'Circuit has {total} qubits (>32); showing the first {max} rows only.',
+  'circuit.note.dropped': 'Ignored {n} out-of-range or malformed operations.',
+  'circuit.note.postMeasure': 'Removed {n} operations acting on a qubit after measurement (illegal circuit; renderer fallback).',
+  'circuit.aria': 'Quantum circuit ({qubits} qubits, {columns} columns)',
+
   // —— Artifact ——
   'artifact.type.circuit': 'Circuit',
   'artifact.type.counts': 'Counts',

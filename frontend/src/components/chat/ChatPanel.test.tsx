@@ -83,6 +83,35 @@ describe('ChatPanel', () => {
     expect(screen.getByTestId('streaming-cursor')).toBeInTheDocument();
   });
 
+  it('v1.5 流式正文走 Markdown 管线：加粗/公式渲染；半截表格不崩溃', () => {
+    useAppStore.setState({
+      activeConversationId: 'c-1',
+      conversations: [
+        {
+          id: 'c-1',
+          title: 'T',
+          agent_id: 'algorithm-designer',
+          tenant_id: 'demo',
+          created_at: '2026-10-13T08:00:00Z',
+        },
+      ],
+      messagesByCid: { 'c-1': [] },
+      // 流式中段：加粗已完成、公式行内闭合、表格仅到一半（真实增量形态）
+      streamingByCid: {
+        'c-1': {
+          messageId: 'm-9',
+          text: '**收敛中**，当前 $E_0 \\approx -1.13$：\n\n| 参数 | 值 |\n|---|---|\n| θ₀',
+        },
+      },
+      loadedCids: { 'c-1': true },
+    });
+    expect(() => render(<ChatPanel />)).not.toThrow();
+    const bubble = document.querySelector('.message--streaming .message__text');
+    expect(bubble?.querySelector('strong')).toHaveTextContent('收敛中');
+    expect(bubble?.querySelector('.katex')).not.toBeNull();
+    expect(bubble?.querySelector('.md-table-wrap')).not.toBeNull();
+  });
+
   it('空会话显示空态文案与输入区并存', () => {
     useAppStore.setState({
       activeConversationId: 'c-1',

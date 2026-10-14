@@ -536,7 +536,40 @@ glm}.env; set +a`（lqcloud.env 键名 APIkey → `export LQCLOUD_API_KEY=$APIke
 
 技术栈：React 18 + TypeScript(strict) + Vite + zustand + vitest；**无 UI 组件库、
 无 Tailwind、无图表库、无 webfont**（依赖白名单见 docs/DEVELOPMENT.md 与
-frontend/package.json）。
+frontend/package.json；v1.5 增补 react-markdown/remark-gfm/remark-math/
+rehype-katex/katex——用户明确要求的 Markdown/公式渲染管线）。
+
+**v5 前端（2026-10-14，feat/frontend-v5，契约 v1.5）**：渲染缺陷修复轮，
+四片 TDD 提交。① **W1 Markdown+公式+表格管线**（用户反馈"星号井号原样输出/
+公式表格不渲染"）：新增 `components/chat/MarkdownContent.tsx`——react-markdown +
+remark-gfm + remark-math + rehype-katex（行内 `$…$`、块级 `$$…$$`；独立成段的
+单行 `$$…$$` 归一为围栏形式保证 katex-display）；样式全 token（标题 --fs-*、
+代码块 mono+--bg-inset+圆角、表格边框 --border-default/表头 --bg-inset/行 hover
+--bg-elevated/横向滚动容器、引用 --border-strong、链接 --accent-cyan、KaTeX 配色
+CSS 变量适配三主题）；默认禁 raw HTML；内部 ErrorBoundary 兜底流式截断 Markdown
+不崩溃（content 变化自动重试）；MessageBubble 助手正文与用户气泡、ChatPanel 流式
+正文均走该管线（pre-wrap 撤销）。构建分包 katex/markdown 独立 chunk（缓存友好）。
+② **W2 电路符号 v1.5**（用户反馈"测量后又画 CNOT/RZZ 没显示/CZ 不像两点/旋转门
+无角度"）：`CircuitOperation` 增 `params?: number[]`（畸形滤除，空→undefined）；
+**CZ = 竖线 + 两端实心圆点**（复用控制点样式，无 ⊕ 无方块，缺 controls 的宽容
+形态同样两点）；**RZZ(θ) = 竖线 + 两端实心点 + 线中点等宽标签**（θ=params[0]
+两位小数）；RX/RY/RZ 门标签带角度 `RX(0.11)`（缺失/NaN/负值退化为门名——负角度
+按畸形降级是渲染层约定）；tooltip 含角度；门名大小写归一（后端真机小写 h/cx）；
+**测量后防御**：utils/circuit 布局把"某比特 MEASURE 之后仍作用该比特"的操作剔除
+并计入 dropped/droppedAfterMeasure，画布追加独立提示（后端校验第一道闸、渲染层
+兜底）；CircuitCanvas 四条提示文案迁入 i18n 字典（circuit.note.*，三语同步）。
+③ **W3 Mock 演示升级**：fixtures c-1 助手回复改为完整 Markdown 样例（二级标题/
+加粗 H₂ STO-3G/无序列表/三行参数表/行内期望值公式 $E(\theta)$ 与块级基态能量
+公式 $E_0\approx-1.1373\,\mathrm{Ha}$）；c-1 circuit 载荷改 v1.5 形态（RY/RZ 带
+params 0.11/0.23 + CZ + RZZ(0.31) + MEASURE 收尾，测量后无操作不触发兜底提示）；
+c-2 校准回复带行内公式；vqeScript/calibrationScript 剧本同步（流式增量直接驱动
+Markdown 管线）——`VITE_USE_MOCK=1` 演示直接可见公式/表格/新符号三类渲染效果。
+④ **W4 测试与 i18n 收尾**：ChatPanel 增流式 Markdown 集成测试（加粗/公式渲染 +
+半截表格不崩）；i18n 三语互异清单纳入 circuit.note.*（key 集合一致性既有测试锁定）；
+`VITE_USE_MOCK=1 npm run dev` 冒烟（200/无变换错误）。**全量 250 passed**
+（基线 223 + v5 新增 27：MarkdownContent 10 / MessageBubble 2 / utils·circuit 6 /
+CircuitCanvas 6 / fixtures 2 / ChatPanel 1），`npm run build` 零错误（katex/markdown
+独立 chunk：主包 267KB + markdown 440KB）。
 
 **v4 前端（2026-10-14，feat/frontend-v4，契约 v1.4，进行中）**：四片 TDD 提交。
 ① **类型与事件归并（W1）**：`Step` 增 `circuit/cloud_job_id/queue_position`；

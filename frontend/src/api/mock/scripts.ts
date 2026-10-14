@@ -215,12 +215,20 @@ export function vqeScript(
   ctx: MockScriptContext,
 ): TimedAction[] {
   const agentId = 'algorithm-designer';
+  // v1.5：正文为完整 Markdown 样例（标题/列表/行内公式/表格），流式增量
+  // 直接驱动 Markdown 管线（截断语法由渲染层兜底，不崩溃）
   const text =
-    '收到。正在为该问题启动 VQE 流水线：\n' +
+    '收到。正在为该问题启动 **VQE 流水线**：\n\n' +
     '1. 分子积分计算（经典 CPU）\n' +
     '2. VQE 线路执行（QPU · QuANTA 20Q）\n' +
     '3. 结果后处理（经典 CPU）\n\n' +
-    'Ansatz 线路与测量计数即将输出；三步 DAG 任务已提交调度，可在右侧任务 DAG 面板观察状态迁移。';
+    '## 目标泛函\n\n' +
+    '能量期望 $E(\\theta)=\\langle\\psi(\\theta)|\\hat H|\\psi(\\theta)\\rangle$，收敛判据 $1\\times10^{-4}$ Ha。\n\n' +
+    '| 步骤 | 节点 | 预计耗时 |\n' +
+    '|---|---|---|\n' +
+    '| 积分计算 | cpu-node-0 | ~7s |\n' +
+    '| 线路执行 | qpu-quanta-20q | ~12s |\n\n' +
+    'Ansatz 线路（含 CZ 与 RZZ(θ) 符号）与测量计数即将输出；三步 DAG 任务已提交调度，可在右侧任务 DAG 面板观察状态迁移。';
   const chunks = chunkText(text, 10);
   const actions: TimedAction[] = [];
   let at = 0; // 绝对时刻（首条正文 300ms；编排脚本会整体重定位）
@@ -277,14 +285,15 @@ export function vqeScript(
     id: ctx.nextId('a-'),
     type: 'circuit',
     title: '硬件高效 Ansatz（2 qubits）',
+    // v1.5 载荷：旋转门带 params + CZ + RZZ(θ)（演示新符号渲染）
     payload: {
       qubits: 2,
       operations: [
-        { id: 'op-0', gate: 'RY', targets: [0] },
-        { id: 'op-1', gate: 'RZ', targets: [1] },
+        { id: 'op-0', gate: 'RY', targets: [0], params: [0.11] },
+        { id: 'op-1', gate: 'RZ', targets: [1], params: [0.23] },
         { id: 'op-2', gate: 'CNOT', controls: [0], targets: [1] },
-        { id: 'op-3', gate: 'RZ', targets: [1] },
-        { id: 'op-4', gate: 'CNOT', controls: [0], targets: [1] },
+        { id: 'op-3', gate: 'CZ', controls: [0], targets: [1] },
+        { id: 'op-4', gate: 'RZZ', targets: [0, 1], params: [0.31] },
         { id: 'op-5', gate: 'MEASURE', targets: [0, 1] },
       ],
     },
@@ -455,8 +464,9 @@ export function calibrationScript(
   ctx: MockScriptContext,
 ): TimedAction[] {
   const agentId = 'calibration';
+  // v1.5：正文带行内公式（Markdown 管线演示）
   const text =
-    '收到校准请求。合成 DRAG 脉冲（σ=20ns，α=-0.32）并执行 RB 序列：' +
+    '收到校准请求。合成 **DRAG 脉冲**（$\\sigma=20\\,\\mathrm{ns}$，$\\alpha=-0.32$）并执行 RB 序列：' +
     '波形已输出，任务将先在 GPU 上完成批量预拟合，再上 QPU 执行随机编译序列。';
   const chunks = chunkText(text, 8);
   const actions: TimedAction[] = [];

@@ -146,6 +146,13 @@ export const ja: Record<string, string> = {
   'hw.topo.legend.poor': '不良（2Q<0.985 · 1Q<0.995 · 読み出し<0.95）',
   'hw.topo.unavailable': 'トポロジデータなし（旧バックエンドまたは不正データ）',
 
+  // —— 回路レンダラー（v1.5：注意文案を辞書へ）——
+  'circuit.note.invalid': '回路を描画できません：ペイロード不正（qubits/operations 欠損または型エラー）',
+  'circuit.note.truncated': '回路は {total} キュービット（>32）。先頭 {max} 行のみ表示します。',
+  'circuit.note.dropped': '範囲外または不正な操作 {n} 件を無視しました。',
+  'circuit.note.postMeasure': '測定後に該当キュービットへ作用する操作 {n} 件を除去しました（不正回路、レンダラー側の防御）。',
+  'circuit.aria': '量子回路（{qubits} キュービット、{columns} 列）',
+
   // —— Artifact ——
   'artifact.type.circuit': '回路',
   'artifact.type.counts': 'カウント',

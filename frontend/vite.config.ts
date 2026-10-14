@@ -15,6 +15,16 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
+  build: {
+    rollupOptions: {
+      output: {
+        // v1.5：KaTeX/react-markdown 体积大且低频变化，独立分包利于缓存
+        manualChunks: {
+          markdown: ['react-markdown', 'remark-gfm', 'remark-math', 'rehype-katex', 'katex'],
+        },
+      },
+    },
+  },
   server: {
     port: 5173,
     host: true,

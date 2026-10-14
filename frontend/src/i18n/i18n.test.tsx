@@ -56,6 +56,9 @@ describe('i18n 字典契约', () => {
       'dag.mode.timeline',
       'settings.plugins.status.on',
       'hw.topo.legend.poor',
+      // v5 新增 chrome（线路渲染提示，CircuitCanvas）
+      'circuit.note.postMeasure',
+      'circuit.note.dropped',
     ]) {
       const values = new Set([
         translate('zh', key),
