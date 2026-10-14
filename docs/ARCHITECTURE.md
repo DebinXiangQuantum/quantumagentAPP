@@ -93,6 +93,11 @@ wire format + Mock）、SSE 实时事件。
 
 // ThinkingLevel —— 思考程度（v1.1）："off" | "low" | "high" | "max"
 
+// TenantInfo（v1.2 显式化）——GET /tenants/me；role 决定管理分界线
+{ "id": "demo", "name": "Demo 租户", "enabled": true, "role": "user"|"admin",
+  "usage": { "active_tasks": 0, "messages_today": 12 },
+  "quota": { "max_concurrent_tasks": 2, "max_messages_per_day": 1000 } }
+
 // Task / Step —— 编排单位
 { "id": "t-1", "conversation_id": "c-1", "tenant_id": "demo", "name": "VQE 全流程",
   "status": "pending"|"running"|"succeeded"|"failed"|"cancelled",
@@ -173,6 +178,14 @@ v1.2 不变量（测试必须覆盖）：所有 fidelity ∈ (0,1]；`t1_us/t2_u
 | GET | `/api/v1/admin/models` | — | `{"models": ModelChannel[]}`（v1.1 管理平台渠道池） |
 | PUT | `/api/v1/admin/models/{ref}` | `ModelChannelInput` | `ModelChannel`(200)，并持久化到 `config.local.toml` |
 | DELETE | `/api/v1/admin/models/{ref}` | — | `204`（删除本地覆盖渠道；基底渠道不可删 → 409） |
+
+**v1.2 管理权限与租户角色**：
+- `tenancy.tenants[].role ∈ {"user","admin"}`（缺省 `user`；非法值启动拒绝）；
+  `/tenants/me` 返回 `role`。
+- 全部 `/api/v1/admin/*` 端点（models 渠道 CRUD、plugins 安装/启停/卸载）
+  要求 `role = admin`，否则 **403** `{"error":{"code":"forbidden"}}`。
+- 前端据 `role` 决定管理分区可见性（普通用户隐藏渠道/插件分区）——
+  可见性只是 UX，**强制力在后端**。
 
 **v1.1 ModelChannel（渠道池条目，密钥脱敏）**：
 

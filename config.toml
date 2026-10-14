@@ -113,6 +113,8 @@ model_ref = "default"
 simulated = true
 tick_seconds = 2.0    # 模拟器利用率刷新周期（秒）
 
+# QPU 机群（对齐 logicalcloud 现网 10 台可用；v1.2 每台含网格拓扑，
+# 保真度由模拟器在文献合理区间生成并漂移——simulated，非硬件观测）
 [[hardware.nodes]]
 id = "qpu-quanta-20q"
 kind = "qpu"
@@ -120,6 +122,78 @@ name = "QuANTA 20Q"
 model = "superconducting-transmon"
 capacity = 1
 # v1.2 拓扑定义（rows×cols 网格；保真度初值由模拟器在文献合理区间生成并漂移）
+topology = { rows = 4, cols = 5 }
+
+[[hardware.nodes]]
+id = "qpu-quanta-16q-a"
+kind = "qpu"
+name = "QuANTA 16Q · A"
+model = "superconducting-transmon"
+capacity = 1
+topology = { rows = 4, cols = 4 }
+
+[[hardware.nodes]]
+id = "qpu-quanta-16q-b"
+kind = "qpu"
+name = "QuANTA 16Q · B"
+model = "superconducting-transmon"
+capacity = 1
+topology = { rows = 4, cols = 4 }
+
+[[hardware.nodes]]
+id = "qpu-quanta-24q-a"
+kind = "qpu"
+name = "QuANTA 24Q"
+model = "superconducting-transmon"
+capacity = 1
+topology = { rows = 4, cols = 6 }
+
+[[hardware.nodes]]
+id = "qpu-quanta-20q-b"
+kind = "qpu"
+name = "QuANTA 20Q · B"
+model = "superconducting-transmon"
+capacity = 1
+topology = { rows = 5, cols = 4 }
+
+[[hardware.nodes]]
+id = "qpu-quanta-12q-a"
+kind = "qpu"
+name = "QuANTA 12Q"
+model = "superconducting-transmon"
+capacity = 1
+topology = { rows = 3, cols = 4 }
+
+[[hardware.nodes]]
+id = "qpu-quanta-16q-c"
+kind = "qpu"
+name = "QuANTA 16Q · C"
+model = "superconducting-transmon"
+capacity = 1
+topology = { rows = 4, cols = 4 }
+
+[[hardware.nodes]]
+id = "qpu-quanta-20q-c"
+kind = "qpu"
+name = "QuANTA 20Q · C"
+model = "superconducting-transmon"
+capacity = 1
+topology = { rows = 4, cols = 5 }
+
+[[hardware.nodes]]
+id = "qpu-quanta-8q-a"
+kind = "qpu"
+name = "QuANTA 8Q"
+model = "superconducting-transmon"
+capacity = 1
+topology = { rows = 2, cols = 4 }
+
+[[hardware.nodes]]
+id = "qpu-quanta-20q-d"
+kind = "qpu"
+name = "QuANTA 20Q · D"
+model = "superconducting-transmon"
+capacity = 1
 topology = { rows = 4, cols = 5 }
 
 [[hardware.nodes]]
@@ -169,5 +243,14 @@ default_tenant = "demo"
 id = "demo"
 name = "Demo 租户"
 api_key = "demo-key"
+role = "user"              # v1.2：user=普通用户（管理分区隐藏）；admin=管理员
 max_concurrent_tasks = 2
 max_messages_per_day = 1000
+
+[[tenancy.tenants]]
+id = "admin"
+name = "管理员"
+api_key = "admin-key"      # 演示用管理租户（生产改为环境变量/密钥散列）
+role = "admin"
+max_concurrent_tasks = 8
+max_messages_per_day = 10000
