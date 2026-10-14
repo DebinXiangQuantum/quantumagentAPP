@@ -5,6 +5,27 @@ Validation（本切片测试结论）+ Known defects（已知缺陷，无则写�
 scope 与流程见 docs/DEVELOPMENT.md §2。
 
 
+## 2026-10-14 `frontend: W4 测试与 i18n 收尾——v5 轮全绿（250 passed）`
+
+### Added
+- ChatPanel 流式 Markdown 集成测试：流式中段（加粗完成 + 行内公式闭合 + 表格
+  仅到一半的真实增量形态）渲染出 strong/.katex/.md-table-wrap 且不抛异常；
+- i18n「三语互异」清单纳入 v5 新 key（circuit.note.postMeasure /
+  circuit.note.dropped）；key 集合一致性由既有 i18n 契约测试锁定（新文案已
+  zh/en/ja 三语同步）。
+
+### Validation
+- **全量 250 passed**（基线 223 + v5 新增 27：MarkdownContent 10、
+  MessageBubble 2、utils/circuit 6、CircuitCanvas 6、fixtures 2、ChatPanel 1）；
+  `npm run build` 零错误（katex/markdown 独立 vendor chunk，主包 267KB）；
+  `VITE_USE_MOCK=1 npm run dev` 冒烟：页面 200、katex CSS 可达、组件变换链
+  无错误。
+
+### Known defects
+- `RX(0.11)` 等带角度标签宽于 44px 格点，同列相邻同排门可能轻微视觉重叠
+  （格点几何由 token 锁定，不为长标签破坏网格；语义与符号不受影响）。
+
+
 ## 2026-10-14 `frontend: W3 Mock 演示升级——完整 Markdown 样例 + v1.5 电路载荷（v5 轮）`
 
 ### Changed

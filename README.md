@@ -532,7 +532,7 @@ glm}.env; set +a`（lqcloud.env 键名 APIkey → `export LQCLOUD_API_KEY=$APIke
 frontend/package.json；v1.5 增补 react-markdown/remark-gfm/remark-math/
 rehype-katex/katex——用户明确要求的 Markdown/公式渲染管线）。
 
-**v5 前端（2026-10-14，feat/frontend-v5，契约 v1.5，进行中）**：渲染缺陷修复轮，
+**v5 前端（2026-10-14，feat/frontend-v5，契约 v1.5）**：渲染缺陷修复轮，
 四片 TDD 提交。① **W1 Markdown+公式+表格管线**（用户反馈"星号井号原样输出/
 公式表格不渲染"）：新增 `components/chat/MarkdownContent.tsx`——react-markdown +
 remark-gfm + remark-math + rehype-katex（行内 `$…$`、块级 `$$…$$`；独立成段的
@@ -557,8 +557,12 @@ CSS 变量适配三主题）；默认禁 raw HTML；内部 ErrorBoundary 兜底�
 params 0.11/0.23 + CZ + RZZ(0.31) + MEASURE 收尾，测量后无操作不触发兜底提示）；
 c-2 校准回复带行内公式；vqeScript/calibrationScript 剧本同步（流式增量直接驱动
 Markdown 管线）——`VITE_USE_MOCK=1` 演示直接可见公式/表格/新符号三类渲染效果。
-**W3 后测试 249 passed**（247 + fixtures 新增 2：Markdown 样例结构断言 + v1.5
-电路载荷契约断言）。
+④ **W4 测试与 i18n 收尾**：ChatPanel 增流式 Markdown 集成测试（加粗/公式渲染 +
+半截表格不崩）；i18n 三语互异清单纳入 circuit.note.*（key 集合一致性既有测试锁定）；
+`VITE_USE_MOCK=1 npm run dev` 冒烟（200/无变换错误）。**全量 250 passed**
+（基线 223 + v5 新增 27：MarkdownContent 10 / MessageBubble 2 / utils·circuit 6 /
+CircuitCanvas 6 / fixtures 2 / ChatPanel 1），`npm run build` 零错误（katex/markdown
+独立 chunk：主包 267KB + markdown 440KB）。
 
 **v4 前端（2026-10-14，feat/frontend-v4，契约 v1.4，进行中）**：四片 TDD 提交。
 ① **类型与事件归并（W1）**：`Step` 增 `circuit/cloud_job_id/queue_position`；
