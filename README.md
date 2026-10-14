@@ -413,6 +413,18 @@ dispatch 子任务自动挂接）、租户角色（/admin/* 403 强制）、附�
 无 Tailwind、无图表库、无 webfont**（依赖白名单见 docs/DEVELOPMENT.md 与
 frontend/package.json）。
 
+**v4 前端（2026-10-14，feat/frontend-v4，契约 v1.4，进行中）**：四片 TDD 提交。
+① **类型与事件归并（W1）**：`Step` 增 `circuit/cloud_job_id/queue_position`；
+SSE 新事件归并——`agent.activity` 按 message_id→agentId 聚合进
+`subagentActivityByMessage`（reasoning/text delta 拼接、tool_call 计数、
+dispatch_completed 收束），`artifact.created` 即时插卡（未 completed → 流式
+临时 artifacts 骨架；completed 事件全量覆盖去重）；seq 单调门控（乱序/重复
+丢弃）。
+② **专家工作区（W2，用户核心反馈"dispatch 过程不可见"）**：助手消息内嵌
+「🔧 专家 <id> 工作区」渐进块——运行中展开（专家名+呼吸徽标+流式正文+
+「→ 调用工具」行），完成自动折叠为「专家已完成 · 输出 N 字 · 工具 M 次」
+摘要行，可展开回看；流式气泡与已完成气泡均渲染。
+
 **v3 前端（2026-10-13，feat/frontend-v3，契约 v1.2/v1.3）**：六片 TDD 提交——
 ① **类型与硬件纯函数 + 自动建会话（W1）**：`HardwareNode.metrics` 三形状可选
 （QPU 拓扑/CPU/GPU）、`AttachmentMeta`、`Step` 增 `duration_ms/peak_memory_mb/

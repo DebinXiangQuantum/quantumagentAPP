@@ -59,6 +59,13 @@ export const ja: Record<string, string> = {
   'reasoning.chars': '{n} 文字',
   'reasoning.toggle': '思考過程を開く／閉じる',
 
+  // —— 専家ワークスペース（v1.4：dispatch_agent の実況表示）——
+  'subagent.workspaceTitle': '専門家 {agent} ワークスペース',
+  'subagent.running': '実行中',
+  'subagent.done': '専門家完了 · 出力 {chars} 字 · ツール {tools} 回',
+  'subagent.toolCall': '→ ツール呼び出し {name}',
+  'subagent.toggle': '専門家 {agent} ワークスペースを開く／閉じる',
+
   // —— インスペクター ——
   'inspector.aria': 'インスペクター',
   'inspector.tabs': 'インスペクタービュー',

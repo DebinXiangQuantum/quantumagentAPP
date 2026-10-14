@@ -11,6 +11,7 @@ import { describe, expect, it } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import { ChatPanel } from './ChatPanel';
 import { useAppStore } from '../../store/appStore';
+import type { SubagentActivity } from '../../store/appStore';
 import type { Message } from '../../types/domain';
 
 function msg(partial: Partial<Message> & { id: string; role: Message['role'] }): Message {
@@ -112,5 +113,82 @@ describe('ChatPanel', () => {
     });
     render(<ChatPanel />);
     expect(screen.getByText(/暂无会话/)).toBeInTheDocument();
+  });
+});
+
+/** v1.4：专家工作区在流式气泡与已完成气泡内嵌渲染（agent.activity 聚合数据）。 */
+describe('ChatPanel 专家工作区（v1.4）', () => {
+  function seedWith(activityState: Record<string, SubagentActivity[]>): void {
+    useAppStore.setState({
+      activeConversationId: 'c-1',
+      conversations: [
+        {
+          id: 'c-1',
+          title: 'T',
+          agent_id: 'orchestrator',
+          tenant_id: 'demo',
+          created_at: '2026-10-14T09:00:00Z',
+        },
+      ],
+      messagesByCid: {
+        'c-1': [msg({ id: 'm-2', role: 'assistant', content: '已完成回复' })],
+      },
+      streamingByCid: {},
+      subagentActivityByMessage: activityState,
+      loadedCids: { 'c-1': true },
+      agents: [
+        {
+          id: 'algorithm-designer',
+          name: '量子算法设计',
+          description: '',
+          capabilities: [],
+          model_ref: 'glm-5.3',
+          builtin: true,
+        },
+      ],
+    });
+  }
+
+  it('已完成消息：工作区折叠为摘要行，agents 注册表解析专家显示名', () => {
+    seedWith({
+      'm-2': [
+        {
+          agentId: 'algorithm-designer',
+          phase: 'dispatch_completed',
+          text: '已完成合成。',
+          tools: ['query_hardware', 'emit_artifact'],
+        },
+      ],
+    });
+    render(<ChatPanel />);
+    const ws = screen.getByTestId('subagent-workspace-algorithm-designer');
+    expect(ws).toHaveTextContent('量子算法设计');
+    expect(ws.getAttribute('aria-expanded')).toBe('false');
+    expect(ws).toHaveTextContent('专家已完成 · 输出 6 字 · 工具 2 次');
+  });
+
+  it('流式消息：工作区运行中展开（含工具行），随流式气泡渲染', () => {
+    seedWith({
+      'm-9': [
+        {
+          agentId: 'calibration',
+          phase: 'text_delta',
+          text: '正在合成 DRAG 脉冲',
+          tools: ['query_hardware'],
+        },
+      ],
+    });
+    useAppStore.setState({
+      messagesByCid: { 'c-1': [] },
+      streamingByCid: { 'c-1': { messageId: 'm-9', text: '正文等待中' } },
+    });
+    render(<ChatPanel />);
+    const ws = screen.getByTestId('subagent-workspace-calibration');
+    expect(ws.getAttribute('data-running')).toBe('true');
+    expect(ws.getAttribute('aria-expanded')).toBe('true');
+    expect(ws).toHaveTextContent('正在合成 DRAG 脉冲');
+    expect(screen.getAllByTestId(/^subagent-tool-/).length).toBe(1);
+    // 未注册专家 → 回退原始 id
+    expect(ws).toHaveTextContent('calibration');
   });
 });

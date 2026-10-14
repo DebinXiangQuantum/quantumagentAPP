@@ -61,6 +61,13 @@ export const zh: Record<string, string> = {
   'reasoning.chars': '{n} 字',
   'reasoning.toggle': '展开或收起思考过程',
 
+  // —— 专家工作区（v1.4：dispatch_agent 实时外显）——
+  'subagent.workspaceTitle': '专家 {agent} 工作区',
+  'subagent.running': '运行中',
+  'subagent.done': '专家已完成 · 输出 {chars} 字 · 工具 {tools} 次',
+  'subagent.toolCall': '→ 调用工具 {name}',
+  'subagent.toggle': '展开或收起专家 {agent} 工作区',
+
   // —— 检查器 ——
   'inspector.aria': '检查器',
   'inspector.tabs': '检查器视图',

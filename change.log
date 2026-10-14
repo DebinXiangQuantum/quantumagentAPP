@@ -5,6 +5,63 @@ Validation（本切片测试结论）+ Known defects（已知缺陷，无则写�
 scope 与流程见 docs/DEVELOPMENT.md §2。
 
 
+## 2026-10-14 `frontend: v4 W2——专家工作区渐进块（agent.activity 实时外显）`
+
+### Added
+- `components/chat/SubagentWorkspace.tsx`：「🔧 专家 <id> 工作区」渐进块
+  （design.md §5 v1.4）——dispatch_started → 头部（专家名 + 运行中呼吸
+  徽标，复用 qap-badge-breathe）；reasoning/text delta 流式追加（caption/
+  secondary/mono、max-height 180px 自动滚底、尾部流式光标）；tool_call →
+  「→ 调用工具 <name>」行（按调用顺序）；dispatch_completed → **自动折叠**
+  为摘要行「专家已完成 · 输出 N 字 · 工具 M 次」，点击可展开回看全程；
+  运行中默认展开（完成迁移经 useEffect 收起）；畸形输入仅渲染头部不崩溃。
+- `MessageBubble` 新增 `activities?/agentNameOf?` props：助手消息思考块之后
+  内嵌工作区（每个 dispatch 过的子 Agent 一块）；`ChatPanel` 从
+  `subagentActivityByMessage` 取数——流式气泡与已完成气泡均渲染，专家
+  显示名经 agents 注册表解析（未注册回退原始 id）；自动跟随滚动纳入
+  工作区增量。
+- i18n：`subagent.*` 5 键三语同步（zh/en/ja，key 集合一致性测试保持绿）。
+- chat.css：`.subagent-ws*` 样式（inset 底、warning 徽标呼吸、180px 限高
+  滚动、chevron 旋转、reduced-motion 全局降级沿用既有规则）。
+
+### Validation
+- `npm test` 202 passed（W1 后 196 + 新增 6：SubagentWorkspace 4——运行中
+  展开/增量追加/完成折叠回看/畸形降级；ChatPanel 集成 2——已完成消息
+  摘要行+显示名解析、流式消息运行中展开）；`npm run build` 零错误。
+
+### Known defects
+- 专家工作区为内存态聚合（刷新后不回放——agent.activity 属流式期
+  affordance，历史回看依赖后端落库，v1.4 契约未定义持久化）。
+
+
+## 2026-10-14 `frontend: v4 W1——Step v1.4 字段与 agent.activity/artifact.created 归并`
+
+### Added
+- `types/domain.ts`：`Step` 增 `circuit?/cloud_job_id?/queue_position?`
+  （§4 v1.4——quantum 步携带线路/云端任务 id/排队位置）；`QubitInfo` 的
+  T1/T2/保真度与 `Coupler.tq_fidelity` 改可选（logicalcloud 真机不提供，
+  前端降级）；`QpuTopology.qubit_coordinates?`（云端坐标点布局）。
+- `types/events.ts`：`agent.activity`（phase ∈ dispatch_started |
+  reasoning_delta | text_delta | tool_call | dispatch_completed；delta?/
+  tool?/seq）与 `artifact.created`（artifact 即时推送）入会话流联合类型。
+- `appStore`：① seq 单调门控 `seqGate`（delta/reasoning/agent.activity
+  共用——乱序/重复 seq 丢弃，不污染增量拼接）；②
+  `subagentActivityByMessage`（message_id → agentId 聚合
+  `SubagentActivity{agentId,phase,text,tools[]}`——delta 追加、tool_call
+  计数、dispatch_completed 收束保留全文）；③ `artifact.created` 即时插卡
+  （消息未 completed → 流式消息临时 `artifacts`；已完成 → 就地追加；均按
+  id 去重；completed 事件携带 artifacts 全量覆盖）；mock 引擎保真度漂移
+  对可选字段守卫。
+
+### Validation
+- `npm test` 196 passed（基线 188 + 新增 8：聚合拼接/phase 转换/工具计数/
+  多专家并存/seq 乱序丢弃×2/临时插卡去重/completed 全量覆盖/完成后追加
+  去重）；`npm run build` 零错误。
+
+### Known defects
+- 无。
+
+
 ## 2026-10-14 `integration: v3 走查修复——用户级模型列表、同源代理、设置页外观迁移收口`
 
 ### Fixed

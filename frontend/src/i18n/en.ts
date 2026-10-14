@@ -59,6 +59,13 @@ export const en: Record<string, string> = {
   'reasoning.chars': '{n} chars',
   'reasoning.toggle': 'Expand or collapse reasoning',
 
+  // —— Expert workspace (v1.4: dispatch_agent live visibility) ——
+  'subagent.workspaceTitle': 'Expert {agent} workspace',
+  'subagent.running': 'Running',
+  'subagent.done': 'Expert finished · {chars} chars · {tools} tool calls',
+  'subagent.toolCall': '→ tool call {name}',
+  'subagent.toggle': 'Expand or collapse expert {agent} workspace',
+
   // —— Inspector ——
   'inspector.aria': 'Inspector',
   'inspector.tabs': 'Inspector views',

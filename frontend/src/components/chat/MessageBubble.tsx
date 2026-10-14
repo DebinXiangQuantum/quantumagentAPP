@@ -7,20 +7,26 @@
  *  - 助手：左对齐、无底色，组首条带头像（Q 标识），正文 pre-wrap；
  *    消息顶部渲染「思考过程」折叠块（message.reasoning 非空时，见
  *    ReasoningBlock——默认收起、摘要 + chevron、展开 240px 滚动）；
+ *    v1.4：思考块之后内嵌「专家工作区」渐进块（activities 非空时，每个
+ *    dispatch 过的子 Agent 一块——运行中展开流式、完成折叠摘要）；
  *  - 时间戳：HH:MM（等宽、faint），随气泡对齐（视觉评审补充：会话流
  *    缺乏时间锚点会显得"漂浮"）；
  *  - 助手 artifacts：通栏卡片列表（ArtifactCard）。
  * Props 契约：
  *  - message：Message 契约（畸形字段按空串/空数组降级，不崩溃）；
+ *  - activities?: SubagentActivity[]（v1.4 专家工作区数据；缺省不渲染）；
+ *  - agentNameOf?: (agentId) => 显示名（缺省回退原始 id）；
  *  - showAvatar：助手组首条为 true；
  *  - separator：角色组切换处为 true（渲染细分隔线）。
  */
 import type { Message } from '../../types/domain';
 import { formatHM } from '../../utils/format';
 import { getApi } from '../../api';
+import type { SubagentActivity } from '../../store/appStore';
 import { ArtifactCard } from './ArtifactCard';
 import { AttachmentStrip } from './AttachmentStrip';
 import { ReasoningBlock } from './ReasoningBlock';
+import { SubagentWorkspace } from './SubagentWorkspace';
 
 /** 附件只读渲染的 image src 集合（image → attachmentRawUrl；其余走文件卡）。 */
 function imageUrlsOf(attachments: Message['attachments']): Record<string, string> {
@@ -33,6 +39,8 @@ function imageUrlsOf(attachments: Message['attachments']): Record<string, string
 
 export function MessageBubble(props: {
   message: Message;
+  activities?: SubagentActivity[];
+  agentNameOf?: (agentId: string) => string;
   showAvatar?: boolean;
   separator?: boolean;
 }): JSX.Element {
@@ -41,6 +49,7 @@ export function MessageBubble(props: {
   const reasoning = typeof message.reasoning === 'string' ? message.reasoning : '';
   const artifacts = Array.isArray(message.artifacts) ? message.artifacts : [];
   const attachments = Array.isArray(message.attachments) ? message.attachments : [];
+  const activities = Array.isArray(props.activities) ? props.activities : [];
   // 畸形 created_at → '—'，时间戳仍占位保持行距稳定（防御式，不崩溃）
   const time = formatHM(message.created_at);
 
@@ -78,6 +87,15 @@ export function MessageBubble(props: {
         )}
         <div className="message__body">
           {reasoning.length > 0 ? <ReasoningBlock reasoning={reasoning} /> : null}
+          {activities.length > 0
+            ? activities.map((activity) => (
+                <SubagentWorkspace
+                  key={activity?.agentId ?? 'unknown'}
+                  activity={activity}
+                  agentName={props.agentNameOf?.(activity?.agentId ?? '')}
+                />
+              ))
+            : null}
           <div className="message__text">{content}</div>
           {artifacts.length > 0 ? (
             <div className="message__artifacts">
