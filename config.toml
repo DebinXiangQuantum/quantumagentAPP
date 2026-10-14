@@ -138,6 +138,7 @@ kind = "qpu"
 name = "QuANTA 16Q · B"
 model = "superconducting-transmon"
 capacity = 1
+status = "offline"      # v1.3：离线（不可调度，前端降饱和标注）
 topology = { rows = 4, cols = 4 }
 
 [[hardware.nodes]]
@@ -162,6 +163,7 @@ kind = "qpu"
 name = "QuANTA 12Q"
 model = "superconducting-transmon"
 capacity = 1
+status = "offline"      # v1.3：离线（不可调度，前端降饱和标注）
 topology = { rows = 3, cols = 4 }
 
 [[hardware.nodes]]
@@ -186,6 +188,7 @@ kind = "qpu"
 name = "QuANTA 8Q"
 model = "superconducting-transmon"
 capacity = 1
+status = "offline"      # v1.3：离线（不可调度，前端降饱和标注）
 topology = { rows = 2, cols = 4 }
 
 [[hardware.nodes]]
@@ -194,6 +197,7 @@ kind = "qpu"
 name = "QuANTA 20Q · D"
 model = "superconducting-transmon"
 capacity = 1
+status = "offline"      # v1.3：离线（不可调度，前端降饱和标注）
 topology = { rows = 4, cols = 5 }
 
 [[hardware.nodes]]

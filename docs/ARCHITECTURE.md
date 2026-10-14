@@ -179,6 +179,19 @@ v1.2 不变量（测试必须覆盖）：所有 fidelity ∈ (0,1]；`t1_us/t2_u
 | PUT | `/api/v1/admin/models/{ref}` | `ModelChannelInput` | `ModelChannel`(200)，并持久化到 `config.local.toml` |
 | DELETE | `/api/v1/admin/models/{ref}` | — | `204`（删除本地覆盖渠道；基底渠道不可删 → 409） |
 
+**v1.3 附件（composer ＋ 按钮）**：
+- `POST /api/v1/conversations/{cid}/attachments`（multipart `file`；单文件 ≤ 8MB；
+  超限/空文件/非 multipart → 422）→ `201 {"id":"att-1","name","mime","size",
+  "kind":"image"|"text"|"file"}`；kind 判定：mime `image/*` → image；
+  `text/*` 或扩展名 {.md,.txt,.py,.json,.toml,.csv,.yaml,.ts,.js} → text；
+  其余 file。内存存储（原型）。
+- `GET /api/v1/attachments/{id}/raw` → 文件字节（同租户隔离）。
+- `Message.attachments: AttachmentMeta[]`（可选，缺省 []）；
+  `POST …/messages` 请求体新增 `attachment_ids: []`（未知/跨会话 id → 422）。
+- Provider 行为：text 内容截断注入 user 上下文；image 以 openai `image_url`
+  （data URL）/ anthropic image block 发送（**需视觉模型**，文本模型返回的
+  provider 错误经 SSE error 事件内联展示）；mock 仅展示。
+
 **v1.2 管理权限与租户角色**：
 - `tenancy.tenants[].role ∈ {"user","admin"}`（缺省 `user`；非法值启动拒绝）；
   `/tenants/me` 返回 `role`。
