@@ -330,6 +330,15 @@ export interface ConversationDetail extends Conversation {
   messages: Message[];
 }
 
+/** GET /api/v1/models 条目（v1.3 选择器列表：任意角色可读，不含管理细节） */
+export interface ModelSummary {
+  ref: string;
+  provider: string;
+  model: string;
+  default_thinking: string;
+  has_api_key: boolean;
+}
+
 /** GET /api/v1/hardware 响应 */
 export interface HardwareResponse {
   nodes: HardwareNode[];

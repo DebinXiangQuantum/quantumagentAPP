@@ -17,9 +17,10 @@ export function getApi(): ApiClient {
     instance =
       import.meta.env.VITE_USE_MOCK === '1'
         ? createMockClient()
-        : new RestClient(
-            (import.meta.env.VITE_API_BASE as string | undefined) ??
-              'http://127.0.0.1:8000',
+        : // v1.3：默认同源（Vite dev 代理 /api → 127.0.0.1:8000；生产同域
+          // 部署或经反代）。VITE_API_BASE 可显式覆盖为绝对地址。
+          new RestClient(
+            (import.meta.env.VITE_API_BASE as string | undefined) ?? '',
           );
   }
   return instance;

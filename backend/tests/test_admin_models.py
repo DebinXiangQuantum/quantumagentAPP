@@ -76,9 +76,14 @@ def make_loaded_config(base_dir: Path) -> LoadedConfig:
         tenancy=TenancyConfig(
             default_tenant="demo",
             # v1.2：admin 端点测试租户需 admin 角色（require_admin 守卫）
-            tenants=[TenantConfig(id="demo", name="Demo", api_key="demo-key",
-                                  max_concurrent_tasks=2, max_messages_per_day=100,
-                                  role="admin")],
+            tenants=[
+                TenantConfig(id="demo", name="Demo", api_key="demo-key",
+                             max_concurrent_tasks=2, max_messages_per_day=100,
+                             role="admin"),
+                TenantConfig(id="user1", name="User", api_key="user-key",
+                             max_concurrent_tasks=1, max_messages_per_day=100,
+                             role="user"),
+            ],
         ),
     )
     return LoadedConfig(
@@ -305,3 +310,33 @@ class TestDeleteModels:
             "/api/v1/admin/models/ghost", headers=DEMO_HEADERS
         )
         assert response.status_code == 404
+
+
+USER_HEADERS = {"Authorization": "Bearer user-key"}
+
+
+class TestUserModelSelectorList:
+    """GET /api/v1/models（v1.3）：任意角色可读的模型选择器列表。
+
+    与 /admin/models 的区别：不含 base_url / api_key_env / timeout 等管理细节，
+    仅暴露选择器所需字段（ref/provider/model/default_thinking/has_api_key）。
+    """
+
+    async def test_user_role_can_list_selector_models(self, bundle: dict) -> None:
+        response = await bundle["http"].get("/api/v1/models", headers=USER_HEADERS)
+        assert response.status_code == 200
+        models = response.json()["models"]
+        refs = {m["ref"] for m in models}
+        assert refs == {"default", "glm-5.3"}
+        for m in models:
+            # 选择器字段在位；管理字段绝不出现（base_url/密钥线索）
+            assert {"ref", "provider", "model", "default_thinking", "has_api_key"} <= set(m)
+            assert "base_url" not in m
+            assert "api_key_env" not in m
+            assert "api_key_inline" not in m
+
+    async def test_admin_role_also_ok_and_unauth_401(self, bundle: dict) -> None:
+        ok = await bundle["http"].get("/api/v1/models", headers=DEMO_HEADERS)
+        assert ok.status_code == 200
+        anon = await bundle["http"].get("/api/v1/models")
+        assert anon.status_code == 401

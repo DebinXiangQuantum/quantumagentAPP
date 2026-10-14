@@ -442,6 +442,20 @@ export function createMockClient(): MockClient {
       const att = attachmentsById.get(id);
       return att?.dataUrl ?? `data:application/octet-stream,`;
     },
+    async listSelectorModels(): Promise<{ models: import('../../types/domain').ModelSummary[] }> {
+      // v1.3：任意角色可读的选择器列表（从渠道 fixtures 投影，去掉管理细节）
+      const channels = await this.listAdminModels();
+      return {
+        models: channels.models.map((c) => ({
+          ref: c.ref,
+          provider: c.provider,
+          model: c.model,
+          default_thinking: c.default_thinking,
+          has_api_key: c.has_api_key,
+        })),
+      };
+    },
+
     async listAdminModels(): Promise<ModelChannelList> {
       return { models: clone(channels) };
     },

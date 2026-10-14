@@ -10,6 +10,7 @@ from qap.api.routers import (
     events,
     hardware,
     health,
+    models,
     tasks,
     tenants,
 )
@@ -18,6 +19,7 @@ from qap.api.routers import (
 api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(health.router)
 api_router.include_router(agents.router)
+api_router.include_router(models.router)  # v1.3：任意角色可读的模型选择器列表
 api_router.include_router(tenants.router)
 api_router.include_router(conversations.router)
 api_router.include_router(attachments.router)  # v1.3：上传 + raw（会话路径与独立路径）

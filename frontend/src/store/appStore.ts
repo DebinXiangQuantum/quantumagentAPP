@@ -31,7 +31,7 @@ import type {
   Conversation,
   HardwareNode,
   Message,
-  ModelChannel,
+  ModelSummary,
   SendMessageAck,
   Task,
   TenantInfo,
@@ -92,7 +92,7 @@ export interface AppDataState {
   failedDraft: FailedDraft | null;
 
   /** v1.1 渠道池 + 顶栏选择（§5） */
-  modelChannels: ModelChannel[];
+  modelChannels: ModelSummary[];
   currentModelRef: string | null;
   currentThinkingLevel: ThinkingLevel | null;
   /** 本会话是否手动改过思考程度（改过则切模型不再跟随渠道默认） */
@@ -305,7 +305,8 @@ export const useAppStore = create<AppDataState>((set, get) => {
         api.listHardware(),
         api.listTasks(),
         // 渠道池失败不阻断启动（管理 API 可能未部署）
-        api.listAdminModels().catch(() => ({ models: [] })),
+        // v1.3：选择器走任意角色可读的 /models（普通用户 admin 端点 403）
+        api.listSelectorModels().catch(() => ({ models: [] })),
       ]);
     const channels = Array.isArray(channelList?.models) ? channelList.models : [];
     // 初始选择：本地偏好（若仍存在）> 渠道列表首项；思考跟随渠道 default_thinking
@@ -502,7 +503,7 @@ export const useAppStore = create<AppDataState>((set, get) => {
     clearSendError: () => set({ sendError: null, failedDraft: null }),
 
     refreshModelChannels: async () => {
-      const list = await getApi().listAdminModels();
+      const list = await getApi().listSelectorModels();
       const channels = Array.isArray(list?.models) ? list.models : [];
       set((s) => {
         const stillThere =

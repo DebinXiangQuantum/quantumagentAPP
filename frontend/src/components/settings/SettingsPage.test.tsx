@@ -47,44 +47,12 @@ describe('SettingsPage 四分区', () => {
     client.dispose();
   });
 
-  it('外观：主题卡片三选一切换即时生效 + 持久化', () => {
-    render(<SettingsPage />);
-    expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
-    act(() => {
-      fireEvent.click(screen.getByTestId('theme-card-light'));
-    });
-    expect(document.documentElement.getAttribute('data-theme')).toBe('light');
-    expect(localStorage.getItem('qap.theme')).toBe('light');
-    expect(screen.getByTestId('theme-card-light')).toHaveAttribute('aria-pressed', 'true');
-    act(() => {
-      fireEvent.click(screen.getByTestId('theme-card-sepia'));
-    });
-    expect(document.documentElement.getAttribute('data-theme')).toBe('sepia');
-  });
 
-  it('外观：语言切换即时生效（分区标题重渲染为 EN）', () => {
-    render(<SettingsPage />);
-    expect(screen.getByText('外观')).toBeInTheDocument();
-    act(() => {
-      fireEvent.click(screen.getByTestId('lang-btn-en'));
-    });
-    expect(screen.getByText('Appearance')).toBeInTheDocument();
-    expect(localStorage.getItem('qap.language')).toBe('en');
-  });
 
   it('模型与思考：默认模型/默认思考写入本地偏好', async () => {
     useAppStore.setState({
       modelChannels: [
-        {
-          ref: 'glm-5.3',
-          provider: 'openai',
-          model: 'glm-5.3',
-          base_url: '',
-          api_key_env: '',
-          has_api_key: true,
-          default_thinking: 'max',
-          timeout_seconds: 120,
-        },
+        { ref: 'glm-5.3', provider: 'openai', model: 'glm-5.3', has_api_key: true, default_thinking: 'max' },
       ],
     });
     render(<SettingsPage />);
@@ -282,7 +250,7 @@ describe('设置页权限与插件状态（v1.2/v1.3）', () => {
     roleClient.dispose();
   });
 
-  it('role=user：渠道/插件分区整体隐藏，仅剩外观与模型分区', async () => {
+  it('role=user：渠道/插件分区整体隐藏，仅剩模型分区', async () => {
     useAppStore.setState({
       tenant: useAppStore.getState().tenant && {
         ...useAppStore.getState()!.tenant!,
@@ -290,7 +258,9 @@ describe('设置页权限与插件状态（v1.2/v1.3）', () => {
       },
     });
     render(<SettingsPage />);
-    await screen.findByTestId('settings-appearance');
+    // v1.3：外观分区已迁至顶栏常驻控件，设置页不再渲染（模型分区仍在）
+    expect(screen.queryByTestId('settings-appearance')).toBeNull();
+    await screen.findByTestId('pref-default-model');
     expect(screen.getByTestId('settings-model')).toBeInTheDocument();
     expect(screen.queryByTestId('settings-channels')).toBeNull();
     expect(screen.queryByTestId('settings-plugins')).toBeNull();

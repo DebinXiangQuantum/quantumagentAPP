@@ -5,6 +5,38 @@ Validation（本切片测试结论）+ Known defects（已知缺陷，无则写�
 scope 与流程见 docs/DEVELOPMENT.md §2。
 
 
+## 2026-10-14 `integration: v3 走查修复——用户级模型列表、同源代理、设置页外观迁移收口`
+
+### Fixed
+- **用户级模型选择器列表**：普通用户（role=user）的输入区模型下拉原先走
+  /admin/models 被 403（卡"加载中"）。新增 `GET /api/v1/models`（任意角色，
+  仅 ref/provider/model/default_thinking/has_api_key，无管理细节）；前端
+  bootstrap/refresh 切换至该端点（TDD 2 用例：user 200 形状+无密钥线索、
+  匿名 401）。
+- **同源代理**：部分内嵌 webview 跨域 fetch/预检会静默挂起（走查中页面
+  引导全空、请求零到达的根因）——Vite dev 增加 `/api` 代理到 127.0.0.1:8000，
+  RestClient 默认 base 改为同源 ''（VITE_API_BASE 仍可覆盖），彻底规避 CORS。
+- **设置页外观分区移除**（v1.3 契约收口）：外观已常驻顶栏（主题分段+语言
+  下拉），设置页不再重复渲染；测试断言同步（settings-appearance 不存在）。
+
+### Validation
+- 后端 `pytest` 418 passed（+2）；前端 `npm test` 188 passed（外观两用例
+  移除、断言更新）、`npm run build` 零错误。
+- 真实浏览器全链路走查通过：无会话直发**自动建会话** → 真实 GLM
+  （Coding Plan 端点 /api/coding/paas/v4）编排 dispatch 专家 → 线路+计数
+  artifacts；DAG 三步带**实测**时长（28/8/26ms）与内存（1.8MB/—）；
+  「结构/时间线」切换；QuANTA 24Q 拓扑抽屉（24 比特 T1/T2/1Q/读出 + 41
+  耦合器 2Q 保真度 + 三档图例）；QPU 分组"在线 6/10"、4 台离线降饱和；
+  CPU/内存与 GPU VRAM 监控条；demo(user) 设置页无管理分区 / admin-key
+  切换后渠道+插件分区出现且插件显示"启用中"状态徽标与能力标签；附件
+  curl 上传→消息携带→UI 文件卡（h2-params.md · 78 B）渲染。
+
+### Known defects
+- IAB 内嵌浏览器偶发跨域 fetch 挂起（已由同源代理规避；生产部署同域即可）。
+- GLM Coding Plan 端点 low 档实测回传思考增量（与普通端点行为不同，
+  属服务端行为，未再依赖）。
+
+
 ## 2026-10-13 `frontend: v3 W1——硬件 metrics 类型/色阶纯函数与发送自动建会话（v1.2/v1.3 契约）`
 
 ### Added

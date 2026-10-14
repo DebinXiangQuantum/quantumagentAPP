@@ -30,16 +30,7 @@ describe('TopBar（v1.2 外观控件 + 租户角色；v1.3 移出模型/思考�
     useAppStore.setState({
       tenant: TENANT_ADMIN,
       modelChannels: [
-        {
-          ref: 'glm-5.3',
-          provider: 'openai',
-          model: 'glm-5.3',
-          base_url: '',
-          api_key_env: '',
-          has_api_key: true,
-          default_thinking: 'max',
-          timeout_seconds: 120,
-        },
+        { ref: 'glm-5.3', provider: 'openai', model: 'glm-5.3', has_api_key: true, default_thinking: 'max' },
       ],
       currentModelRef: 'glm-5.3',
       currentThinkingLevel: 'max',

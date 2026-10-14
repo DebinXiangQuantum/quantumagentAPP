@@ -195,6 +195,11 @@ ThinkingLevel 与思考流（message.reasoning）、orchestrator 编排 Agent +
 dispatch_agent、插件安装全生命周期；真实 GLM 冒烟走通全链路（详见 change.log）。
 `GET /admin/plugins` 含 source/version/broken_reason。pytest 304 passed。
 
+**v1.3（2026-10-14，main）**：硬件 metrics（10 QPU 网格拓扑保真度、GPU VRAM、
+CPU/内存）、步骤实测 profile（真实计算负载 + perf_counter/tracemalloc，
+dispatch 子任务自动挂接）、租户角色（/admin/* 403 强制）、附件上传与注入、
+`GET /api/v1/models` 用户级选择器列表。pytest 418 passed。
+
 **B1（v1.1 渠道池与配置覆盖层）**：
 - `qap/core/config.py`：加载顺序改为 **config.toml（基底）← config.local.toml
   （同目录，gitignored）深合并**——dict 递归按键合并（models 按键覆盖/新增、
@@ -469,6 +474,13 @@ DAG 面板/时间戳/占用徽标（"algorithm-designer · t-3/s-8"）截图复�
 渠道/插件管理）、思考过程折叠块、DAG 232×76 与侧栏截断修复、Mock 全链路含
 orchestrator 与 waveform。npm test 137 passed；连接灯/插件徽标/护眼对比度
 经真实浏览器走查修复。
+
+**v1.3（2026-10-14，main）**：composer 工具条（＋附件/模型/思考/发送）、
+附件预览与消息附件卡、发送自动建会话（404 自愈）、DAG 时间线 Gantt 与
+实测时长/内存标注、⊕ 子 DAG 下钻、QPU 拓扑保真度图（三档色阶+tooltip+
+图例）、QPU 在线 6/10 与离线标注、CPU/内存/VRAM 监控条、设置页角色分流
+（user 隐藏管理分区）、插件状态徽标、同源代理（Vite /api 代理规避跨域
+webview 问题）。npm test 188 passed。
 
 **v2 前端修订（2026-10-13，feat/frontend-v2，契约 v1.1）**：六个切片——
 ① **三主题**（§2.1）：`tokens.ts buildTokenCss()` 输出 `:root`(dark 默认) +

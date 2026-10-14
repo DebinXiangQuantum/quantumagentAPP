@@ -22,6 +22,7 @@ import type {
   ModelChannel,
   ModelChannelInput,
   ModelChannelList,
+  ModelSummary,
   PluginInfo,
   PluginList,
   SendMessageAck,
@@ -107,6 +108,8 @@ export interface ApiClient {
   listHardware(): Promise<HardwareResponse>;
   /** v1.1 管理平台：渠道池（§5）。 */
   listAdminModels(): Promise<ModelChannelList>;
+  /** v1.3：任意角色可读的模型选择器列表（输入区下拉数据源）。 */
+  listSelectorModels(): Promise<{ models: ModelSummary[] }>;
   putAdminModel(input: ModelChannelInput): Promise<ModelChannel>;
   /** 删除本地覆盖渠道；基底渠道不可删 → ApiError(409)。 */
   deleteAdminModel(ref: string): Promise<void>;
@@ -126,9 +129,13 @@ export interface ApiClient {
   openGlobalStream(cb: StreamCallbacks<GlobalStreamEvent>): StreamHandle;
 }
 
-/** 后端地址：可用 VITE_API_BASE 覆盖（部署/联调），默认本机 8000。 */
+/**
+ * 后端地址：默认**同源**（''，dev 由 Vite 代理 /api → 127.0.0.1:8000；
+ * v1.3 修订——部分内嵌 webview 跨域 fetch 会静默挂起）。VITE_API_BASE
+ * 可覆盖为绝对地址（独立部署后端时使用）。
+ */
 const DEFAULT_BASE =
-  (import.meta.env.VITE_API_BASE as string | undefined) ?? 'http://127.0.0.1:8000';
+  (import.meta.env.VITE_API_BASE as string | undefined) ?? '';
 const DEFAULT_KEY = 'demo-key';
 
 /** localStorage 键（允许演示时覆盖 Bearer，不写死在代码里）。 */
@@ -259,6 +266,10 @@ export class RestClient implements ApiClient {
 
   listAdminModels(): Promise<ModelChannelList> {
     return this.request<ModelChannelList>('/api/v1/admin/models');
+  }
+
+  listSelectorModels(): Promise<{ models: ModelSummary[] }> {
+    return this.request<{ models: ModelSummary[] }>('/api/v1/models');
   }
 
   putAdminModel(input: ModelChannelInput): Promise<ModelChannel> {

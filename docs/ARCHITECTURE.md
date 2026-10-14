@@ -191,6 +191,7 @@ v1.2 不变量（测试必须覆盖）：所有 fidelity ∈ (0,1]；`t1_us/t2_u
 |---|---|---|---|
 | GET | `/api/v1/health` | — | `{"status":"ok","version":"…"}` |
 | GET | `/api/v1/agents` | — | `AgentInfo[]` |
+| GET | `/api/v1/models` | — | `{"models": [{ref,provider,model,default_thinking,has_api_key}]}`（v1.3：任意角色可读的**选择器列表**——不含 base_url/密钥，供输入区模型下拉；管理编辑仍走 /admin/models） |
 | GET | `/api/v1/tenants/me` | — | 租户信息 + 用量/配额 |
 | GET | `/api/v1/conversations` | query: `?limit=` | `Conversation[]` |
 | POST | `/api/v1/conversations` | `{"title":"…"}`（`agent_id` 可选，缺省 `orchestrator`） | `Conversation`(201) |
