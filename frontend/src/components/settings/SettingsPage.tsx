@@ -5,12 +5,17 @@
  *  - 覆盖侧栏+对话区（AppShell 条件渲染；检查器保留在右列）；
  *  - 头部：标题 + 关闭按钮（uiStore.closeSettings）；
  *  - 四个分区（§5）：外观（主题/语言）、模型与思考（本地偏好）、
- *    提供商渠道（admin API）、插件管理（admin API）。
+ *    提供商渠道（admin API）、插件管理（admin API）；
+ *  - v1.2 权限分流：tenant.role=user → 渠道/插件两个管理分区整体隐藏
+ *    （强制力在后端 /admin/* 403，此处仅 UX）；admin → 可见且分区标题带
+ *    「管理员」徽标。
  * Props 契约：无 props（数据来自 uiStore/appStore/api）。
  * 失败行为：渠道/插件加载失败 → 分区内联错误条 + 重试；不影响其他分区。
  */
 import { useUiStore } from '../../store/uiStore';
+import { useAppStore } from '../../store/appStore';
 import { useTranslate } from '../../i18n';
+import { parseTenantRole } from '../../types/domain';
 import { AppearanceSection } from './AppearanceSection';
 import { ModelThinkingSection } from './ModelThinkingSection';
 import { ChannelsSection } from './ChannelsSection';
@@ -19,6 +24,9 @@ import { PluginsSection } from './PluginsSection';
 export function SettingsPage(): JSX.Element {
   const t = useTranslate();
   const closeSettings = useUiStore((s) => s.closeSettings);
+  // v1.2：role 决定管理分区可见性（缺失/畸形按 user 降级——最保守）
+  const tenant = useAppStore((s) => s.tenant);
+  const isAdmin = parseTenantRole(tenant?.role) === 'admin';
 
   return (
     <section className="settings-page" data-testid="settings-page" aria-label={t('settings.title')}>
@@ -38,8 +46,8 @@ export function SettingsPage(): JSX.Element {
 
         <AppearanceSection />
         <ModelThinkingSection />
-        <ChannelsSection />
-        <PluginsSection />
+        {isAdmin ? <ChannelsSection adminBadge /> : null}
+        {isAdmin ? <PluginsSection adminBadge /> : null}
       </div>
     </section>
   );

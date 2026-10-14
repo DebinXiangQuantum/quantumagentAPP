@@ -326,6 +326,12 @@ Drawer 补实测时长/峰值内存/子任务链接。
 readout tooltip、图例置底、>12×12 滚动）挂 QPU Drawer；mock fixtures 10 QPU
 （确定性 LCG 生成，满足 §4 全部不变量与模拟区间）+ admin 租户 +
 `localStorage['qap.mockRole']='user'` 双角色切换 + 步骤实测字段/子任务。
+⑤ **设置页权限/插件状态/文字边界（W5，§5 v1.2/v1.3）**：role=user 隐藏
+渠道/插件分区（强制力在后端 403）；admin 可见且分区标题带「管理员」徽标
+（mock 双角色：`localStorage['qap.mockRole']='user'` 刷新切换）；插件卡
+**状态徽标三态**（启用中 success / 已停用 faint / 加载失败 danger+broken
+原因）+ capabilities 标签 + model_ref + 描述；文字边界修复（容器
+min-width:0、描述 word-break、渠道表 overflow-x 滚动容器）。
 **集成修订（2026-10-13，main）**：与真实后端联调对齐四处契约——① SSE 流 URL
 携带 `?api_key=`（`buildStreamUrl`/新增 `buildGlobalStreamUrl`）；②
 `TenantInfo` 字段对齐后端 `usage_snapshot`（`active_tasks`/`enabled`）；③

@@ -36,6 +36,31 @@ scope 与流程见 docs/DEVELOPMENT.md §2。
 ### Known defects
 - 无。
 
+## 2026-10-13 `frontend: v3 W5——设置页权限分流、插件状态徽标与文字边界（v1.2/v1.3）`
+
+### Added
+- **权限分流（§5 v1.2）**：SettingsPage 按 `tenant.role` 分流——user 整体
+  隐藏渠道/插件管理分区（仅剩外观与模型分区，不渲染管理员徽标）；admin
+  可见且两分区标题右侧显示「管理员」徽标（ChannelsSection/PluginsSection
+  新增 adminBadge prop）。可见性仅 UX，强制力在后端 /admin/* 403（契约 §5）。
+- **插件卡状态徽标（§5 v1.3，用户反馈"插件状况没展示"）**：三态——
+  `启用中`（success）/`已停用`（faint）/`加载失败`（danger，broken 原因
+  内联展示）；信息补全：capabilities 标签组、绑定 model_ref（"模型 {ref}"）、
+  插件描述；PluginInfo 类型新增可选 capabilities/model_ref（缺省降级隐藏）。
+
+### Fixed
+- **文字边界（§5 v1.2）**：设置页容器/分区/描述/插件卡 `min-width: 0`；
+  描述段落 `word-break: break-word`；渠道表外包 `.channel-table-scroll`
+  （overflow-x: auto + max-width: 100%）——任何长 URL/模型名不再撑破布局。
+
+### Validation
+- `npm test` 189 passed（新增 5：role 分流 2、插件状态徽标三态 1、
+  capabilities/model_ref 1、文字边界 CSS 规则 1；既有渠道/插件用例固定为
+  admin 视角后全数保持）；`npm run build` 零错误。
+
+### Known defects
+- 无（mock 角色切换为演示便利，localStorage 键 qap.mockRole 仅 Mock 引擎读取）。
+
 ## 2026-10-13 `frontend: v3 W4——硬件性能监控、QPU 拓扑保真度图与 10 QPU 机群（v1.2）`
 
 ### Added
