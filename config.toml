@@ -41,7 +41,9 @@ api_key_env = "ANTHROPIC_API_KEY"
 timeout_seconds = 120
 default_thinking = "off"
 
-# ----- GLM 渠道池（OpenAI 兼容；实测 2026-10-13，thinking.type 支持
+# ----- GLM 渠道池（OpenAI 兼容；**Coding Plan 订阅端点** /api/coding/paas/v4
+# ——订阅 Key 在普通按量端点 /api/paas/v4 会报 1113 余额不足，2026-10-14 实测；
+# thinking.type 支持
 # enabled/disabled/low/high/max；glm-5.3 系不接受 disabled，思考增量走
 # delta.reasoning_content）。密钥从环境变量 GLM_API_KEY 读取。 -----
 
@@ -51,7 +53,7 @@ default_thinking = "off"
 [models."glm-5.3-flash"]
 provider = "openai"
 model = "glm-5.3-flash"
-base_url = "https://open.bigmodel.cn/api/paas/v4"
+base_url = "https://open.bigmodel.cn/api/coding/paas/v4"
 api_key_env = "GLM_API_KEY"
 timeout_seconds = 180
 default_thinking = "low"
@@ -59,7 +61,7 @@ default_thinking = "low"
 [models."glm-5.3"]
 provider = "openai"
 model = "glm-5.3"
-base_url = "https://open.bigmodel.cn/api/paas/v4"
+base_url = "https://open.bigmodel.cn/api/coding/paas/v4"
 api_key_env = "GLM_API_KEY"
 timeout_seconds = 300
 default_thinking = "high"
