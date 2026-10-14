@@ -5,6 +5,31 @@ Validation（本切片测试结论）+ Known defects（已知缺陷，无则写�
 scope 与流程见 docs/DEVELOPMENT.md §2。
 
 
+## 2026-10-14 `frontend: W3 Mock 演示升级——完整 Markdown 样例 + v1.5 电路载荷（v5 轮）`
+
+### Changed
+- fixtures c-1（m-2）助手回复改为完整 Markdown 样例：二级标题（能量收敛/
+  最优参数）、加粗、无序列表、三行参数表（θ/作用位/最优值/梯度）、行内公式
+  $E(\theta)=\langle\psi|\hat H|\psi\rangle$ 与块级基态能量
+  $E_0 \approx -1.1373\,\mathrm{Ha}$；
+- c-1 circuit 载荷改 v1.5 形态：RY(0.11)/RZ(0.23) 带 params、CNOT、CZ
+  （两点符号）、RZZ(0.31)（线中点标签）、MEASURE 收尾——测量后无操作，
+  不触发渲染层兜底提示（演示"合法线路"形态）；
+- c-2 校准回复（m-4）与 calibrationScript 正文带行内公式；vqeScript 正文
+  升级为 Markdown（标题/列表/表格），流式 chunk 增量直接驱动 Markdown 管线
+  （半截语法由渲染层兜底）。
+
+### Validation
+- 全量 **249 passed**（W2 后 247 + fixtures 新增 2：① Markdown 样例结构
+  断言（标题/加粗/表格分隔行/行内与块级公式/列表）；② v1.5 电路载荷契约
+  断言（params 非负、含 CZ/RZZ、RZZ 两比特无 controls、测量后 dropped=0））。
+  既有 mock 引擎/流式测试全部保持。`VITE_USE_MOCK=1` 演示链路直接可见
+  公式/表格/新符号三类渲染效果。
+
+### Known defects
+- 无。
+
+
 ## 2026-10-14 `frontend: W2 电路符号 v1.5——CZ 两点/RZZ/角度标签/测量后防御（v5 轮，用户反馈缺陷 3）`
 
 ### Added

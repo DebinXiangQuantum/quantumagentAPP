@@ -16,9 +16,11 @@ import { describe, expect, it } from 'vitest';
 import {
   ADMIN_PLUGINS,
   HARDWARE_NODES,
+  MESSAGES_BY_CID,
   TASKS,
   TENANT,
 } from './fixtures';
+import { layoutCircuit } from '../../utils/circuit';
 import type { QpuMetrics } from '../../types/domain';
 
 const qpus = HARDWARE_NODES.filter((n) => n.kind === 'qpu' && !n.id.startsWith('lq-'));
@@ -171,5 +173,46 @@ describe('v1.4 logicalcloud 真机 fixtures（lq-* 机群）', () => {
   it('云端利用率无数据（0）；总机群 QPU 15 台（10 模拟 + 5 云端）', () => {
     expect(lqQpus.every((n) => n.utilization === 0)).toBe(true);
     expect(HARDWARE_NODES.filter((n) => n.kind === 'qpu').length).toBe(15);
+  });
+});
+
+/** v1.5：Mock 演示内容升级——助手回复含完整 Markdown 样例 + v1.5 电路符号。 */
+describe('v1.5 fixtures Markdown 演示与电路契约', () => {
+  const vqeReply = MESSAGES_BY_CID['c-1']?.find((m) => m.id === 'm-2');
+
+  it('c-1 助手回复为完整 Markdown：标题/加粗/列表/表格/行内与块级公式', () => {
+    expect(vqeReply).toBeDefined();
+    const c = vqeReply?.content ?? '';
+    // 标题与加粗
+    expect(c).toMatch(/^##\s/m);
+    expect(c).toContain('**');
+    // GFM 表格（表头分隔行）
+    expect(c).toMatch(/\|---/);
+    // 行内与块级公式（H2 能量与期望值）
+    expect(c).toContain('$E_0');
+    expect(c).toContain('$$');
+    // 列表
+    expect(c).toMatch(/^\s*-\s/m);
+  });
+
+  it('c-1 circuit 载荷为 v1.5 形态：RX/RY/RZ 带 params、含 CZ 与 RZZ、测量后无操作', () => {
+    const artifact = vqeReply?.artifacts.find((a) => a.type === 'circuit');
+    const layout = layoutCircuit(artifact?.payload);
+    expect(layout.ok).toBe(true);
+    const gates = layout.placed.map((p) => p.op.gate.toUpperCase());
+    expect(gates).toContain('CZ');
+    expect(gates).toContain('RZZ');
+    // 旋转门带 params（v1.5 角度展示数据源）
+    const rotations = layout.placed.filter((p) => /^R[XYZ]$/.test(p.op.gate.toUpperCase()));
+    expect(rotations.length).toBeGreaterThanOrEqual(2);
+    for (const r of rotations) expect(r.op.params?.[0]).toBeGreaterThanOrEqual(0);
+    // 测量后不变量：无剔除（合法线路，不触发渲染层兜底提示）
+    expect(layout.dropped).toBe(0);
+    expect(layout.droppedAfterMeasure).toBe(0);
+    // RZZ 两比特无 controls（契约形态）
+    const rzz = layout.placed.find((p) => p.op.gate.toUpperCase() === 'RZZ');
+    expect(rzz?.op.targets.length).toBe(2);
+    expect(rzz?.op.controls ?? []).toHaveLength(0);
+    expect(rzz?.op.params?.[0]).toBeDefined();
   });
 });

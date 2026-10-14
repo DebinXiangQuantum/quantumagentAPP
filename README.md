@@ -551,7 +551,14 @@ CSS 变量适配三主题）；默认禁 raw HTML；内部 ErrorBoundary 兜底�
 **测量后防御**：utils/circuit 布局把"某比特 MEASURE 之后仍作用该比特"的操作剔除
 并计入 dropped/droppedAfterMeasure，画布追加独立提示（后端校验第一道闸、渲染层
 兜底）；CircuitCanvas 四条提示文案迁入 i18n 字典（circuit.note.*，三语同步）。
-**W2 后测试 247 passed**（235 + 新增 12：utils/circuit 6 + CircuitCanvas 6）。
+③ **W3 Mock 演示升级**：fixtures c-1 助手回复改为完整 Markdown 样例（二级标题/
+加粗 H₂ STO-3G/无序列表/三行参数表/行内期望值公式 $E(\theta)$ 与块级基态能量
+公式 $E_0\approx-1.1373\,\mathrm{Ha}$）；c-1 circuit 载荷改 v1.5 形态（RY/RZ 带
+params 0.11/0.23 + CZ + RZZ(0.31) + MEASURE 收尾，测量后无操作不触发兜底提示）；
+c-2 校准回复带行内公式；vqeScript/calibrationScript 剧本同步（流式增量直接驱动
+Markdown 管线）——`VITE_USE_MOCK=1` 演示直接可见公式/表格/新符号三类渲染效果。
+**W3 后测试 249 passed**（247 + fixtures 新增 2：Markdown 样例结构断言 + v1.5
+电路载荷契约断言）。
 
 **v4 前端（2026-10-14，feat/frontend-v4，契约 v1.4，进行中）**：四片 TDD 提交。
 ① **类型与事件归并（W1）**：`Step` 增 `circuit/cloud_job_id/queue_position`；

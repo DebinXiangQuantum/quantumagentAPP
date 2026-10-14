@@ -119,10 +119,25 @@ export const MESSAGES_BY_CID: Record<string, Message[]> = {
       id: 'm-2',
       conversation_id: 'c-1',
       role: 'assistant',
+      // v1.5：完整 Markdown 样例（标题/加粗/列表/表格/行内与块级公式）——
+      // VITE_USE_MOCK=1 演示时直接可见三类渲染效果
       content:
-        '已完成 H2 STO-3G 在 0.735Å 键长下的 VQE 估算：' +
-        'Ansatz 采用硬件高效形式，测量基组旋转后能量收敛至 -1.1372 Ha。\n' +
-        '线路与 1024 shots 计数如下；末尾附带一份未注册类型的产物用于演示降级渲染。',
+        '已完成 **H₂ / STO-3G**（0.735 Å 键长）的 VQE 估算，结果如下。\n\n' +
+        '## 能量收敛\n\n' +
+        'Ansatz 采用硬件高效形式，测量基组旋转后基态能量收敛至：\n\n' +
+        '$$E_0 \\approx -1.1373\\,\\mathrm{Ha}$$\n\n' +
+        '其中期望值 $E(\\theta)=\\langle\\psi(\\theta)|\\hat H|\\psi(\\theta)\\rangle$ 的梯度由参数移位法估计，' +
+        '收敛判据 $1\\times10^{-4}$ Ha。\n\n' +
+        '## 最优参数\n\n' +
+        '| 参数 | 作用位 | 最优值 | 梯度 |\n' +
+        '|---|---|---|---|\n' +
+        '| θ₀ (RY) | q0 | 0.11 | 1.2e-5 |\n' +
+        '| θ₁ (RZ) | q1 | 0.23 | -3.4e-6 |\n' +
+        '| θ₂ (RZZ) | q0–q1 | 0.31 | 5.6e-6 |\n\n' +
+        '线路（含 **CZ** 与 **RZZ(θ)** 符号）与 1024 shots 计数如下：\n\n' +
+        '- 硬件高效 Ansatz：RY/RZ + CNOT/CZ/RZZ(θ)\n' +
+        '- 测量基组：⟨Z₀Z₁⟩、⟨Z₀⟩、⟨Z₁⟩ 三组期望\n' +
+        '- 末尾附带一份未注册类型的产物用于演示降级渲染。\n',
       reasoning:
         '用户要估算 H2 基态能量并查看线路与测量结果——属于量子算法设计任务。\n' +
         '计划：dispatch_agent("algorithm-designer")，专家将以 STO-3G 基组建模、' +
@@ -134,14 +149,15 @@ export const MESSAGES_BY_CID: Record<string, Message[]> = {
           id: 'a-1',
           type: 'circuit',
           title: 'H2 硬件高效 Ansatz（2 qubits）',
+          // v1.5 载荷形态：RX/RY/RZ 带 params；CZ 两点符号；RZZ(θ) 线中点标签
           payload: {
             qubits: 2,
             operations: [
-              { id: 'op-0', gate: 'RY', targets: [0] },
-              { id: 'op-1', gate: 'RZ', targets: [1] },
+              { id: 'op-0', gate: 'RY', targets: [0], params: [0.11] },
+              { id: 'op-1', gate: 'RZ', targets: [1], params: [0.23] },
               { id: 'op-2', gate: 'CNOT', controls: [0], targets: [1] },
-              { id: 'op-3', gate: 'RZ', targets: [1] },
-              { id: 'op-4', gate: 'CNOT', controls: [0], targets: [1] },
+              { id: 'op-3', gate: 'CZ', controls: [0], targets: [1] },
+              { id: 'op-4', gate: 'RZZ', targets: [0, 1], params: [0.31] },
               { id: 'op-5', gate: 'MEASURE', targets: [0, 1] },
             ],
           },
@@ -180,7 +196,9 @@ export const MESSAGES_BY_CID: Record<string, Message[]> = {
       id: 'm-4',
       conversation_id: 'c-2',
       role: 'assistant',
-      content: 'Q0 的 DRAG 校准脉冲已合成（σ=20ns，α=-0.32），波形如下。',
+      // v1.5：行内公式样例（Markdown 管线演示）
+      content:
+        'Q0 的 **DRAG 校准脉冲**已合成（$\\sigma=20\\,\\mathrm{ns}$，$\\alpha=-0.32$），波形如下。',
       agent_id: 'calibration',
       artifacts: [
         {
