@@ -56,6 +56,18 @@ wire format + Mock）、SSE 实时事件。
 `scheduler.{max_parallel_steps,step_timeout_seconds,retry_failed_steps}` ·
 `tenancy.{default_tenant, tenants[].{id,name,api_key,max_concurrent_tasks,max_messages_per_day}}`
 
+**v1.4 硬件数据源（provider 模式）**：`[hardware] provider = "simulated"|"logicalcloud"`
+（缺省 simulated）。logicalcloud 模式：QPU 节点**启动时从云端实拉**
+（`get_backends()`，实测 2026-10-14：5 台真机——MQ02/AGate-100/
+QZ01-surface_code/QZ01-repetition_code 为 active、QZ02 为 offline），
+config 中手写的 qpu 节点被忽略（GPU/CPU 模拟节点保留）；新增键
+`lqcloud_base_url`（默认 https://cloud.logicalqubit.com）与
+`lqcloud_api_key_env`（默认 LQCLOUD_API_KEY，密钥经环境变量注入，绝不入库）。
+**云端拉取失败 → 启动 fail-fast**（真实模式禁止静默回退到伪造数据）。
+平台事实（实测）：认证 X-API-Key；后端字段 name/chip_architecture/status
+(active|offline)/qubits/topology.qubit_coordinates；提交线路**测量前必须有
+barrier** 分隔读出窗口；任务排队 queue_position 可轮询。
+
 **v1.1 渠道池与本地覆盖**：
 - `[models.<ref>]` 新增可选键 `default_thinking`（`"off"|"low"|"high"|"max"`，
   缺省 `"high"`）——该渠道的默认思考程度；主页/每条消息可再覆盖。
@@ -111,6 +123,11 @@ wire format + Mock）、SSE 实时事件。
                                       //   未完成/不可得为 null
   "peak_memory_mb": 18.3,             // v1.3 实测峰值内存（tracemalloc，MB）；
                                       //   不可得为 null（前端显示 "—"）
+  "circuit": null,                      // v1.4 quantum 步可携带线路（§6 CircuitPayload
+                                      //   同构），logicalcloud 模式将真实提交执行
+  "cloud_job_id": null,                // v1.4 云端任务 id（logicalcloud 模式）
+  "queue_position": null,              // v1.4 排队位置（int|null，排队期间经
+                                      //   task.updated 持续更新）
   "subtask_id": null,                  // v1.3 该步展开的子任务（嵌套 DAG）；
                                       //   dispatch_agent 步执行期间子 Agent 经
                                       //   submit_task 提交的任务自动挂接于此
@@ -288,6 +305,8 @@ v1.2 不变量（测试必须覆盖）：所有 fidelity ∈ (0,1]；`t1_us/t2_u
 | `task.updated` | `{task_id, status, steps}`（每次状态迁移全量推送该 Task） |
 | `hardware.updated` | `{nodes}`（利用率/分配变化时推送全量节点） |
 | `error` | `{code, message}`（如 provider 超时、步骤失败摘要） |
+| `agent.activity` | v1.4：`{conversation_id, message_id, agent_id, phase, delta?, tool?, seq}`——dispatch_agent 子运行全程实时外显；phase ∈ `dispatch_started \| reasoning_delta \| text_delta \| tool_call \| dispatch_completed` |
+| `artifact.created` | v1.4：`{conversation_id, message_id, artifact}`——emit_artifact 产生即推送（前端流式插卡）；message.completed 仍全量携带 |
 
 ## 8. Agent 插件接口
 
@@ -306,6 +325,12 @@ class AgentPlugin(Protocol):
 - 清单对齐 [agent-plugins.org schema 1.0.0](https://agent-plugins.org/schemas/1.0.0/plugin.schema.json)
   （与 pulseagent/plugin.json 同构）：外部插件目录（`agents.plugins_dir`）下含
   `plugin.json` + Python 入口即被发现加载；原型阶段外部加载可先抛"未实现"。
+- **v1.4 内置专家=真实推理（去模板）**：algorithm-designer 等内置专家的
+  system_prompt 为**通用领域提示**（问题分析→量子/经典建模→算法选择→线路
+  合成→emit_artifact(circuit/counts)+submit_task(circuit/shots)），不再绑定
+  VQE 演示剧本；任何问题（含 MIP/优化/化学）都由所选**真实渠道**完成推理。
+  **mock 渠道诚实化**：未命中演示剧本的请求返回明确前缀"[mock 渠道]"的
+  说明性回复，绝不输出看似真实推理的模板内容。
 - **v1.1 内置编排 Agent（`orchestrator`）**：会话不再要求用户选择具体 Agent
   （`agent_id` 缺省即 orchestrator）。其系统提示描述平台能力与可用专家清单，
   由模型按任务自主决定调用哪个专家；独占平台工具 `dispatch_agent`。
@@ -357,6 +382,17 @@ openai 列为 GLM 实测形状——2026-10-13 冒烟修正：强度走独立
 | `low` | `thinking: {"type":"enabled"}` + `reasoning_effort: "low"` | `thinking: {"type":"enabled","budget_tokens":2048}` |
 | `high` | `… enabled` + `reasoning_effort: "high"` | `… budget_tokens:8192` |
 | `max` | `… enabled` + `reasoning_effort: "max"` | `… budget_tokens:16384` |
+
+**v1.4 quantum 步真实执行（logicalcloud 模式）**：步骤规格（submit_task
+steps[]）扩展可选键 `circuit`（§6 载荷）/`shots`（默认 1024）/`node_id`
+（缺省自动选 status=active 的 QPU）。Runner：circuit JSON → lqcloud
+QuantumCircuit（支持门 H/X/Y/Z/RX/RY/RZ/CX/CZ；**测量前自动插入 barrier**
+——平台实测硬约束）→ `backend.run(shots, readout_correction=True)` →
+轮询（queue_position → task.updated 实时更新）→ 真实 counts →
+**自动 emit counts artifact**（真实测量结果，标注 cloud-observed）+
+step 记录 cloud_job_id/实测等待与执行时长；提交/执行失败 → step.error。
+依赖为可选 extra：`pip install -e ".[hardware]"`（lqcloud==0.5.1）；
+测试用注入的 FakeCloudProvider（不发真实网络）。
 
 取值优先级：消息级 `thinking_level` > 会话/请求 `model_ref` 渠道的
 `default_thinking` > `"high"`。`ProviderEvent` 新增 `thought_delta{text}`

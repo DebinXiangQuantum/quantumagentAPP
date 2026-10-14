@@ -112,6 +112,14 @@ model_ref = "default"
 # -----------------------------------------------------------------------------
 
 [hardware]
+# v1.4 数据源：simulated=本地模拟机群（演示）；logicalcloud=从 logicalcloud
+# 实拉真机列表与在线状态（QPU 节点忽略下方手写条目，GPU/CPU 仍为本地模拟）。
+# logicalcloud 模式密钥经环境变量 LQCLOUD_API_KEY 注入（绝不写入本文件）；
+# 云端不可达时启动 fail-fast（真实模式禁止静默伪造数据）。
+provider = "simulated"
+# provider = "logicalcloud"
+# lqcloud_base_url = "https://cloud.logicalqubit.com"
+# lqcloud_api_key_env = "LQCLOUD_API_KEY"
 simulated = true
 tick_seconds = 2.0    # 模拟器利用率刷新周期（秒）
 

@@ -149,6 +149,18 @@ token 三主题共用。实现于 `tokens.ts` 的 `buildTokenCss()`：输出
   - **文字边界（v1.2 修复）**：设置页容器与卡片 `min-width: 0`；描述段落
     `word-break: break-word`；渠道/插件表格容器 `overflow-x: auto` +
     `max-width: 100%`——任何长 URL/模型名不得撑破布局。
+- **v1.4 专家工作区（实时外显）**：dispatch_agent 运行期间，助手消息内嵌
+  "🔧 专家 <id> 工作区"渐进块——`agent.activity` 事件驱动：dispatch_started
+  显示头部（专家名+运行中徽标）；reasoning_delta/text_delta 流式追加（等宽
+  小号、secondary 色）；tool_call 显示"→ 调用工具 <name>"行；完成后自动折叠
+  为摘要行（可展开回看）。**线路创建/运行结果等 artifact 经 `artifact.created`
+  即时插卡**（骨架态→message.completed 补全），不再一次性蹦出。
+- **v1.4 composer 渠道徽标**：所选渠道 provider=mock 时，模型名旁显示
+  "演示"徽标（warning 色提示非真实推理）。
+- **v1.4 硬件数据来源标注**：QPU 卡副行区分三种来源——"云端 · N 比特 ·
+  AGate xxx"（logicalcloud 实拉，在线/离线为真实状态）/"模拟"（simulated）；
+  无保真度数据时拓扑图仅渲染比特坐标点（couplers/保真度标注隐藏，tooltip
+  显示"平台未提供"）；quantum 步排队时节点显示"排队 #n"徽标。
 - **v1.2 对话区自动建会话**：输入区发送时若无活跃会话（或发送返回 404，
   如后端重启后内存态清空）→ **自动新建会话**（标题取消息前 20 字符）→
   重试发送一次；按钮期间显示发送中态，失败内联提示可重试。
