@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator
 
 from qap.domain.artifacts import validate_artifact_payload
 
@@ -103,10 +103,20 @@ class Message(BaseModel):
 
 
 class Step(BaseModel):
-    """任务中的一个步骤（契约 §4 Step）。
+    """任务中的一个步骤（契约 §4 Step，v1.3 增实测 profile 字段）。
 
     ``node_id`` 未调度时为 null；``depends_on`` 引用同一 Task 内其他 Step id
     （DAG 完整性校验见 orchestrator/dag.py）。
+
+    v1.3 实测 profile（**measured**：真实执行的真实测量值，非编造、
+    亦非硬件观测；未完成/不可得为 null）：
+    - ``duration_ms``：perf_counter 墙钟差（毫秒，1 位小数，≥ 0）；
+    - ``peak_memory_mb``：tracemalloc 峰值（MB，1 位小数，> 0 或 null；
+      dispatch_agent 步与低于 0.05MB 精度下限的测量为 null）；
+    - ``subtask_id``：该步执行期间子 Agent 经 submit_task 提交的任务 id
+      （运行时上下文自动挂接，一次一层；非手工指定）。
+    ``workload``：runner 执行参数（如 quantum 步的 qubit 数），仅运行时
+    使用，**不进入序列化**（契约 §4 Step 字段保持纯净）。
     """
 
     # 运行时会被调度器逐字段改写（status/node_id/...），开启赋值期校验
@@ -120,8 +130,20 @@ class Step(BaseModel):
     depends_on: list[str] = Field(default_factory=list)
     started_at: str | None = None
     finished_at: str | None = None
+    duration_ms: float | None = Field(default=None, ge=0)
+    peak_memory_mb: float | None = Field(default=None, gt=0)
+    subtask_id: str | None = None
+    workload: dict[str, Any] = Field(default_factory=dict, exclude=True)
     detail: str = ""
     error: str | None = None
+
+    @field_validator("peak_memory_mb")
+    @classmethod
+    def _peak_positive_or_none(cls, value: float | None) -> float | None:
+        """不变量 5：peak_memory_mb > 0 或 null（0.0 视为不可表示 → 拒绝）。"""
+        if value is not None and value <= 0:
+            raise ValueError(f"peak_memory_mb must be > 0 or null, got {value}")
+        return value
 
 
 class Task(BaseModel):
@@ -136,6 +158,10 @@ class Task(BaseModel):
     status: TaskStatus = "pending"
     steps: list[Step] = Field(default_factory=list)
     created_at: str
+
+    #: 该任务被提交时所处的工作深度（0=会话主运行；≥1=dispatch 子运行内，
+    #: 其 agent 步不可再分派——"一次一层"）。运行时内部字段，不序列化。
+    _submit_depth: int = PrivateAttr(default=0)
 
 
 class Allocation(BaseModel):

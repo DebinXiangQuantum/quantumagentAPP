@@ -28,6 +28,7 @@ class StepSpec(BaseModel):
     ``depends_on`` 是**前序步骤的下标**（0 起，指向更早声明的步骤），
     平台在 build_steps 时翻译为 Step id——工具入参用下标而非平台 id，
     避免 Agent 猜测/伪造全局 id（id 由 IdGenerator 统一分配）。
+    ``workload``（v1.3）：runner 执行参数，见字段注释。
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -36,6 +37,9 @@ class StepSpec(BaseModel):
     kind: StepKind
     detail: str = ""
     depends_on: list[int] = Field(default_factory=list)
+    #: v1.3 runner 执行参数（quantum: qubits / classical: bytes / agent:
+    #: agent_id+instruction）；缺省由 runner 取小规模默认值。
+    workload: dict = Field(default_factory=dict)
 
 
 def validate_dag(steps: Sequence[Step]) -> None:
@@ -110,6 +114,7 @@ def build_steps(specs: Sequence[StepSpec], idgen: IdGenerator) -> list[Step]:
                 name=spec.name,
                 kind=spec.kind,
                 depends_on=[id_by_index[dep] for dep in spec.depends_on],
+                workload=dict(spec.workload),
                 detail=spec.detail,
             )
         )

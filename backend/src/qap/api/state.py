@@ -17,7 +17,7 @@ from qap.agents.providers.factory import create_provider
 from qap.agents.runtime import AgentRuntime
 from qap.agents.tools import PlatformTools
 from qap.core.config import AppConfig, LoadedConfig
-from qap.core.errors import NotFoundError
+from qap.core.errors import NotFoundError, SchedulingError
 from qap.core.ids import IdGenerator
 from qap.core.local_store import LOCAL_CONFIG_FILENAME, LocalConfigStore
 from qap.domain.store import ConversationStore, MessageStore, TaskStore
@@ -170,6 +170,54 @@ def build_app_state(config: AppConfig | LoadedConfig) -> AppState:
         else "high",
     )
     tools.bind_dispatcher(runtime.run_subagent)  # dispatch_agent 执行器（§8）
+
+    async def execute_agent_step(task, step) -> str:
+        """agent 步的子运行执行器（v1.3：时长=子运行真实总时长，measured）。
+
+        - 目标专家与指令来自步规格 ``workload.{agent_id, instruction}``
+          （缺省 echo + 步名，保证任何 agent 步都有真实子运行）；
+        - **一次一层**：dispatch 子运行内提交的任务（``_submit_depth ≥ 1``）
+          其 agent 步不可再分派 → 该步失败（诚实报错，不静默降级）；
+        - 子运行期间子 Agent 经 submit_task 提交的任务自动挂
+          ``step.subtask_id``（step_context 运行时上下文）；
+        - 子运行产物（emit_artifact）无消息锚点，仅计入运行即弃——
+          agent 步的可观察输出是 detail 与 subtask 链接；
+        - 内存不可得（跨多个 await 的真实子运行，tracemalloc 无法归因）
+          → ``peak_memory_mb`` 保持 null（契约语义）。
+        """
+        from qap.agents.plugins import ORCHESTRATOR_ID
+        from qap.agents.tools import ToolContext
+        from qap.orchestrator.step_context import dispatch_step_scope
+
+        if task._submit_depth >= 1:
+            raise SchedulingError(
+                f"nested dispatch not allowed: task {task.id!r} was submitted "
+                "during a dispatch sub-run (depth=1); its agent steps cannot "
+                "dispatch again"
+            )
+        workload = dict(step.workload or {})
+        agent_id = str(workload.get("agent_id") or "echo")
+        instruction = str(workload.get("instruction") or step.name)
+        parent = ToolContext(
+            conversation_id=task.conversation_id,
+            tenant_id=task.tenant_id,
+            agent_id=ORCHESTRATOR_ID,
+            message_id="m-0",  # 影子锚点：子运行不落库不推 SSE（run_subagent 语义）
+            run_key=f"{task.id}:{step.id}",
+        )
+        with dispatch_step_scope(step):
+            result = await runtime.run_subagent(parent, agent_id, instruction)
+        if "error" in result:
+            raise SchedulingError(
+                f"dispatch_agent {agent_id!r} failed: "
+                f"{result.get('error')}: {result.get('message')}"
+            )
+        reply = str(result.get("reply") or "")
+        return (
+            f"dispatch_agent {agent_id!r} sub-run completed (measured): {reply[:160]}"
+        )
+
+    scheduler.bind_agent_executor(execute_agent_step)
 
     # 插件管理：安装目录相对路径以基底配置目录解析；本地覆盖层同目录
     plugins_dir: Path | None = None

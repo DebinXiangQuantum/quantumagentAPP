@@ -19,9 +19,10 @@
 from __future__ import annotations
 
 import asyncio
+from time import perf_counter
 from typing import Awaitable, Callable
 
-from qap.core.clock import utcnow_iso
+from qap.core.clock import utcnow_iso_ms
 from qap.core.errors import SchedulingError
 from qap.domain.models import Step, Task
 from qap.events.bus import EventBus
@@ -38,6 +39,9 @@ _TERMINAL = frozenset({"succeeded", "failed", "cancelled"})
 _DEAD = frozenset({"failed", "cancelled"})
 
 StepRunner = Callable[[Step], Awaitable[str]]
+#: agent 步子运行执行器：(task, step) → detail（dispatch_agent 步专用，
+#: v1.3：时长=子运行真实总时长 measured，内存不可得 → null）
+AgentStepExecutor = Callable[[Task, Step], Awaitable[str]]
 
 
 class Scheduler:
@@ -63,7 +67,15 @@ class Scheduler:
         self._runner = runner
         self._poll_interval = poll_interval
         self._on_task_finished = on_task_finished
+        self._agent_executor: AgentStepExecutor | None = None
         self._active_steps = 0  # 全局运行中步数（跨任务，≤ max_parallel_steps）
+
+    def bind_agent_executor(self, executor: AgentStepExecutor) -> None:
+        """绑定 agent 步的子运行执行器（组装根在 Runtime 就绪后注入）。
+
+        未绑定时 agent 步回退到普通 runner（单元测试路径，见 runners.py）。
+        """
+        self._agent_executor = executor
 
     # ---------- 提交 ----------
 
@@ -174,7 +186,7 @@ class Scheduler:
             if lease is None:
                 continue  # 容量暂满：保持 pending，等待释放
             step.status = "running"
-            step.started_at = utcnow_iso()
+            step.started_at = utcnow_iso_ms()  # 毫秒精度：不变量 5 的 ±50ms 容差
             step.node_id = self._allocator.node_id_of(step.id)
             step.error = None
             self._active_steps += 1
@@ -194,6 +206,8 @@ class Scheduler:
                 step.error = None
                 step.started_at = None
                 step.finished_at = None
+                step.duration_ms = None  # 重跑前清空上一轮实测（measured 语义）
+                step.peak_memory_mb = None
                 self._publish(task)
 
     # ---------- 步骤执行体 ----------
@@ -201,11 +215,26 @@ class Scheduler:
     async def _execute(self, task: Task, step: Step, wake: asyncio.Event) -> None:
         """单个步骤的执行协程：超时控制、状态落定、租约释放、事件发布。
 
+        v1.3 实测 profile（measured）：``duration_ms`` = 本协程执行期的
+        ``perf_counter`` 墙钟差（覆盖 runner 全程——满足不变量 5 的
+        ``≈ finished_at - started_at`` ±50ms）；``peak_memory_mb`` 由
+        quantum/classical runner 在同步负载块内以 tracemalloc 实测写入，
+        dispatch_agent 步（子运行执行器路径）内存不可得 → null。
+
         无论成败，``finally`` 里都会释放租约、归还并行额度、发布全量帧并
         ``wake.set()`` —— 编排循环因此无需依赖轮询即可立刻推进。
         """
+        started = perf_counter()
         try:
-            detail = await asyncio.wait_for(self._runner(step), timeout=self._step_timeout)
+            executor = self._agent_executor if step.kind == "agent" else None
+            if executor is not None:
+                detail = await asyncio.wait_for(
+                    executor(task, step), timeout=self._step_timeout
+                )
+            else:
+                detail = await asyncio.wait_for(
+                    self._runner(step), timeout=self._step_timeout
+                )
             step.status = "succeeded"
             step.detail = detail
         except asyncio.TimeoutError:
@@ -217,7 +246,8 @@ class Scheduler:
             step.status = "failed"
             step.error = f"runner error: {exc}"
         finally:
-            step.finished_at = utcnow_iso()
+            step.duration_ms = round((perf_counter() - started) * 1000, 1)
+            step.finished_at = utcnow_iso_ms()
             self._allocator.release(step.id)
             self._active_steps -= 1
             self._publish(task)

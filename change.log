@@ -5,6 +5,43 @@ Validation（本切片测试结论）+ Known defects（已知缺陷，无则写�
 scope 与流程见 docs/DEVELOPMENT.md §2。
 
 
+## 2026-10-13 `backend: V2 步骤实测 profile（真实计算负载 runner + subtask_id 挂接）`
+
+### Added
+- `Step.duration_ms`/`peak_memory_mb`/`subtask_id`（契约 §4 v1.3；序列化
+  缺省 null；`peak_memory_mb` 赋值期校验 >0 或 null）。`StepSpec.workload`
+  执行参数（qubits/bytes/agent_id+instruction），不进 Step 序列化。
+- `orchestrator/runners.py` 重写为**真实计算负载**（measured——真实执行的
+  真实测量，非编造、亦非硬件观测）：quantum 步纯 Python 态矢量模拟
+  （2^n 复幅度 + Hadamard/CNOT 逐层迭代 + 范数守恒）；classical 步
+  JSON→zlib 压缩/解压回环（记录数守恒）。tracemalloc 峰值在纯同步块内
+  测量（并发步互不污染）；<0.05MB 在 1 位小数精度下不可表示 → null。
+- 调度器实测计时：`duration_ms`=perf_counter 差（覆盖执行全程）；
+  `started_at`/`finished_at` 升级为毫秒精度 ISO（`utcnow_iso_ms`）——
+  **契约偏离说明**：秒级精度无法承载不变量 5 的 ±50ms 容差，ISO-8601
+  UTC Z 语法不变，前端 Date 解析兼容。超时失败步保留真实墙钟；retry 前
+  清空上一轮实测。
+- dispatch_agent 步执行器（`scheduler.bind_agent_executor`，组装根注入）：
+  agent 步以目标专家的**真实子运行**执行（时长=子运行真实总时长、内存
+  不可得 → null）；`orchestrator/step_context.py` ContextVar scope 使执行
+  期间子 Agent 经 submit_task 提交的任务自动挂 `step.subtask_id`。
+
+### Changed
+- `Task._submit_depth`（PrivateAttr）：dispatch 子运行内提交的任务其 agent
+  步不可再分派（一次一层，嵌套不误挂）——受深度限制的步直接失败并
+  诚实报错；会话主运行提交的任务不挂接任何 subtask_id。
+- 删除 `QAP_SIM_STEP_SECONDS` 睡眠缩放（sleep 冒充计算的时代结束）；
+  既有测试 fixture 的 setenv 不再生效，无害保留。
+
+### Validation
+- 新增 `tests/test_step_profile.py` 14 用例；全量 pytest **343 passed**
+  （既有 329 全保持；无耗时断言需要放宽——原套件不断言步时长）。
+
+### Known defects
+- quantum 步缺省 n=8 的内存 ~10KB → peak_memory_mb 为 null（低于 1 位
+  小数 MB 精度，契约允许）；需要演示内存时用 workload qubits ≥ 13。
+
+
 ## 2026-10-13 `backend: V1 硬件配置与 metrics（v1.2 拓扑/监控规格 + v1.3 离线语义）`
 
 ### Added

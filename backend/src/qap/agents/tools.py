@@ -26,6 +26,7 @@ from qap.domain.models import Artifact, Task
 from qap.domain.store import TaskStore
 from qap.orchestrator.dag import StepSpec, build_steps, validate_step_specs
 from qap.orchestrator.scheduler import Scheduler
+from qap.orchestrator.step_context import current_dispatch_step
 from qap.tenancy.service import TenantService
 
 
@@ -224,9 +225,17 @@ class PlatformTools:
             steps=build_steps(specs, self._idgen),
             created_at=utcnow_iso(),
         )
+        # v1.3 记录提交深度：dispatch 子运行内提交的任务，其 agent 步
+        # 不可再分派（"一次一层"）；见 scheduler 绑定的 agent 步执行器。
+        task._submit_depth = context.dispatch_depth
         self._tenants.register_task(context.tenant_id, task.id)  # 超配额 → QuotaError
         self._tasks.add(task)
         self._scheduler.submit(task, agent_id=context.agent_id)
+        # v1.3 subtask_id 挂接：agent 步执行期间提交的任务自动挂到该步
+        # （运行时上下文，一次一层；scope 外的提交不挂接）。
+        dispatch_step = current_dispatch_step()
+        if dispatch_step is not None:
+            dispatch_step.subtask_id = task.id
         return {"task_id": task.id, "step_count": len(task.steps)}
 
     def _query_hardware(self, context: ToolContext, args: dict) -> dict:

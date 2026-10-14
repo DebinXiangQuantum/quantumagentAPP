@@ -311,6 +311,34 @@ dispatch_agent、插件安装全生命周期；真实 GLM 冒烟走通全链路�
   t2≤2t1；种子复现；config offline 节点不被租约；snapshot 含 metrics），
   全量 **329 passed**。
 
+**V2（v1.3 步骤实测 profile，`feat/backend-v3`）**：
+- `Step` 增 `duration_ms`/`peak_memory_mb`/`subtask_id`（序列化缺省
+  null；peak 赋值期校验 `>0 或 null`）；`StepSpec.workload` 执行参数
+  （quantum `{"qubits":n}` 缺省 8 上界 16、classical `{"bytes":n}` 缺省
+  256KB 上界 8MB、agent `{"agent_id","instruction"}`）——只进运行时，
+  **不进序列化**（契约 §4 Step 字段纯净）。
+- `orchestrator/runners.py` 重写为**真实计算负载**（measured，非编造、
+  亦非硬件观测）：quantum=纯 Python 态矢量模拟（`2^n` 复幅度列表 + 逐层
+  Hadamard/CNOT 迭代 + 范数守恒校验）、classical=JSON→zlib 压缩→解压→
+  反序列化回环（记录数守恒）；tracemalloc 峰值在**纯同步块**内测量
+  （asyncio 单线程下并发步互不污染；外部已开启 tracing 时退化为
+  current 差；<0.05MB 在 1 位小数精度下不可表示 → null）。
+- 调度器 `_execute`：`duration_ms` = perf_counter 墙钟差（1 位小数），
+  覆盖执行全程——`started_at`/`finished_at` 升级毫秒精度 ISO（
+  `core/clock.utcnow_iso_ms`；不变量 5 的 ±50ms 容差需要，前端 Date
+  解析兼容）；超时失败步保留真实墙钟；retry 前清空上一轮实测。
+- dispatch_agent 步：`scheduler.bind_agent_executor`（组装根注入
+  `execute_agent_step`）——以目标专家的真实子运行执行（时长=子运行真实
+  总时长、内存不可得 → null）；`orchestrator/step_context.py` ContextVar
+  scope：执行期间子 Agent 经 submit_task 提交的任务自动挂 `subtask_id`
+  （一次一层：`Task._submit_depth ≥ 1` 的 agent 步直接失败，嵌套不误挂；
+  会话主运行提交的任务不挂接）。
+- 测试：`tests/test_step_profile.py` 14 用例（序列化缺省/负值拒绝/
+  workload 不序列化；quantum/classical 实测 profile 与 2^14 内存>0；
+  ±50ms 时间戳一致性；未启动步 null；超时步保留墙钟；dispatch 步
+  subtask 挂接/嵌套不误挂/会话级不挂接/未知 agent 失败），全量
+  **343 passed**。
+
 ## 前端 (Frontend)
 
 *本节由 `feat/frontend` 分支的开发切片维护更新：组件清单、页面说明、测试结果。*
