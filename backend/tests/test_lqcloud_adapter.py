@@ -267,3 +267,67 @@ def _flatten(values) -> list:
         else:
             out.append(v)
     return out
+
+
+class TestNoiseAwareRoutingIntegration:
+    """lqmap 迁移集成：非相邻两比特门经 SABRE 路由（SWAP 插入）后可提交。
+
+    真实联调曾因 GLM 在 QZ01-surface_code 上用非相邻 CZ 被平台拒收
+    （"non-adjacent two-qubit gate"）；接入博士生项目的噪声自适应编译
+    （迁入 qap.hardware.lqmap）后，提交前自动映射到耦合图。
+    """
+
+    def _nonadjacent_circuit(self) -> dict:
+        # Fake MQ02 拓扑：[[0,1],[1,2],[2,3],[3,0]]——(0,2) 非相邻
+        return {
+            "qubits": 4,
+            "operations": [
+                {"id": "op-0", "gate": "H", "targets": [0]},
+                {"id": "op-1", "gate": "H", "targets": [2]},
+                {"id": "op-2", "gate": "CZ", "controls": [0], "targets": [2]},
+                {"id": "op-3", "gate": "RZZ", "targets": [1, 3], "params": [0.31]},
+                {"id": "op-4", "gate": "MEASURE", "targets": [0, 1, 2, 3]},
+            ],
+        }
+
+    def test_nonadjacent_cz_routed_and_submitted(self) -> None:
+        provider = FakeCloudProvider()
+        adapter = LqCloudAdapter(provider)
+        job = adapter.submit(self._nonadjacent_circuit(), 64, "MQ02")
+        assert job is not None
+        report = adapter.last_compile_report
+        assert report is not None, "qiskit+lqmap 可用时应走路由编译"
+        # SABRE 可用纯重标布局（swaps=0）或插 SWAP 解决——计数不作硬断言，
+        # 硬不变量是下面"两比特门全部落在耦合边上"
+        assert report.get("two_qubit_gates", 0) >= 2  # CZ + RZZ 分解至少 3 个两比特门
+        assert "physical_qubits" in report
+        # 不变量：编译产物的两比特门全部落在耦合边上（服务端邻接校验
+        # 无法在 Fake 复现，改为在指令层直接验证）
+        coupling = {frozenset(e) for e in [[0, 1], [1, 2], [2, 3], [3, 0]]}
+        instructions = provider.submissions[-1]["instructions"]
+        two_q = [
+            frozenset(i.get("qubits", [])[:2])
+            for i in instructions
+            if i.get("name") in ("cx", "cz", "swap")
+        ]
+        assert two_q and all(q in coupling for q in two_q), two_q
+
+    def test_fallback_direct_when_qiskit_unavailable(self, monkeypatch) -> None:
+        """qiskit 不可用时回退直构（报告为 None，行为同 v1.4）。"""
+        import qap.hardware.lqcloud_adapter as mod
+
+        monkeypatch.setattr(mod, "_lqmap_available", lambda: False)
+        provider = FakeCloudProvider()
+        adapter = LqCloudAdapter(provider)
+        job = adapter.submit(
+            {
+                "qubits": 2,
+                "operations": [
+                    {"id": "op-0", "gate": "CNOT", "controls": [0], "targets": [1]},
+                    {"id": "op-1", "gate": "MEASURE", "targets": [0, 1]},
+                ],
+            },
+            64,
+            "MQ02",
+        )
+        assert job is not None and adapter.last_compile_report is None

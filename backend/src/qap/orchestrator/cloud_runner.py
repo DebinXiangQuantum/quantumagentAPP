@@ -97,6 +97,16 @@ class CloudStepRunner:
             self._adapter.submit, circuit, shots, backend_name
         )
         step.cloud_job_id = str(getattr(job, "job_id", "") or "")
+        # lqmap 路由编译报告（物理比特/SWAP/估计保真度）并入 detail——
+        # 归因完整：逻辑线路经噪声自适应映射后落在哪些物理比特
+        compile_report = getattr(self._adapter, "last_compile_report", None)
+        if compile_report:
+            step.detail = (
+                f"{step.detail}"
+                f"路由映射 physical={compile_report['physical_qubits']} "
+                f"SWAP={compile_report['swaps']} "
+                f"估计保真度≈{compile_report['estimated_fidelity']}；"
+            )
         queued_since = perf_counter()
         # 轮询：queue_position 变化 → task.updated + detail"云端排队 #n"
         while True:
@@ -224,11 +234,20 @@ class CloudStepRunner:
         )
         if not counts:
             return detail + "；云端返回空计数（未产 counts artifact）"
+        # 键长契约修正（真实数据驱动）：云端计数的比特串长度 = 测量的
+        # 经典位数（可能小于线路量子位数——只测部分比特时），payload.qubits
+        # 诚实取键长而非线路宽度；artifact 校验按 payload.qubits 自洽。
+        key_len = max((len(k) for k in counts), default=1)
         payload = {
             "shots": sum(counts.values()),
-            "qubits": int(circuit.get("qubits") or 1),
+            "qubits": key_len,
             "counts": counts,
         }
+        # v1.5：真实计数缓存到 step.workload——query_task_results 工具
+        # 闭环读回（运行时态，不序列化进 Step JSON）
+        workload = dict(step.workload or {})
+        workload["counts"] = dict(counts)
+        step.workload = workload
         title = f"{backend_name} 实测计数（job {step.cloud_job_id}，cloud-observed）"
         if self._artifact_emitter is not None:
             task = current_running_task()

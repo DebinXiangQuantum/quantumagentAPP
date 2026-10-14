@@ -448,3 +448,69 @@ class TestModelRefDefaultAlias:
         history = [m for m in rig.messages.list(conv.id) if m.id != assistant.id]
         await rig.runtime.run(conv, history, assistant)
         assert seen == ["default"]
+
+
+class TestQueryTaskResultsTool:
+    """v1.5 query_task_results：提交→执行→真实计数闭环读回（反编造）。"""
+
+    async def test_returns_real_counts_after_cloud_completion(self) -> None:
+        import json as _json
+
+        rig = Rig()
+        conv = rig.new_conversation("algorithm-designer")
+        # 用 mock 剧本驱动 submit_task？更直接：手工经 PlatformTools 提交
+        tools = rig.tools
+        ctx = type("C", (), {})()
+        # 构造 ToolContext
+        from qap.agents.tools import ToolContext
+
+        ctx = ToolContext(
+            conversation_id=conv.id, tenant_id="demo",
+            agent_id="algorithm-designer", message_id="m-1",
+            run_key=f"{conv.id}:m-1",
+        )
+        submitted = _json.loads(
+            await tools.execute(
+                ctx,
+                "submit_task",
+                _json.dumps({
+                    "name": "真实结果查询用例",
+                    "steps": [{"name": "模拟步", "kind": "classical"}],
+                }),
+            )
+        )
+        assert "task_id" in submitted
+        # 等调度完成
+        for _ in range(200):
+            snap = _json.loads(
+                await tools.execute(
+                    ctx, "query_task_results",
+                    _json.dumps({"task_id": submitted["task_id"]}),
+                )
+            )
+            if snap.get("status") in ("succeeded", "failed"):
+                break
+            await asyncio.sleep(0.02)
+        assert snap["status"] == "succeeded"
+        step = snap["steps"][0]
+        assert step["node_id"] and step["duration_ms"] is not None
+        assert "counts" in step  # 无真机时为 None，但字段必在（契约形状）
+
+    async def test_unknown_or_cross_tenant_task_structured_error(self) -> None:
+        import json as _json
+
+        from qap.agents.tools import ToolContext
+
+        rig = Rig()
+        ctx = ToolContext(
+            conversation_id="c-1", tenant_id="demo", agent_id="echo",
+            message_id="m-1", run_key="c-1:m-1",
+        )
+        out = _json.loads(
+            await rig.tools.execute(ctx, "query_task_results", '{"task_id": "t-999"}')
+        )
+        assert out.get("error") == "not_found"
+        out2 = _json.loads(
+            await rig.tools.execute(ctx, "query_task_results", "{}")
+        )
+        assert out2.get("error") == "validation_failed"

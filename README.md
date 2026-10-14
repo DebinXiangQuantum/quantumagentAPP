@@ -204,7 +204,12 @@ dispatch 子任务自动挂接）、租户角色（/admin/* 403 强制）、附�
 真实 counts artifact cloud-observed）；model_ref="default" 保留别名（修复专家
 误走 mock 剧本）；模糊节点归一化（离线诚实报错/未知兜底自动选+备注）；
 电路契约 v1.5（params 角度双轨、RZZ 门与 CX·RZ·CX 分解、测量后不变量）。
-pytest 500 passed。真实 E2E：H₂ 问题→GLM 自选 VQE+UCCSD→真机任务（模糊
+pytest 500 passed。
+
+**v1.5 续（2026-10-14）**：迁入博士生项目噪声自适应编译（lqmap/SABRE 路由——
+非相邻两比特门自动 SWAP，支持问题真实规模线路）；query_task_results 工具
+补齐"提交→真实计数→最终答案"闭环；counts 键长=测量位数契约修正；专家
+规模诚实指引。pytest 504 passed。真实 E2E：H₂ 问题→GLM 自选 VQE+UCCSD→真机任务（模糊
 节点 bug 由真实测试暴露并修复）。
 
 **B1（v1.1 渠道池与配置覆盖层）**：

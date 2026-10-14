@@ -195,6 +195,9 @@ class LqCloudAdapter:
         if provider is None:
             raise ValueError("LqCloudAdapter requires a provider instance")
         self._provider = provider
+        #: 最近一次 submit 的编译报告（lqmap 路由产物；直构回退时为 None）。
+        #: runner 读取后并入 step.detail（物理比特/SWAP 数/估计保真度）。
+        self.last_compile_report: dict[str, Any] | None = None
 
     # ---------- 后端发现 ----------
 
@@ -215,9 +218,50 @@ class LqCloudAdapter:
             raise ValueError(f"shots must be a positive int, got {shots!r}")
         if not isinstance(backend_name, str) or not backend_name.strip():
             raise ValueError("backend_name must be a non-empty string")
-        circuit = circuit_to_lqcloud(circuit_json)
+        self.last_compile_report = None
+        circuit = self._compile_routed(circuit_json, backend_name)
         backend = self._provider.get_backend(backend_name)
         return backend.run(circuit, shots=shots, readout_correction=True)
+
+    def _compile_routed(self, circuit_json: dict[str, Any], backend_name: str):
+        """噪声自适应编译（迁入模块 lqmap）：逻辑线路 → 耦合图路由线路。
+
+        qiskit/lqmap 可用时：构建 qiskit 线路 → Calibration（后端拓扑，
+        云端无标定时按拓扑均匀质量降级）→ SABRE 多种子择优 → lqcloud
+        线路（物理比特直出、SWAP 已插入），报告存 last_compile_report。
+        不可用/编译异常 → 回退 v1.4 直构路径（报告 None，行为不变）。
+        """
+        if not _lqmap_available():
+            return circuit_to_lqcloud(circuit_json)
+        try:
+            from qap.hardware.lqmap import Calibration, NoiseAwareCompiler
+
+            raw = next(
+                (
+                    b
+                    for b in self._provider.get_backends()
+                    if isinstance(b, dict) and str(b.get("name")) == backend_name
+                ),
+                None,
+            )
+            if raw is None:
+                return circuit_to_lqcloud(circuit_json)
+            compiled = NoiseAwareCompiler(Calibration(raw)).compile(
+                _to_qiskit_circuit(circuit_json)
+            )
+            self.last_compile_report = {
+                "physical_qubits": list(compiled.physical_qubits),
+                "swaps": int(compiled.swaps),
+                "two_qubit_gates": int(compiled.two_qubit_gates),
+                "transpiled_depth": int(compiled.transpiled_depth),
+                "estimated_fidelity": round(float(compiled.estimated_fidelity), 4),
+            }
+            return compiled.lq_circuit
+        except Exception:
+            # 编译失败（如云端拓扑形状超出预期）→ 诚实回退直构，由平台
+            # 序列化校验给出具体错误（不吞掉根因）
+            self.last_compile_report = None
+            return circuit_to_lqcloud(circuit_json)
 
     def poll(self, job) -> dict[str, Any]:
         """单次轮询：``{"status", "queue_position"}``（cloud-observed）。"""
@@ -240,6 +284,59 @@ class LqCloudAdapter:
             clean_key = str(key).replace(" ", "")
             normalized[clean_key] = int(value)
         return normalized
+
+
+def _lqmap_available() -> bool:
+    """qiskit + lqmap 可用性探测（backend 可选 extra [hardware]）。"""
+    try:
+        import qiskit  # noqa: F401
+
+        from qap.hardware.lqmap import Calibration, NoiseAwareCompiler  # noqa: F401
+
+        return True
+    except Exception:  # ImportError 及迁移模块自身异常都回退直构
+        return False
+
+
+def _to_qiskit_circuit(circuit_json: dict[str, Any]):
+    """契约 §6 电路 JSON → qiskit QuantumCircuit（lqmap 编译入口用）。
+
+    与 circuit_to_lqcloud 同一门集与角度双轨；qiskit 原生含 RZZGate，
+    无需分解（编译器会在基组/basis 约束下自行处理）。
+    """
+    from qiskit import QuantumCircuit as QC
+
+    qubits = int(circuit_json["qubits"])
+    qc = QC(qubits, qubits)
+    for op in circuit_json["operations"]:
+        gate = str(op["gate"]).strip().upper()
+        targets = [int(q) for q in op["targets"]]
+        controls = [int(q) for q in (op.get("controls") or [])]
+        if gate == "MEASURE":
+            for i, q in enumerate(targets):
+                qc.measure(q, i)
+            continue
+        if gate in ("RX", "RY", "RZ"):
+            getattr(qc, gate.lower())(_rotation_angle(op), targets[0])
+        elif gate == "RZZ":
+            qc.rzz(_rotation_angle(op), targets[0], targets[1])
+        elif gate in ("CNOT", "CX"):
+            qc.cx(controls[0], targets[0])
+        elif gate == "CY":
+            qc.cy(controls[0], targets[0])
+        elif gate == "CZ":
+            qc.cz(controls[0], targets[0])
+        elif gate == "H":
+            qc.h(targets[0])
+        elif gate == "X":
+            qc.x(targets[0])
+        elif gate == "Y":
+            qc.y(targets[0])
+        elif gate == "Z":
+            qc.z(targets[0])
+        else:
+            raise ValueError(f"unsupported gate {gate!r} for routing compile")
+    return qc
 
 
 def _normalize_backend(raw: Any) -> dict[str, Any]:

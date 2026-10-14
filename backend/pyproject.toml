@@ -27,6 +27,7 @@ dev = [
 # simulated 模式无需安装（适配层惰性导入，见 hardware/lqcloud_adapter.py）。
 hardware = [
     "lqcloud==0.5.1",
+    "qiskit>=2.5,<3",
 ]
 
 # 原型刻意保持最小依赖面：不引入 ORM/agent 框架（见 docs/ARCHITECTURE.md §2 工程选择）。

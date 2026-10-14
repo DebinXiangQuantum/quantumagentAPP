@@ -132,6 +132,23 @@ _QUERY_HARDWARE_SPEC = {
     "parameters": {"type": "object", "properties": {}},
 }
 
+_QUERY_TASK_RESULTS_SPEC = {
+    "name": "query_task_results",
+    "description": (
+        "查询已提交任务的真实执行结果：状态/每步的执行节点、云端任务 id、"
+        "实测时长与真实测量计数 counts（真机 cloud-observed）。"
+        "提交任务后轮询本工具获取真实计数，再基于真实数据完成最终分析——"
+        "禁止在计数未返回前编造任何结果数值"
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "task_id": {"type": "string", "description": "submit_task 返回的任务 id"}
+        },
+        "required": ["task_id"],
+    },
+}
+
 _DISPATCH_AGENT_SPEC = {
     "name": "dispatch_agent",
     "description": (
@@ -185,6 +202,7 @@ class PlatformTools:
             _EMIT_ARTIFACT_SPEC,
             _SUBMIT_TASK_SPEC,
             _QUERY_HARDWARE_SPEC,
+            _QUERY_TASK_RESULTS_SPEC,
             _DISPATCH_AGENT_SPEC,
         ]
 
@@ -203,6 +221,7 @@ class PlatformTools:
             "emit_artifact": self._emit_artifact,
             "submit_task": self._submit_task,
             "query_hardware": self._query_hardware,
+            "query_task_results": self._query_task_results,
             "dispatch_agent": self._dispatch_agent,
         }
         handler = handlers.get(name)
@@ -285,6 +304,37 @@ class PlatformTools:
         """全量节点与分配（§10 第 4 条的 Agent 侧视角）。"""
         nodes = [node.model_dump() for node in self._hardware_snapshot()]
         return {"nodes": nodes}
+
+    def _query_task_results(self, context: ToolContext, args: dict) -> dict:
+        """查询任务真实结果（v1.5：闭环读回真实计数，杜绝编造）。
+
+        返回 task 快照 + 每步执行细节；quantum 步的真实计数缓存在
+        step.workload["counts"]（cloud runner 完成时写入，运行时态不序列化，
+        但本工具读取的是同一 Task 对象）。跨租户任务 → NotFound（404 语义）。
+        """
+        task_id = args.get("task_id")
+        if not isinstance(task_id, str) or not task_id.strip():
+            raise ValidationFailed("query_task_results requires a 'task_id' string")
+        task = self._tasks.get(task_id.strip(), context.tenant_id)
+        return {
+            "task_id": task.id,
+            "name": task.name,
+            "status": task.status,
+            "steps": [
+                {
+                    "id": step.id,
+                    "name": step.name,
+                    "kind": step.kind,
+                    "status": step.status,
+                    "node_id": step.node_id,
+                    "cloud_job_id": step.cloud_job_id,
+                    "duration_ms": step.duration_ms,
+                    "detail": step.detail,
+                    "counts": (step.workload or {}).get("counts"),
+                }
+                for step in task.steps
+            ],
+        }
 
     async def _dispatch_agent(self, context: ToolContext, args: dict) -> dict:
         """dispatch_agent（§8 v1.1）：orchestrator 独占的专家分派。"""

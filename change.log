@@ -5,6 +5,36 @@ Validation（本切片测试结论）+ Known defects（已知缺陷，无则写�
 scope 与流程见 docs/DEVELOPMENT.md §2。
 
 
+## 2026-10-14 `backend: 噪声自适应编译迁入（lqmap）+ query_task_results 闭环 + 规模诚实`
+
+### Added
+- **lqmap 迁移**（provenance：quantumchemistry/logicalcloud 博士生项目，整体
+  迁入 src/qap/hardware/lqmap，仅改包内相对导入+出处头）：噪声自适应子图
+  选择 + SABRE 布局/路由 + 保真度择优。接入 LqCloudAdapter.submit——qiskit
+  可用时线路先经路由编译（物理比特直出、SWAP 自动插入），**非相邻两比特门
+  不再被平台拒收**（真实联调曾因 GLM 在 QZ01 用非相邻 CZ 失败）；编译报告
+  （物理比特/SWAP/估计保真度）并入 step.detail；qiskit 缺失回退直构。
+  qiskit 入 [hardware] extra；conftest 预载修复原生扩展加载顺序崩溃。
+- **query_task_results 平台工具**（v1.5 闭环）：提交后轮询取回每步真实
+  counts（cloud runner 完成时缓存至 step.workload）——真实联调中 GLM 明确
+  指出"没有查询历史任务结果的接口"导致拿到计数也算不出最终答案，本工具
+  补齐闭环；跨租户 404 / 缺参 422 结构化回错。
+- **counts 键长契约修正**（真实数据驱动）：云端计数比特串长度=测量的经典
+  位数（部分测量时小于线路宽度），payload.qubits 诚实取键长。
+- **专家规模诚实指引**：比特数必须匹配问题真实规模（禁 2-3 比特玩具化，
+  除非问题本身小；真机最大 101 比特）；RZZ 门入门集说明；提交后轮询
+  query_task_results 基于真实 counts 完成最终计算。
+
+### Validation
+- `pytest` **504 passed**（+4：路由集成耦合边不变量×2、回退路径、
+  query_task_results×2）；adapter 测试断言编译产物两比特门全部落在耦合边。
+- 冒烟：非相邻 CZ(0,2)+RZZ(1,3) 在 2x2 环拓扑经 SABRE 布局（0 SWAP 纯重标）
+  提交成功；编译报告 physical_qubits/保真度就位。
+
+### Known defects
+- lqmap 保真度估计在云端无标定数据时按均匀质量降级（拓扑正确性不受影响）。
+
+
 ## 2026-10-14 `integration: 负角度显示修复（渲染切片走查修订）`
 
 ### Fixed
