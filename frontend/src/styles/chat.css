@@ -291,3 +291,108 @@
   padding: var(--space-4) var(--space-8);
   font-size: var(--fs-caption);
 }
+
+/* ============ v1.3 composer：附件条与工具条 ============ */
+.message-input__textarea {
+  width: 100%;
+}
+.message-input__error {
+  margin-bottom: var(--space-4);
+}
+.message-input__toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  flex-wrap: wrap; /* 窄对话列下工具条可换行，不压缩选择器到 0 宽 */
+}
+.message-input__attach {
+  width: 32px;
+  height: 28px;
+  padding: 0;
+  font-size: var(--fs-body-lg);
+  line-height: 1;
+}
+.message-input__spacer {
+  flex: 1;
+}
+.message-input__label {
+  font-size: var(--fs-caption);
+  white-space: nowrap;
+}
+.message-input__send {
+  flex-shrink: 0;
+  height: 28px;
+  padding: 0 var(--space-12);
+}
+
+/* 附件条（composer 预览 + 用户消息气泡内嵌共用） */
+.attachment-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-8);
+}
+.attachment-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-8);
+  min-width: 0;
+  max-width: 240px;
+  padding: var(--space-4) var(--space-8);
+  background: var(--bg-inset);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+}
+.attachment-chip--image {
+  padding: 0;
+  overflow: hidden;
+}
+.attachment-chip__thumb {
+  display: block;
+  width: 72px;
+  height: 48px;
+  object-fit: cover;
+}
+.attachment-chip__icon {
+  flex-shrink: 0;
+  color: var(--text-secondary);
+  font-size: var(--fs-body);
+}
+.attachment-chip__meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0; /* 长文件名截断而非撑破气泡 */
+}
+.attachment-chip__name {
+  font-size: var(--fs-caption);
+  color: var(--text-primary);
+  max-width: 160px;
+}
+.attachment-chip__size {
+  font-size: var(--fs-caption);
+  color: var(--text-secondary);
+}
+.attachment-chip__remove {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: var(--fs-body);
+  line-height: 1;
+  cursor: pointer;
+  transition: color var(--motion-fast) var(--ease-out);
+}
+.attachment-chip__remove:hover {
+  color: var(--danger);
+}
+.attachment-chip__remove:focus-visible {
+  outline: 2px solid var(--accent-cyan);
+  outline-offset: 1px;
+}
+.message--user .attachment-strip {
+  margin-bottom: var(--space-8);
+}

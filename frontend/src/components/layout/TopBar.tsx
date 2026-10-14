@@ -1,36 +1,73 @@
 /**
- * TopBar.tsx —— 56px 顶栏（design.md §5，v1.1 修订）。
+ * TopBar.tsx —— 56px 顶栏（design.md §5 v1.2 修订）。
  *
  * 职责：
  *  - 左：侧栏折叠按钮 + 产品名（i18n：topbar.product）；
- *  - 中：**模型选择器**（admin models 渠道池）+ **思考程度选择器**
- *    （off/low/high/max）——v1.1 移除 Agent 选择器（编排 Agent 自动调度）；
- *    切模型时思考程度默认跟随该渠道 default_thinking，手动改过后本会话保持
- *    （联动逻辑在 appStore.selectModel/selectThinking）；
- *  - 右：租户徽标、SSE 连接状态灯（store.connection）、检查器开关。
+ *  - 中：**常驻外观控件**——主题三档分段图标（dark/light/sepia，即时切换
+ *    <html data-theme>）+ 语言三选下拉（self-name 文案，即时生效持久化）；
+ *    **模型/思考选择器不在顶栏**（v1.3 迁入 composer 工具条，见 MessageInput）；
+ *  - 右：租户徽标（含角色：admin 显示「管理员」徽标、user 不显示）、
+ *    SSE 连接状态灯（store.connection）、检查器开关。
  *
  * Props 契约：无 props；全部来自 useAppStore / useUiStore。
- * 降级行为：渠道池未加载时模型选择器禁用（占位"（加载中）"）；
- *   tenant 未知时显示占位「—」。
+ * 降级行为：tenant 未知时显示占位「—」；role 缺失按 user 降级（仅 UX 可见性）。
  */
-import { useUiStore } from '../../store/uiStore';
+import { useUiStore, type Language } from '../../store/uiStore';
 import { useAppStore } from '../../store/appStore';
 import { ConnectionLight } from './ConnectionLight';
 import { useTranslate } from '../../i18n';
-import { THINKING_LEVELS, parseThinkingLevel } from '../../types/domain';
+import { parseTenantRole } from '../../types/domain';
+
+/** 主题分段图标（16px 手写 SVG，token 着色）。 */
+const THEME_ICONS: Record<string, JSX.Element> = {
+  dark: (
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M9.5 2.2a6 6 0 1 0 4.3 4.3A5 5 0 0 1 9.5 2.2z"
+        className="svg-fill-current"
+      />
+    </svg>
+  ),
+  light: (
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+      <circle cx="8" cy="8" r="3" className="svg-fill-current" />
+      <g className="svg-stroke-current" strokeWidth="1.4" strokeLinecap="round">
+        <line x1="8" y1="1.2" x2="8" y2="2.8" />
+        <line x1="8" y1="13.2" x2="8" y2="14.8" />
+        <line x1="1.2" y1="8" x2="2.8" y2="8" />
+        <line x1="13.2" y1="8" x2="14.8" y2="8" />
+        <line x1="3.2" y1="3.2" x2="4.3" y2="4.3" />
+        <line x1="11.7" y1="11.7" x2="12.8" y2="12.8" />
+        <line x1="3.2" y1="12.8" x2="4.3" y2="11.7" />
+        <line x1="11.7" y1="4.3" x2="12.8" y2="3.2" />
+      </g>
+    </svg>
+  ),
+  sepia: (
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+      <circle cx="8" cy="8" r="3.4" fill="none" strokeWidth="1.4" className="svg-stroke-current" />
+      <circle cx="8" cy="8" r="1.1" className="svg-fill-current" />
+    </svg>
+  ),
+};
+
+const THEMES = ['dark', 'light', 'sepia'] as const;
+/** 语言名用各自语言原文（self-name 惯例，不随当前语言翻译）。 */
+const LANGUAGE_NAMES: Record<Language, string> = { zh: '中文', en: 'English', ja: '日本語' };
+const LANGUAGES: readonly Language[] = ['zh', 'en', 'ja'];
 
 export function TopBar(): JSX.Element {
   const t = useTranslate();
   const toggleSidebar = useUiStore((s) => s.toggleSidebar);
   const toggleInspector = useUiStore((s) => s.toggleInspector);
+  const theme = useUiStore((s) => s.theme);
+  const setTheme = useUiStore((s) => s.setTheme);
+  const language = useUiStore((s) => s.language);
+  const setLanguage = useUiStore((s) => s.setLanguage);
 
   const tenant = useAppStore((s) => s.tenant);
   const connection = useAppStore((s) => s.connection);
-  const modelChannels = useAppStore((s) => s.modelChannels);
-  const currentModelRef = useAppStore((s) => s.currentModelRef);
-  const currentThinkingLevel = useAppStore((s) => s.currentThinkingLevel);
-  const selectModel = useAppStore((s) => s.selectModel);
-  const selectThinking = useAppStore((s) => s.selectThinking);
+  const role = parseTenantRole(tenant?.role);
 
   return (
     <header className="topbar">
@@ -53,45 +90,36 @@ export function TopBar(): JSX.Element {
       </div>
 
       <div className="topbar__center">
-        <label className="topbar__agent-label text-secondary" htmlFor="topbar-model">
-          {t('topbar.model')}
-        </label>
-        <select
-          id="topbar-model"
-          className="select select--topbar"
-          data-testid="topbar-model"
-          value={currentModelRef ?? ''}
-          disabled={modelChannels.length === 0}
-          onChange={(e) => selectModel(e.target.value)}
-          aria-label={t('topbar.currentModel')}
+        <div
+          className="segmented segmented--topbar"
+          role="group"
+          aria-label={t('topbar.theme')}
         >
-          {modelChannels.length === 0 ? (
-            <option value="">{t('topbar.modelLoading')}</option>
-          ) : null}
-          {modelChannels.map((channel) => (
-            <option key={channel.ref} value={channel.ref}>
-              {channel.ref} · {channel.model}
-            </option>
+          {THEMES.map((id) => (
+            <button
+              key={id}
+              type="button"
+              className="segmented__btn"
+              data-testid={`topbar-theme-${id}`}
+              aria-pressed={theme === id}
+              onClick={() => setTheme(id)}
+              title={t(`theme.${id}`)}
+              aria-label={t(`theme.${id}`)}
+            >
+              {THEME_ICONS[id]}
+            </button>
           ))}
-        </select>
-        <label
-          className="topbar__agent-label text-secondary"
-          htmlFor="topbar-thinking"
-        >
-          {t('topbar.thinking')}
-        </label>
+        </div>
         <select
-          id="topbar-thinking"
-          className="select select--topbar select--thinking"
-          data-testid="topbar-thinking"
-          value={currentThinkingLevel ?? parseThinkingLevel(null)}
-          disabled={modelChannels.length === 0}
-          onChange={(e) => selectThinking(parseThinkingLevel(e.target.value))}
-          aria-label={t('topbar.currentThinking')}
+          className="select select--topbar select--language"
+          data-testid="topbar-language"
+          value={language}
+          onChange={(e) => setLanguage(e.target.value as Language)}
+          aria-label={t('topbar.language')}
         >
-          {THINKING_LEVELS.map((level) => (
-            <option key={level} value={level}>
-              {t(`thinking.${level}`)}
+          {LANGUAGES.map((id) => (
+            <option key={id} value={id}>
+              {LANGUAGE_NAMES[id]}
             </option>
           ))}
         </select>
@@ -100,11 +128,17 @@ export function TopBar(): JSX.Element {
       <div className="topbar__right">
         <span
           className="tenant-badge mono"
+          data-testid="tenant-badge"
           title={t('topbar.tenant', {
             name: tenant?.name ?? t('topbar.tenantUnknown'),
           })}
         >
           {tenant?.id ?? '—'}
+          {role === 'admin' ? (
+            <span className="tenant-badge__role" data-testid="tenant-role-badge">
+              {t('topbar.role.admin')}
+            </span>
+          ) : null}
         </span>
         <ConnectionLight status={connection} />
         <button

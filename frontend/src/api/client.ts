@@ -14,6 +14,7 @@
  */
 import type {
   AgentInfo,
+  AttachmentMeta,
   Conversation,
   ConversationDetail,
   HardwareResponse,
@@ -94,9 +95,15 @@ export interface ApiClient {
   listConversations(limit?: number): Promise<Conversation[]>;
   createConversation(req: { agent_id?: string; title?: string }): Promise<Conversation>;
   getConversation(cid: string): Promise<ConversationDetail>;
-  /** v1.1：可选 model_ref/thinking_level 覆盖（ARCHITECTURE §5）。 */
+  /** v1.1：可选 model_ref/thinking_level 覆盖（ARCHITECTURE §5）；v1.3 增 attachment_ids。 */
   sendMessage(cid: string, content: string, req?: Omit<SendMessageRequest, 'content'>): Promise<SendMessageAck>;
+  /** §5.2 v1.3：上传附件（multipart file，单文件 ≤ 8MB，超限 422）。 */
+  uploadAttachment(cid: string, file: File): Promise<AttachmentMeta>;
+  /** §5.2 v1.3：附件原始字节 URL（<img> 缩略图用；Mock 为 data: URL）。 */
+  attachmentRawUrl(id: string): string;
   listTasks(conversationId?: string | null): Promise<Task[]>;
+  /** §4 v1.3：取单个任务（嵌套 DAG 下钻用；不存在 → 404）。 */
+  getTask(tid: string): Promise<Task>;
   listHardware(): Promise<HardwareResponse>;
   /** v1.1 管理平台：渠道池（§5）。 */
   listAdminModels(): Promise<ModelChannelList>;
@@ -141,12 +148,15 @@ export class RestClient implements ApiClient {
   }
 
   private async request<T>(path: string, init?: RequestInit): Promise<T> {
+    // multipart（附件上传）由浏览器补 boundary，禁止手工 JSON Content-Type
+    const isMultipart =
+      typeof FormData !== 'undefined' && init?.body instanceof FormData;
     const res = await fetch(`${this.base}${path}`, {
       ...init,
       headers: {
         Authorization: `Bearer ${this.apiKey}`,
         Accept: 'application/json',
-        ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
+        ...(init?.body && !isMultipart ? { 'Content-Type': 'application/json' } : {}),
         ...(init?.headers ?? {}),
       },
     });
@@ -215,11 +225,32 @@ export class RestClient implements ApiClient {
     );
   }
 
+  uploadAttachment(cid: string, file: File): Promise<AttachmentMeta> {
+    const form = new FormData();
+    form.append('file', file, file.name);
+    return this.request<AttachmentMeta>(
+      `/api/v1/conversations/${encodeURIComponent(cid)}/attachments`,
+      { method: 'POST', body: form },
+    );
+  }
+
+  /**
+   * 附件 raw URL：<img> 无法携带 Authorization 头，沿用 SSE 的 ?api_key=
+   * 查询参数兜底（原型权衡，见 ARCHITECTURE §5/§13——生产应换一次性 ticket）。
+   */
+  attachmentRawUrl(id: string): string {
+    return `${this.base}/api/v1/attachments/${encodeURIComponent(id)}/raw?api_key=${encodeURIComponent(this.apiKey)}`;
+  }
+
   listTasks(conversationId?: string | null): Promise<Task[]> {
     const q = conversationId
       ? `?conversation_id=${encodeURIComponent(conversationId)}`
       : '';
     return this.request<Task[]>(`/api/v1/tasks${q}`);
+  }
+
+  getTask(tid: string): Promise<Task> {
+    return this.request<Task>(`/api/v1/tasks/${encodeURIComponent(tid)}`);
   }
 
   listHardware(): Promise<HardwareResponse> {

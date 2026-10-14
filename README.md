@@ -306,6 +306,12 @@ medianTqFidelity；formatFidelity/Us/GB）+ `formatBytes/formatDuration`；
 `sendMessage` 无活跃会话自动建会话（标题=前 20 字）、404 自动重建重试一次、
 失败 `sendError`+`failedDraft` 内联重试、`sending` 防重入。
 
+② **composer 工具条与附件（W2，§5/§5.2）**：模型/思考选择器从顶栏迁入
+输入区底部工具条（左 ＋附件 · 中 模型▾ 思考▾ · 右 发送）；顶栏改为常驻
+外观控件（主题三档分段图标 + 语言下拉）+ 租户徽标含角色（admin「管理员」）
++ 连接灯；附件全流程（file input → 无会话自动建会话 → POST attachments →
+预览条缩略图/文件卡 → × 移除 → attachment_ids 随消息发送；用户气泡内嵌
+附件条复用 AttachmentStrip）；发送中态 + 失败内联重试。
 **集成修订（2026-10-13，main）**：与真实后端联调对齐四处契约——① SSE 流 URL
 携带 `?api_key=`（`buildStreamUrl`/新增 `buildGlobalStreamUrl`）；②
 `TenantInfo` 字段对齐后端 `usage_snapshot`（`active_tasks`/`enabled`）；③
