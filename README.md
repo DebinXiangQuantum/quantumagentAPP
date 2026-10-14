@@ -297,6 +297,15 @@ dispatch_agent、插件安装全生命周期；真实 GLM 冒烟走通全链路�
 无 Tailwind、无图表库、无 webfont**（依赖白名单见 docs/DEVELOPMENT.md 与
 frontend/package.json）。
 
+**v3 前端（2026-10-13，feat/frontend-v3，契约 v1.2/v1.3）**：六片 TDD 提交——
+① **类型与硬件纯函数 + 自动建会话（W1）**：`HardwareNode.metrics` 三形状可选
+（QPU 拓扑/CPU/GPU）、`AttachmentMeta`、`Step` 增 `duration_ms/peak_memory_mb/
+subtask_id`、`TenantInfo.role`；`utils/hw.ts` 色阶与格式化（fidelityLevel 阈值表
+2Q 0.992/0.985、1Q 0.999/0.995、readout 0.98/0.95；usageLevel 0.8/0.9；
+medianTqFidelity；formatFidelity/Us/GB）+ `formatBytes/formatDuration`；
+`sendMessage` 无活跃会话自动建会话（标题=前 20 字）、404 自动重建重试一次、
+失败 `sendError`+`failedDraft` 内联重试、`sending` 防重入。
+
 **集成修订（2026-10-13，main）**：与真实后端联调对齐四处契约——① SSE 流 URL
 携带 `?api_key=`（`buildStreamUrl`/新增 `buildGlobalStreamUrl`）；②
 `TenantInfo` 字段对齐后端 `usage_snapshot`（`active_tasks`/`enabled`）；③

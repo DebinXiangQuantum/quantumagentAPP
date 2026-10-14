@@ -193,6 +193,8 @@ export const ja: Record<string, string> = {
   'error.boot': '初期化に失敗しました（不明なエラー）',
   'error.messagesLoad': 'メッセージの読み込みに失敗',
   'error.messagesLoadDetail': 'メッセージの読み込みに失敗：{message}',
+  'error.send': '送信に失敗しました（不明なエラー）',
+  'chat.autoTitle': '新しい会話',
   // —— ドロワー／共通エラー ——
   'drawer.aria': '詳細ドロワー',
   'drawer.close': 'ドロワーを閉じる',

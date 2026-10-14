@@ -40,11 +40,23 @@ export interface Message {
   reasoning?: string;
   agent_id: string;
   artifacts: Artifact[];
+  /** §5.2 v1.3：附件条（可选，缺省 []；用户消息内嵌附件条渲染复用） */
+  attachments?: AttachmentMeta[];
   created_at: string;
 }
 
 /** §4 ThinkingLevel（v1.1）——思考程度归一化枚举。 */
 export type ThinkingLevel = 'off' | 'low' | 'high' | 'max';
+
+/** §5.2 v1.3 AttachmentMeta —— 附件元数据（上传响应与 Message.attachments 共用）。 */
+export type AttachmentKind = 'image' | 'text' | 'file';
+export interface AttachmentMeta {
+  id: string;
+  name: string;
+  mime: string;
+  size: number;
+  kind: AttachmentKind;
+}
 
 /** 合法思考程度清单（UI 选择器与校验共用；顺序即展示顺序）。 */
 export const THINKING_LEVELS: readonly ThinkingLevel[] = [
@@ -172,6 +184,12 @@ export interface Step {
   depends_on: string[];
   started_at: string | null;
   finished_at: string | null;
+  /** §4 v1.3：实测墙钟时长（perf_counter 差，ms）；未完成/不可得为 null */
+  duration_ms?: number | null;
+  /** §4 v1.3：实测峰值内存（tracemalloc，MB）；不可得为 null（UI 显示 "—"） */
+  peak_memory_mb?: number | null;
+  /** §4 v1.3：该步展开的子任务 id（嵌套 DAG 下钻入口）；无则 null */
+  subtask_id?: string | null;
   detail: string;
   error: string | null;
 }
@@ -197,6 +215,58 @@ export interface Allocation {
   leased_at: string;
 }
 
+/** §4 v1.2 QPU metrics：拓扑结构 + 逐比特/逐耦合器保真度。 */
+export interface QubitInfo {
+  /** id = row*cols + col（grid 布局一一对应） */
+  id: number;
+  /** 相干时间 T1（µs，> 0） */
+  t1_us: number;
+  /** 相干时间 T2（µs，> 0 且 ≤ 2*t1_us） */
+  t2_us: number;
+  /** 读出保真度 ∈ (0,1] */
+  readout_fidelity: number;
+  /** 单比特门保真度 ∈ (0,1] */
+  sq_fidelity: number;
+}
+
+export interface Coupler {
+  /** 网格相邻 qubit 对端点 ∈ [0, qubits_count) */
+  a: number;
+  b: number;
+  /** 双比特门保真度 ∈ (0,1] */
+  tq_fidelity: number;
+}
+
+export interface QpuTopology {
+  layout: string;
+  rows: number;
+  cols: number;
+  qubits: QubitInfo[];
+  couplers: Coupler[];
+}
+
+export interface QpuMetrics {
+  qubits_count: number;
+  topology: QpuTopology;
+}
+
+/** §4 v1.2 CPU metrics：经典节点性能监控。 */
+export interface CpuMetrics {
+  cpu_cores: number;
+  cpu_usage: number;
+  memory_total_gb: number;
+  memory_used_gb: number;
+}
+
+/** §4 v1.2 GPU metrics：显存与利用率（utilization 字段沿用为总利用率）。 */
+export interface GpuMetrics {
+  vram_total_gb: number;
+  vram_used_gb: number;
+}
+
+/** metrics 按 kind 三形状可选（旧后端/畸形缺省 → 前端逐行降级隐藏）。 */
+export type NodeMetrics = QpuMetrics | CpuMetrics | GpuMetrics;
+
 export interface HardwareNode {
   id: string;
   kind: NodeKind;
@@ -206,14 +276,21 @@ export interface HardwareNode {
   /** ∈ [0,1] */
   utilization: number;
   capacity: number;
+  /** §4 v1.2：监控数据（按 kind 形状不同；可缺省，前端降级） */
+  metrics?: NodeMetrics;
   allocations: Allocation[];
 }
+
+/** §4 v1.2 租户角色：admin 可见管理分区（渠道/插件），user 隐藏（强制力在后端 403）。 */
+export type TenantRole = 'user' | 'admin';
 
 /** GET /api/v1/tenants/me —— 租户信息 + 用量/配额（字段名对齐后端 usage_snapshot） */
 export interface TenantInfo {
   id: string;
   name: string;
   enabled: boolean;
+  /** §4 v1.2：角色决定管理分界线；旧后端缺省按 user 降级（仅 UX 可见性） */
+  role?: TenantRole;
   usage: {
     active_tasks: number;
     messages_today: number;
@@ -224,11 +301,18 @@ export interface TenantInfo {
   };
 }
 
-/** POST /api/v1/conversations/{cid}/messages 请求体（v1.1：model_ref/thinking_level 可选覆盖）。 */
+/** 防御式解析：未知/缺失角色降级为 user（最保守可见性）。 */
+export function parseTenantRole(raw: unknown): TenantRole {
+  return raw === 'admin' ? 'admin' : 'user';
+}
+
+/** POST /api/v1/conversations/{cid}/messages 请求体（v1.1：model_ref/thinking_level 可选覆盖；v1.3：attachment_ids）。 */
 export interface SendMessageRequest {
   content: string;
   model_ref?: string;
   thinking_level?: ThinkingLevel;
+  /** §5.2 v1.3：随消息发送的附件 id（未知/跨会话 id → 422） */
+  attachment_ids?: string[];
 }
 
 /** POST /api/v1/conversations/{cid}/messages 的 202 响应 */

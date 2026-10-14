@@ -193,6 +193,8 @@ export const en: Record<string, string> = {
   'error.boot': 'Initialization failed (unknown error)',
   'error.messagesLoad': 'Failed to load messages',
   'error.messagesLoadDetail': 'Failed to load messages: {message}',
+  'error.send': 'Send failed (unknown error)',
+  'chat.autoTitle': 'New conversation',
   // —— Drawer / common errors ——
   'drawer.aria': 'Detail drawer',
   'drawer.close': 'Close drawer',

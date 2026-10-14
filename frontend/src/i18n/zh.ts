@@ -195,6 +195,8 @@ export const zh: Record<string, string> = {
   'error.boot': '初始化失败（未知错误）',
   'error.messagesLoad': '消息加载失败',
   'error.messagesLoadDetail': '消息加载失败：{message}',
+  'error.send': '发送失败（未知错误）',
+  'chat.autoTitle': '新会话',
   // —— 抽屉 / 通用错误 ——
   'drawer.aria': '详情抽屉',
   'drawer.close': '关闭抽屉',

@@ -13,20 +13,26 @@
  *  - 顶栏选择（v1.1）：selectModel 切换渠道（思考程度跟随新渠道
  *    default_thinking，除非本会话已手动改过）；selectThinking 手动覆盖
  *    （thinkingTouched 置位，本会话内跨模型切换保持）；
+ *  - v1.2 自动建会话（§5）：sendMessage 无活跃会话 → createConversation
+ *    （标题=消息前 20 字）→ 发送；404 → 自动新建重试一次；期间 sending
+ *    置位（按钮发送中态），非 404 失败 → sendError + failedDraft 内联重试。
  *  - 连接灯：会话流/全局流状态聚合（任一 offline → offline，否则 connecting/online）。
  * 失败行为：bootstrap 失败 → bootError + 可重试（渠道池拉取失败不阻断启动，
  *   仅置空模型选择）；流 error 事件 → streamError（消息区展示，不中断订阅）。
  */
 import { create } from 'zustand';
 import { getApi } from '../api';
+import { ApiError } from '../api/client';
 import { t } from '../i18n';
 import { useUiStore } from './uiStore';
 import type {
   AgentInfo,
+  AttachmentMeta,
   Conversation,
   HardwareNode,
   Message,
   ModelChannel,
+  SendMessageAck,
   Task,
   TenantInfo,
   ThinkingLevel,
@@ -56,6 +62,13 @@ interface StreamingMessage {
   reasoning?: string;
 }
 
+/** 发送失败的草稿（内联重试用；附件元数据一并保留以便重试渲染）。 */
+export interface FailedDraft {
+  content: string;
+  attachmentIds: string[];
+  attachments: AttachmentMeta[];
+}
+
 export interface AppDataState {
   booted: boolean;
   bootError: string | null;
@@ -73,6 +86,11 @@ export interface AppDataState {
   connection: StreamStatus;
   streamError: string | null;
 
+  /** v1.2 发送中态 + 失败内联重试（design.md §5） */
+  sending: boolean;
+  sendError: string | null;
+  failedDraft: FailedDraft | null;
+
   /** v1.1 渠道池 + 顶栏选择（§5） */
   modelChannels: ModelChannel[];
   currentModelRef: string | null;
@@ -83,8 +101,18 @@ export interface AppDataState {
   bootstrap: () => Promise<void>;
   retryBootstrap: () => Promise<void>;
   selectConversation: (cid: string) => Promise<void>;
-  createConversation: (title?: string) => Promise<void>;
-  sendMessage: (content: string) => Promise<void>;
+  createConversation: (title?: string) => Promise<Conversation>;
+  /**
+   * v1.2/v1.3 发送：无活跃会话自动建会话（标题=消息前 20 字）；404 自动
+   * 重建重试一次；失败 → sendError + failedDraft（retrySend 重发）。
+   */
+  sendMessage: (
+    content: string,
+    opts?: { attachmentIds?: string[]; attachments?: AttachmentMeta[] },
+  ) => Promise<void>;
+  /** 重发失败草稿（无草稿时静默返回）。 */
+  retrySend: () => Promise<void>;
+  clearSendError: () => void;
   /** 刷新渠道池（设置页保存/删除后调用；保持当前选择若仍存在） */
   refreshModelChannels: () => Promise<void>;
   selectModel: (ref: string) => void;
@@ -226,8 +254,44 @@ export const useAppStore = create<AppDataState>((set, get) => {
     recomputeConnection();
   }
 
-  async function bootstrapInner(): Promise<void> {
-    const api = getApi();
+  /** §5 v1.2 自动建会话标题：消息前 20 字（code point 安全截断）。 */
+  function autoTitle(seed: string): string {
+    const chars = Array.from(seed);
+    return chars.slice(0, 20).join('');
+  }
+
+  /**
+   * 确保存在活跃会话并返回其 id：无（或 force=true 重建）时自动新建，
+   * 标题取 seed 前 20 字（design.md §5 v1.2）。
+   */
+  async function ensureConversationInner(seed: string, force = false): Promise<string> {
+    if (!force) {
+      const cid = get().activeConversationId;
+      if (cid !== null) return cid;
+    }
+    const conv = await getApi().createConversation({
+      title: autoTitle(seed.length > 0 ? seed : t('chat.autoTitle')),
+    });
+    set((s) => ({ conversations: [conv, ...s.conversations] }));
+    await get().selectConversation(conv.id);
+    return conv.id;
+  }
+
+  /** §5/v1.1 POST body：可选模型/思考覆盖 + v1.3 attachment_ids（空数组不携带）。 */
+  async function postMessageInner(
+    cid: string,
+    content: string,
+    attachmentIds: string[],
+  ): Promise<SendMessageAck> {
+    const s = get();
+    return getApi().sendMessage(cid, content, {
+      ...(s.currentModelRef ? { model_ref: s.currentModelRef } : {}),
+      ...(s.currentThinkingLevel ? { thinking_level: s.currentThinkingLevel } : {}),
+      ...(attachmentIds.length > 0 ? { attachment_ids: attachmentIds } : {}),
+    });
+  }
+
+  async function bootstrapInner(): Promise<void> {    const api = getApi();
     const [agents, tenant, conversations, hardware, tasks, channelList] =
       await Promise.all([
         api.listAgents(),
@@ -293,6 +357,9 @@ export const useAppStore = create<AppDataState>((set, get) => {
     utilHistoryByNode: {},
     connection: 'connecting',
     streamError: null,
+    sending: false,
+    sendError: null,
+    failedDraft: null,
     modelChannels: [],
     currentModelRef: null,
     currentThinkingLevel: null,
@@ -348,38 +415,84 @@ export const useAppStore = create<AppDataState>((set, get) => {
       const conv = await getApi().createConversation({ title });
       set((s) => ({ conversations: [conv, ...s.conversations] }));
       await get().selectConversation(conv.id);
+      return conv;
     },
 
-    sendMessage: async (content) => {
-      const cid = get().activeConversationId;
+    sendMessage: async (content, opts) => {
       const trimmed = content.trim();
-      if (!cid || trimmed.length === 0) return;
-      const s = get();
-      // v1.1：随消息发送模型/思考覆盖（§5 POST body）
-      await getApi().sendMessage(cid, trimmed, {
-        ...(s.currentModelRef ? { model_ref: s.currentModelRef } : {}),
-        ...(s.currentThinkingLevel ? { thinking_level: s.currentThinkingLevel } : {}),
-      });
-      // 202 语义（契约 §5 修订）：ack.message_id 是后端**预创建的 assistant
-      // 消息** id（SSE 增量归属者），绝不能用作本地用户消息 id——否则
-      // message.completed 的按 id 去重会把 assistant 消息连同 artifacts 吞掉。
-      // 用户消息用本地临时 id 上屏；刷新后以后端落库的真实消息为准。
-      const localUserId = `local-user-${nextLocalSeq()}`;
-      set((s2) => {
-        const list = s2.messagesByCid[cid] ?? [];
-        if (list.some((m) => m.id === localUserId)) return s2;
-        const userMsg: Message = {
-          id: localUserId,
-          conversation_id: cid,
-          role: 'user',
-          content: trimmed,
-          agent_id: 'orchestrator',
-          artifacts: [],
-          created_at: new Date().toISOString(),
-        };
-        return { messagesByCid: { ...s2.messagesByCid, [cid]: [...list, userMsg] } };
+      const attachmentIds = Array.isArray(opts?.attachmentIds)
+        ? opts!.attachmentIds
+        : [];
+      const attachments = Array.isArray(opts?.attachments) ? opts!.attachments : [];
+      // 纯空白且无附件不发送；发送中防重入（按钮同时置禁用）
+      if ((trimmed.length === 0 && attachmentIds.length === 0) || get().sending) {
+        return;
+      }
+      set({ sending: true, sendError: null, failedDraft: null });
+      try {
+        let cid = await ensureConversationInner(trimmed);
+        let ack: SendMessageAck;
+        try {
+          ack = await postMessageInner(cid, trimmed, attachmentIds);
+        } catch (err) {
+          // §5 v1.2：会话 404（如后端重启内存态清空）→ 自动新建重试一次
+          if (err instanceof ApiError && err.status === 404) {
+            cid = await ensureConversationInner(trimmed, true);
+            ack = await postMessageInner(cid, trimmed, attachmentIds);
+          } else {
+            throw err;
+          }
+        }
+        // 202 语义（契约 §5 修订）：ack.message_id 是后端**预创建的 assistant
+        // 消息** id（SSE 增量归属者），绝不能用作本地用户消息 id——否则
+        // message.completed 的按 id 去重会把 assistant 消息连同 artifacts 吞掉。
+        // 用户消息用本地临时 id 上屏；刷新后以后端落库的真实消息为准。
+        void ack;
+        const localUserId = `local-user-${nextLocalSeq()}`;
+        set((s2) => {
+          const list = s2.messagesByCid[cid] ?? [];
+          if (list.some((m) => m.id === localUserId)) return s2;
+          const userMsg: Message = {
+            id: localUserId,
+            conversation_id: cid,
+            role: 'user',
+            content: trimmed,
+            agent_id: 'orchestrator',
+            artifacts: [],
+            ...(attachments.length > 0 ? { attachments } : {}),
+            created_at: new Date().toISOString(),
+          };
+          return {
+            messagesByCid: { ...s2.messagesByCid, [cid]: [...list, userMsg] },
+          };
+        });
+      } catch (err) {
+        // 失败内联重试：保留草稿（含附件），composer 展示重试按钮
+        set({
+          sendError:
+            err instanceof ApiError
+              ? `${err.status}: ${err.message}`
+              : err instanceof Error
+                ? err.message
+                : t('error.send'),
+          failedDraft: { content: trimmed, attachmentIds, attachments },
+        });
+      } finally {
+        set({ sending: false });
+      }
+    },
+
+    retrySend: async () => {
+      const draft = get().failedDraft;
+      if (draft === null) return;
+      set({ failedDraft: null });
+      await get().sendMessage(draft.content, {
+        attachmentIds: draft.attachmentIds,
+        attachments: draft.attachments,
       });
     },
+
+    clearSendError: () => set({ sendError: null, failedDraft: null }),
 
     refreshModelChannels: async () => {
       const list = await getApi().listAdminModels();
@@ -445,6 +558,9 @@ export const useAppStore = create<AppDataState>((set, get) => {
         utilHistoryByNode: {},
         connection: 'connecting',
         streamError: null,
+        sending: false,
+        sendError: null,
+        failedDraft: null,
         modelChannels: [],
         currentModelRef: null,
         currentThinkingLevel: null,

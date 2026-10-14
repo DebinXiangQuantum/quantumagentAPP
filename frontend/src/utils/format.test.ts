@@ -8,7 +8,7 @@
  *  3. formatPercent：[0,1] → 整数百分比；越界 clamp；畸形 → "—"。
  */
 import { describe, expect, it } from 'vitest';
-import { formatClock, formatHM, formatPercent } from './format';
+import { formatBytes, formatClock, formatHM, formatDuration, formatPercent } from './format';
 
 describe('formatClock', () => {
   it('合法 ISO 时间 → 本地 HH:MM:SS', () => {
@@ -48,5 +48,37 @@ describe('formatPercent', () => {
     expect(formatPercent(-0.2)).toBe('0%');
     expect(formatPercent(Number.NaN)).toBe('—');
     expect(formatPercent('37' as unknown as number)).toBe('—');
+  });
+});
+
+describe('formatBytes（附件/文件卡人类可读大小）', () => {
+  it('B / KB / MB / GB 阶梯，1 位小数', () => {
+    expect(formatBytes(512)).toBe('512 B');
+    expect(formatBytes(1024)).toBe('1.0 KB');
+    expect(formatBytes(1536)).toBe('1.5 KB');
+    expect(formatBytes(8 * 1024 * 1024)).toBe('8.0 MB');
+    expect(formatBytes(2.5 * 1024 * 1024 * 1024)).toBe('2.5 GB');
+  });
+  it('畸形输入 → "—"，不抛异常', () => {
+    expect(formatBytes(Number.NaN)).toBe('—');
+    expect(formatBytes(-10)).toBe('—');
+    expect(formatBytes(null)).toBe('—');
+    expect(formatBytes('1024' as unknown as number)).toBe('—');
+  });
+});
+
+describe('formatDuration（DAG 实测时长，design.md §6.3）', () => {
+  it('<1s → 取整毫秒；≥1s → 秒 1 位小数', () => {
+    expect(formatDuration(412.7)).toBe('413ms');
+    expect(formatDuration(0)).toBe('0ms');
+    expect(formatDuration(999.4)).toBe('999ms');
+    expect(formatDuration(1.8e3)).toBe('1.8s');
+    expect(formatDuration(61_234)).toBe('61.2s');
+  });
+  it('null / 负数 / NaN → "—"（实测不可得降级）', () => {
+    expect(formatDuration(null)).toBe('—');
+    expect(formatDuration(undefined)).toBe('—');
+    expect(formatDuration(-5)).toBe('—');
+    expect(formatDuration(Number.NaN)).toBe('—');
   });
 });
