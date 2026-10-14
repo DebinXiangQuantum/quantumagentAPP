@@ -90,16 +90,35 @@ _SUBMIT_TASK_SPEC = {
             "steps": {
                 "type": "array",
                 "description": "步骤数组；depends_on 引用更早元素的下标",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "name": {"type": "string"},
-                        "kind": {"type": "string", "enum": ["classical", "quantum", "agent"]},
-                        "detail": {"type": "string"},
-                        "depends_on": {"type": "array", "items": {"type": "integer"}},
-                    },
-                    "required": ["name", "kind"],
-                },
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "name": {"type": "string"},
+                                "kind": {"type": "string", "enum": ["classical", "quantum", "agent"]},
+                                "detail": {"type": "string"},
+                                "depends_on": {"type": "array", "items": {"type": "integer"}},
+                                "circuit": {
+                                    "type": "object",
+                                    "description": (
+                                        "v1.4 quantum 步线路（§6 载荷：qubits + "
+                                        "operations[gate/targets/controls/theta]）；"
+                                        "logicalcloud 模式将真实提交真机执行"
+                                    ),
+                                },
+                                "shots": {
+                                    "type": "integer",
+                                    "description": "采样数（缺省 1024）",
+                                },
+                                "node_id": {
+                                    "type": "string",
+                                    "description": (
+                                        "指定执行节点（lq-<name> 或裸后端名；"
+                                        "缺省自动选首个 online QPU）"
+                                    ),
+                                },
+                            },
+                            "required": ["name", "kind"],
+                        },
             },
         },
         "required": ["name", "steps"],
@@ -228,6 +247,9 @@ class PlatformTools:
         # v1.3 记录提交深度：dispatch 子运行内提交的任务，其 agent 步
         # 不可再分派（"一次一层"）；见 scheduler 绑定的 agent 步执行器。
         task._submit_depth = context.dispatch_depth
+        # v1.4 记录消息锚点：quantum 步自动 emit 的 counts artifact 经此
+        # 定位归属消息（SSE artifact.created 与消息产物列表回写）。
+        task._message_id = context.message_id
         self._tenants.register_task(context.tenant_id, task.id)  # 超配额 → QuotaError
         self._tasks.add(task)
         self._scheduler.submit(task, agent_id=context.agent_id)

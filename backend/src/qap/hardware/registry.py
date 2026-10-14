@@ -121,7 +121,7 @@ def build_node_registry(
     """
     cloud_nodes: list[HardwareNode] = []
     if config.provider == "logicalcloud":
-        effective = adapter if adapter is not None else _make_default_adapter(config)
+        effective = adapter if adapter is not None else make_cloud_adapter(config)
         try:
             backends = effective.list_backends()
         except Exception as exc:  # SDK 异常一律转启动失败（带原因）
@@ -138,8 +138,12 @@ def build_node_registry(
     return NodeRegistry(config, rng=rng, cloud_nodes=cloud_nodes)
 
 
-def _make_default_adapter(config: HardwareConfig) -> "LqCloudAdapter":
-    """生产适配器：读密钥环境变量 → 构造真实 LQCloudProvider（不写盘）。"""
+def make_cloud_adapter(config: HardwareConfig) -> "LqCloudAdapter":
+    """生产适配器：读密钥环境变量 → 构造真实 LQCloudProvider（不写盘）。
+
+    密钥缺失 / lqcloud 未安装 → :class:`ConfigError`（启动 fail-fast）；
+    组装根在 logicalcloud 模式下调用一次，注册表实拉与步骤 runner 共用。
+    """
     from qap.hardware.lqcloud_adapter import LqCloudAdapter
 
     api_key = os.environ.get(config.lqcloud_api_key_env)

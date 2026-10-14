@@ -439,6 +439,30 @@ cloud-observed 分支（qubits_count==len(qubits) 不要求满网格；fidelity
 增 `cloud_adapter=` 注入点（测试传 FakeCloudProvider，None=生产真连）。
 测试：`tests/test_hardware_provider.py`（16 用例）。
 
+**V3（quantum 步真实执行）**：`Step` 增 `circuit`/`cloud_job_id`/
+`queue_position`（序列化字段，缺省 null；circuit 载荷构造期按 §6 校验，
+畸形拒绝）。`StepSpec`（submit_task steps[]）扩展可选 `circuit`/`shots`
+（缺省 1024）/`node_id`（缺省自动选首个 online QPU；接受 lq-<name> 或裸
+后端名）；circuit 落 `Step.circuit`（序列化）、shots/node_id 落 workload
+（运行时）。新 `orchestrator/cloud_runner.py` `CloudStepRunner`：仅当
+quantum 步携带 circuit 且注入适配器时走真机——选节点（指定→租约节点→
+首个 online lq-*；指定节点离线/未知 → 诚实报错）→ `adapter.submit`（记
+`cloud_job_id`）→ 轮询（`queue_position` 变化经 EventBus 推 `task.updated`、
+`step.detail` 记"云端排队 #n"）→ `result_counts` → **自动 emit counts
+artifact**（标题注明后端名与 job_id、cloud-observed；计数守恒按云端实际
+返回合计——读出修正 round 残差诚实计入）+ detail 记实测等待/执行时长
+（duration_ms 为调度器 perf_counter 实测保持；peak_memory 云路径恒 null）；
+失败（CircuitError/终态 failed）→ step.error 含服务端错误，不产 artifact；
+阻塞 requests 调用一律 `asyncio.to_thread`。simulated 模式/无 circuit 步
+完全委托既有 `simulate_step`（v1.3 真实计算负载，行为不变）。配套：
+`step_context.running_task_scope`（调度器 `_execute` 挂所属 Task，runner
+经 ContextVar 取回推 task.updated，协议签名不变）；`Task._message_id`
+私有锚点（submit_task 记录 ToolContext.message_id）；组装根
+`emit_step_artifact`（Artifact 构造校验 → 立即推 `artifact.created`
+【载荷含消息锚点】→ 回写锚点消息 artifacts 列表）；`AppState.tools`
+显式暴露。测试：`tests/test_cloud_steps.py`（15 用例，含组装根全链：
+artifact.created 即时事件 + 消息产物回写）。
+
 ## 前端 (Frontend)
 
 *本节由 `feat/frontend` 分支的开发切片维护更新：组件清单、页面说明、测试结果。*

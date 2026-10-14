@@ -15,10 +15,11 @@ from __future__ import annotations
 from collections import deque
 from typing import Sequence
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from qap.core.errors import ValidationFailed
 from qap.core.ids import IdGenerator
+from qap.domain.artifacts import validate_artifact_payload
 from qap.domain.models import Step, StepKind
 
 
@@ -29,6 +30,9 @@ class StepSpec(BaseModel):
     平台在 build_steps 时翻译为 Step id——工具入参用下标而非平台 id，
     避免 Agent 猜测/伪造全局 id（id 由 IdGenerator 统一分配）。
     ``workload``（v1.3）：runner 执行参数，见字段注释。
+    ``circuit``/``shots``/``node_id``（v1.4 §9）：quantum 步真机执行
+    三件套——circuit 为 §6 CircuitPayload 同构载荷（构造期校验，非法
+    即拒绝提交）；shots 缺省 1024；node_id 缺省自动选首个 online QPU。
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -40,6 +44,27 @@ class StepSpec(BaseModel):
     #: v1.3 runner 执行参数（quantum: qubits / classical: bytes / agent:
     #: agent_id+instruction）；缺省由 runner 取小规模默认值。
     workload: dict = Field(default_factory=dict)
+    #: v1.4 quantum 步线路（§6 同构；序列化进 Step.circuit）
+    circuit: dict | None = None
+    #: v1.4 采样数（运行时参数，缺省 1024）
+    shots: int | None = Field(default=None, gt=0)
+    #: v1.4 指定执行节点（运行时参数；接受 lq-<name> 注册表 id 或裸后端名）
+    node_id: str | None = Field(default=None, min_length=1)
+
+    @field_validator("circuit")
+    @classmethod
+    def _validate_circuit(cls, value: dict | None) -> dict | None:
+        """非法 circuit 载荷在提交期拒绝（契约 §9 v1.4：§6 同构校验）。"""
+        if value is not None:
+            validate_artifact_payload("circuit", value)
+        return value
+
+    @field_validator("node_id")
+    @classmethod
+    def _reject_blank_node(cls, value: str | None) -> str | None:
+        if value is not None and not value.strip():
+            raise ValueError("node_id must be a non-empty string when present")
+        return value
 
 
 def validate_dag(steps: Sequence[Step]) -> None:
@@ -100,6 +125,8 @@ def validate_step_specs(specs: Sequence[StepSpec]) -> None:
 def build_steps(specs: Sequence[StepSpec], idgen: IdGenerator) -> list[Step]:
     """StepSpec 列表 → 赋全局唯一 id 的 Step 列表（下标依赖 → id 依赖）。
 
+    v1.4：``circuit`` 落到序列化字段 ``Step.circuit``；``shots``/``node_id``
+    为运行时参数 → ``workload``（不进入序列化，与 qubits/bytes 同族）。
     调用前应先 :func:`validate_step_specs`；本函数仍防御性再校验一次。
     """
     validate_step_specs(specs)
@@ -108,13 +135,19 @@ def build_steps(specs: Sequence[StepSpec], idgen: IdGenerator) -> list[Step]:
     for spec in specs:
         step_id = idgen.next("s")
         id_by_index.append(step_id)
+        workload = dict(spec.workload)
+        if spec.shots is not None:
+            workload["shots"] = spec.shots
+        if spec.node_id is not None:
+            workload["node_id"] = spec.node_id
         steps.append(
             Step(
                 id=step_id,
                 name=spec.name,
                 kind=spec.kind,
                 depends_on=[id_by_index[dep] for dep in spec.depends_on],
-                workload=dict(spec.workload),
+                workload=workload,
+                circuit=spec.circuit,
                 detail=spec.detail,
             )
         )

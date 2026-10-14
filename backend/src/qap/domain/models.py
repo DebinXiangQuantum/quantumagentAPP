@@ -119,6 +119,12 @@ class Step(BaseModel):
       dispatch_agent 步与低于 0.05MB 精度下限的测量为 null）；
     - ``subtask_id``：该步执行期间子 Agent 经 submit_task 提交的任务 id
       （运行时上下文自动挂接，一次一层；非手工指定）。
+    v1.4 云执行字段（**cloud-observed**：logicalcloud 真机观测）：
+    - ``circuit``：quantum 步可携带线路（§6 CircuitPayload 同构；
+      logicalcloud 模式将真实提交执行；载荷构造期校验）；
+    - ``cloud_job_id``：云端任务 id；
+    - ``queue_position``：排队位置（int|null，排队期间经 task.updated
+      持续更新）。
     ``workload``：runner 执行参数（如 quantum 步的 qubit 数），仅运行时
     使用，**不进入序列化**（契约 §4 Step 字段保持纯净）。
     """
@@ -137,9 +143,20 @@ class Step(BaseModel):
     duration_ms: float | None = Field(default=None, ge=0)
     peak_memory_mb: float | None = Field(default=None, gt=0)
     subtask_id: str | None = None
+    circuit: dict[str, Any] | None = None
+    cloud_job_id: str | None = None
+    queue_position: int | None = Field(default=None, ge=0)
     workload: dict[str, Any] = Field(default_factory=dict, exclude=True)
     detail: str = ""
     error: str | None = None
+
+    @field_validator("circuit")
+    @classmethod
+    def _validate_circuit(cls, value: dict[str, Any] | None) -> dict[str, Any] | None:
+        """v1.4：circuit 载荷按 §6 circuit 约束构造期校验（null 放行）。"""
+        if value is not None:
+            validate_artifact_payload("circuit", value)
+        return value
 
     @field_validator("peak_memory_mb")
     @classmethod
@@ -166,6 +183,11 @@ class Task(BaseModel):
     #: 该任务被提交时所处的工作深度（0=会话主运行；≥1=dispatch 子运行内，
     #: 其 agent 步不可再分派——"一次一层"）。运行时内部字段，不序列化。
     _submit_depth: int = PrivateAttr(default=0)
+
+    #: 提交该任务的 ToolContext 所属消息 id（v1.4：quantum 步自动 emit 的
+    #: counts artifact 以此为 SSE 锚点并回写消息产物列表）。运行时内部
+    #: 字段，不序列化；非工具路径提交（测试直提）为 None。
+    _message_id: str | None = PrivateAttr(default=None)
 
 
 class Allocation(BaseModel):

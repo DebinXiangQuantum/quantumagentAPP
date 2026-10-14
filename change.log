@@ -5,6 +5,54 @@ Validation（本切片测试结论）+ Known defects（已知缺陷，无则写�
 scope 与流程见 docs/DEVELOPMENT.md §2。
 
 
+## 2026-10-14 `backend: V3（v4 轮）——quantum 步真实执行（Step v1.4 字段 + CloudStepRunner + counts artifact 自动发射）`
+
+### Added
+- `domain/models.py` `Step` 新增 v1.4 序列化字段：`circuit`（§6 同构载荷，
+  构造期校验，畸形拒绝）、`cloud_job_id`、`queue_position`（int|null，
+  ge=0）；`Task._message_id` 私有锚点（submit_task 时记录
+  ToolContext.message_id，云步产物归属用）。
+- `orchestrator/dag.py` `StepSpec` 扩展可选 `circuit`/`shots`（gt=0，
+  缺省 1024）/`node_id`（空白拒绝；接受 `lq-<name>` 或裸后端名）；
+  `build_steps` 把 circuit 落序列化字段、shots/node_id 落 workload。
+- `agents/tools.py`：`submit_task` 的 JSON Schema 步骤元素增
+  circuit/shots/node_id 声明；`_submit_task` 记录消息锚点。
+- 新 `orchestrator/cloud_runner.py` `CloudStepRunner`（调度器 runner
+  注入位）：quantum 步携带 circuit 且有适配器 → 真机路径——节点选择
+  （workload.node_id 指定 → 调度器租约节点 → 首个 online lq-*；指定
+  离线/未知 → 诚实 RuntimeError）→ submit（记 cloud_job_id）→ 轮询
+  （queue_position 变化 → task.updated 全量帧 + step.detail"云端排队
+  #n"）→ completed → result_counts → **自动 emit counts artifact**
+  （标题 `"<backend> 实测计数（job <id>，cloud-observed）"`；payload
+  qubits 取线路、shots 取云端实际合计——读出修正 round 残差诚实计入）
+  + detail 记实测等待/执行秒数；失败（提交异常/终态 failed/cancelled，
+  服务端错误经 SDK JobError 透传）→ 上抛由调度器落 step.error；阻塞
+  requests 一律 `asyncio.to_thread`，CancelledError 原样传播。其余
+  （simulated 模式/无 circuit/classical/agent）委托 `simulate_step`
+  （v1.3 行为不变）。
+- `orchestrator/step_context.py` 增 `running_task_scope`/
+  `current_running_task`（调度器 `_execute` 挂所属 Task；云 runner 经
+  ContextVar 取回发布 task.updated，StepRunner 协议签名不变）。
+- `api/state.py`：组装根解析 logicalcloud 适配器一次（`make_cloud_adapter`
+  公开化；注册表与 runner 共用）；`emit_step_artifact`（Artifact 构造
+  校验 → 立即推 `artifact.created`（载荷 conversation_id/message_id/
+  artifact）→ 回写锚点消息 artifacts 列表）；Scheduler 注入组合 runner；
+  `AppState.tools` 显式暴露。
+
+### Validation
+- 新增 `tests/test_cloud_steps.py` 15 用例（Step/StepSpec 新字段序列化与
+  畸形拒绝；真实链：cloud_job_id/queue_position ≥2 次 task.updated 推送/
+  counts artifact 标题与守恒/实测时长 detail；指定节点选择；终态 failed
+  服务端错误入 step.error；离线节点拒绝；无 circuit 回退 statevector；
+  classical 不变；组装根全链 artifact.created 即时事件 + 消息回写）。
+  全量 **461 passed**（446 + 15）。
+
+### Known defects
+- `scheduler.step_timeout_seconds`（缺省 60s）对真机长任务可能超时
+  （排队久时 step 判 failed "timed out"）——契约语义保持，部署时可按
+  云端实际排队水平调大该键。
+
+
 ## 2026-10-14 `backend: V2（v4 轮）——硬件注册表 provider 模式（实拉真机 + fail-fast + 云节点诚实拓扑）`
 
 ### Added
