@@ -5,6 +5,17 @@ Validation（本切片测试结论）+ Known defects（已知缺陷，无则写�
 scope 与流程见 docs/DEVELOPMENT.md §2。
 
 
+## 2026-10-14 `integration: 负角度显示修复（渲染切片走查修订）`
+
+### Fixed
+- `utils/circuit.ts angleLabelOf`：负角度（如 UCCSD 的 RX(-θ/2)）物理合法，
+  必须原样显示——原子代理按任务书字面把 θ<0 一并退化为门名，属实现错误；
+  仅非数/NaN/Inf 退化。测试断言同步反转（-0.25 → "-0.25"）。
+
+### Validation
+- 前端 `npm test` **250 passed**、`npm run build` 零错误；后端 500 passed。
+
+
 
 ## 2026-10-14 `frontend: W4 测试与 i18n 收尾——v5 轮全绿（250 passed）`
 

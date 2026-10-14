@@ -146,6 +146,9 @@ export function gateShape(op: CircuitOperation): GateShape {
  */
 export function angleLabelOf(op: CircuitOperation): string | null {
   const v = op.params?.[0];
-  if (typeof v !== 'number' || !Number.isFinite(v) || v < 0) return null;
+  // 仅畸形（非数/NaN/Inf）退化门名；**负角度物理合法**（如 UCCSD 的
+  // RX(-θ/2)），必须原样显示——集成走查修订（原实现按提示词字面把负值
+  // 一并退化，属实现错误）
+  if (typeof v !== 'number' || !Number.isFinite(v)) return null;
   return v.toFixed(2);
 }

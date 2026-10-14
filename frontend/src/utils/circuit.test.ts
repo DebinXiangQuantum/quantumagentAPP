@@ -7,7 +7,8 @@
  *     dropped 与 droppedAfterMeasure；未测量比特的操作不受影响；
  *  3. gateShape v1.5：RZZ → 'twodot'；CZ（有 controls）→ 'controlled'；
  *     CZ 缺 controls 的宽容形态 → 'twodot'；MEASURE → 'measure'；
- *  4. angleLabelOf：params[0] 两位小数；缺失/畸形/负值 → null（退化门名）。
+ *  4. angleLabelOf：params[0] 两位小数；缺失/畸形 → null（退化门名）；
+ *     负角度物理合法必须显示（集成走查修订）。
  */
 import { describe, expect, it } from 'vitest';
 import { angleLabelOf, gateShape, layoutCircuit } from './circuit';
@@ -82,11 +83,12 @@ describe('gateShape / angleLabelOf（v1.5 符号分类）', () => {
     expect(gateShape({ id: 'e', gate: 'H', targets: [0] })).toBe('box');
   });
 
-  it('angleLabelOf：两位小数；缺失/畸形/负值 → null（退化显示门名）', () => {
+  it('angleLabelOf：两位小数；缺失/畸形 → null；负角度物理合法必须显示', () => {
     expect(angleLabelOf({ id: 'a', gate: 'RX', targets: [0], params: [0.11] })).toBe('0.11');
     expect(angleLabelOf({ id: 'b', gate: 'RX', targets: [0], params: [0.5] })).toBe('0.50');
     expect(angleLabelOf({ id: 'c', gate: 'RX', targets: [0] })).toBeNull();
     expect(angleLabelOf({ id: 'd', gate: 'RX', targets: [0], params: [Number.NaN] })).toBeNull();
-    expect(angleLabelOf({ id: 'e', gate: 'RX', targets: [0], params: [-0.25] })).toBeNull();
+    // 负角度（UCCSD 的 RX(-θ/2) 常见）原样显示——集成走查修订
+    expect(angleLabelOf({ id: 'e', gate: 'RX', targets: [0], params: [-0.25] })).toBe('-0.25');
   });
 });
