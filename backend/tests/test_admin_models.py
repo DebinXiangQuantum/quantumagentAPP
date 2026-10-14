@@ -75,8 +75,10 @@ def make_loaded_config(base_dir: Path) -> LoadedConfig:
                                   retry_failed_steps=False),
         tenancy=TenancyConfig(
             default_tenant="demo",
+            # v1.2：admin 端点测试租户需 admin 角色（require_admin 守卫）
             tenants=[TenantConfig(id="demo", name="Demo", api_key="demo-key",
-                                  max_concurrent_tasks=2, max_messages_per_day=100)],
+                                  max_concurrent_tasks=2, max_messages_per_day=100,
+                                  role="admin")],
         ),
     )
     return LoadedConfig(

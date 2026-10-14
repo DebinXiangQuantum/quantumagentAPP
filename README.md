@@ -339,6 +339,22 @@ dispatch_agent、插件安装全生命周期；真实 GLM 冒烟走通全链路�
   subtask 挂接/嵌套不误挂/会话级不挂接/未知 agent 失败），全量
   **343 passed**。
 
+**V3（v1.2 租户角色与管理守卫，`feat/backend-v3`）**：
+- `TenantConfig.role ∈ {user,admin}`（缺省 user，非法值启动拒绝，V1 已带
+  最小配置支持）；`/tenants/me` 响应增 `role`；`TenantContext.role` 透传。
+- `api/deps.require_admin`：全部 `/api/v1/admin/*` 端点（models CRUD +
+  plugins 安装/启停/卸载）挂载——先鉴权（401/tenant_disabled 语义不变）
+  再判角色，`role != admin` → 403 `{"error":{"code":"forbidden"}}`
+  （新增 `ForbiddenError`，与租户禁用的 403 语义分开）；守卫先于端点
+  自身校验（user 的畸形 payload 也是 403）。前端隐藏管理分区只是 UX，
+  强制力在后端。
+- 既有 admin 测试夹具的租户补 `role="admin"`（v1.2 契约演进：这些测试
+  验证的就是管理功能本身）。
+- 测试：`tests/test_admin_guard.py` 23 用例（role 缺省/非法/合法；/me 含
+  role；7 端点 × user 403 参数化；守卫优先于 payload 校验；未知 key 401；
+  禁用 admin → tenant_disabled；7 端点 × admin 过守卫；demo 403/admin
+  200 CRUD 端到端），全量 **366 passed**。
+
 ## 前端 (Frontend)
 
 *本节由 `feat/frontend` 分支的开发切片维护更新：组件清单、页面说明、测试结果。*

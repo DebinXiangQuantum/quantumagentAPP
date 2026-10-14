@@ -45,13 +45,22 @@ def _seconds_until_utc_midnight(now: datetime) -> int:
 
 @dataclass(frozen=True)
 class TenantContext:
-    """一次成功鉴权后的租户上下文（请求处理链路的身份凭据）。"""
+    """一次成功鉴权后的租户上下文（请求处理链路的身份凭据）。
+
+    ``role``（v1.2 §5）：``user`` | ``admin``——/api/v1/admin/* 守卫的
+    判定依据（前端隐藏管理分区只是 UX，强制力在后端）。
+    """
 
     tenant: TenantConfig
 
     @property
     def tenant_id(self) -> str:
         return self.tenant.id
+
+    @property
+    def role(self) -> str:
+        """租户角色（透传配置；Legal 值由 TenantConfig 校验保证）。"""
+        return self.tenant.role
 
 
 @dataclass
@@ -168,6 +177,7 @@ class TenantService:
             "id": config.id,
             "name": config.name,
             "enabled": runtime.enabled,
+            "role": config.role,  # v1.2：user|admin（管理分区可见性/守卫依据）
             "usage": {
                 "messages_today": runtime.message_count,
                 "active_tasks": len(runtime.active_task_ids),

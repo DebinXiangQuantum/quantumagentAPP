@@ -1,6 +1,10 @@
-"""管理端点（契约 §5/§8 v1.1）：渠道池 CRUD + 插件安装生命周期管理。
+"""管理端点（契约 §5/§8 v1.1 + §5 v1.2 管理权限）：渠道池 CRUD +
+插件安装生命周期管理。
 
-全部需要租户鉴权（Bearer / ?api_key=，与会话端点一致）。
+全部需要租户鉴权（Bearer / ?api_key=，与会话端点一致）且
+**role = admin**（v1.2 守卫 ``require_admin``：非 admin → 403
+``{"error":{"code":"forbidden"}}``，守卫先于端点自身校验；前端隐藏
+管理分区只是 UX，强制力在此）。
 
 渠道池（§5 v1.1，密钥脱敏）：
 - ``GET /api/v1/admin/models`` → ``{"models": ModelChannel[]}``
@@ -26,13 +30,13 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Response, status
 from pydantic import BaseModel, ConfigDict, Field
 
-from qap.api.deps import get_state, require_tenant
+from qap.api.deps import get_state, require_admin
 from qap.api.state import AppState
 from qap.core.config import ModelConfig
 from qap.core.errors import ConflictError, NotFoundError
 from qap.tenancy.service import TenantContext
 
-router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(require_tenant)])
+router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(require_admin)])
 
 
 # ---------- 请求/响应模型 ----------
@@ -118,7 +122,7 @@ def _referencing_agents(state: AppState, ref: str) -> list[str]:
 
 @router.get("/models")
 async def list_models(
-    tenant: TenantContext = Depends(require_tenant),
+    tenant: TenantContext = Depends(require_admin),
     state: AppState = Depends(get_state),
 ) -> dict:
     """渠道池全量（密钥脱敏；含基底与本地覆盖的合并视图）。"""
@@ -133,7 +137,7 @@ async def list_models(
 async def put_model(
     ref: str,
     payload: ModelChannelInput,
-    tenant: TenantContext = Depends(require_tenant),
+    tenant: TenantContext = Depends(require_admin),
     state: AppState = Depends(get_state),
 ) -> dict:
     """更新或创建渠道：校验（非法 provider/thinking → 422）→ 写
@@ -169,7 +173,7 @@ async def put_model(
 @router.delete("/models/{ref}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_model(
     ref: str,
-    tenant: TenantContext = Depends(require_tenant),
+    tenant: TenantContext = Depends(require_admin),
     state: AppState = Depends(get_state),
 ) -> Response:
     """删除本地覆盖渠道；基底渠道或被引用渠道 → 409。"""
@@ -205,7 +209,7 @@ def _build_provider(entry: ModelConfig):
 @router.post("/plugins/install", status_code=status.HTTP_201_CREATED)
 async def install_plugin(
     payload: InstallPluginRequest,
-    tenant: TenantContext = Depends(require_tenant),
+    tenant: TenantContext = Depends(require_admin),
     state: AppState = Depends(get_state),
 ) -> dict:
     """安装插件（来源目录校验 → 复制 → 注册并刷新 orchestrator 专家清单）。"""
@@ -214,7 +218,7 @@ async def install_plugin(
 
 @router.get("/plugins")
 async def list_plugins(
-    tenant: TenantContext = Depends(require_tenant),
+    tenant: TenantContext = Depends(require_admin),
     state: AppState = Depends(get_state),
 ) -> dict:
     """全部插件的管理视图（含 broken 原因；密钥无关，无脱敏需求）。"""
@@ -225,7 +229,7 @@ async def list_plugins(
 async def set_plugin_enabled(
     plugin_id: str,
     payload: PluginEnableRequest,
-    tenant: TenantContext = Depends(require_tenant),
+    tenant: TenantContext = Depends(require_admin),
     state: AppState = Depends(get_state),
 ) -> dict:
     """启停插件；状态持久化到 config.local.toml（builtin 亦可启停）。"""
@@ -235,7 +239,7 @@ async def set_plugin_enabled(
 @router.delete("/plugins/{plugin_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def uninstall_plugin(
     plugin_id: str,
-    tenant: TenantContext = Depends(require_tenant),
+    tenant: TenantContext = Depends(require_admin),
     state: AppState = Depends(get_state),
 ) -> Response:
     """卸载已安装插件（删目录 + 清持久化状态）；builtin → 409。"""

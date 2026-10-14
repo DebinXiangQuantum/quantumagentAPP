@@ -1,11 +1,11 @@
-"""请求级依赖：状态容器访问与 Bearer 鉴权（契约 §5）。"""
+"""请求级依赖：状态容器访问、Bearer 鉴权与管理员守卫（契约 §5）。"""
 
 from __future__ import annotations
 
 from fastapi import Request
 
 from qap.api.state import AppState
-from qap.core.errors import AuthError
+from qap.core.errors import AuthError, ForbiddenError
 from qap.tenancy.service import TenantContext
 
 #: Authorization 头的方案前缀（仅接受大小写敏感的 "Bearer"，与主流网关一致）
@@ -48,3 +48,19 @@ def require_tenant(request: Request) -> TenantContext:
         )
     state = get_state(request)
     return state.tenants.authenticate(api_key)
+
+
+def require_admin(request: Request) -> TenantContext:
+    """管理端点守卫（契约 §5 v1.2）：先鉴权（同 require_tenant 语义），
+    再判角色——``role != admin`` → 403 ``{"error":{"code":"forbidden"}}``。
+
+    前端隐藏管理分区只是 UX；**强制力在本依赖**（全部 /api/v1/admin/*
+    端点挂载）。守卫先于端点自身校验：畸形 payload 的 user 请求也是 403。
+    """
+    tenant = require_tenant(request)
+    if tenant.role != "admin":
+        raise ForbiddenError(
+            f"admin role required for /api/v1/admin/* endpoints "
+            f"(tenant {tenant.tenant_id!r} has role {tenant.role!r})"
+        )
+    return tenant

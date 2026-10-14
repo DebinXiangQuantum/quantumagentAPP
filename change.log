@@ -5,6 +5,28 @@ Validation（本切片测试结论）+ Known defects（已知缺陷，无则写�
 scope 与流程见 docs/DEVELOPMENT.md §2。
 
 
+## 2026-10-13 `backend: V3 租户角色与管理守卫（role 字段 + admin/* 403）`
+
+### Added
+- `TenantContext.role` 透传与 `/tenants/me` 响应的 `role` 字段（契约 §4
+  TenantInfo v1.2 显式化）。
+- `ForbiddenError`（code=`forbidden` → 403）与 `api/deps.require_admin`
+  管理守卫：全部 `/api/v1/admin/*` 端点（models CRUD + plugins 全生命
+  周期）要求 `role=admin`，非 admin → 403 `{"error":{"code":"forbidden"}}`；
+  守卫先于端点自身校验；鉴权（401/tenant_disabled）先于授权。
+
+### Changed
+- 既有 `test_admin_models`/`test_plugins_admin` 夹具的 demo 租户补
+  `role="admin"`（v1.2 契约演进：这些测试验证管理功能本身，普通用户
+  路径由新守卫测试覆盖）。
+
+### Validation
+- 新增 `tests/test_admin_guard.py` 23 用例；全量 pytest **366 passed**。
+
+### Known defects
+- 无。
+
+
 ## 2026-10-13 `backend: V2 步骤实测 profile（真实计算负载 runner + subtask_id 挂接）`
 
 ### Added
