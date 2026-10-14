@@ -5,6 +5,39 @@ Validation（本切片测试结论）+ Known defects（已知缺陷，无则写�
 scope 与流程见 docs/DEVELOPMENT.md §2。
 
 
+## 2026-10-14 `backend: v1.4 联调修复（model_ref 别名/模糊节点归一化）+ v1.5 电路契约（params/RZZ/测量后不变式）`
+
+### Fixed（v1.4 真实联调暴露）
+- **model_ref="default" 保留别名**（Runtime/组装根）：插件绑定解析到
+  agents.default_model_ref——修复内置专家字面命中 mock 渠道导致 dispatch 走
+  演示剧本、产出模板回复与编造计数（消息级覆盖保持字面语义）。TDD 4 用例。
+- **quantum 步模糊节点归一化**（CloudStepRunner）：显式指定（裸名补前缀/
+  大小写包含匹配）先行判定；存在但离线→诚实报错（租约候选不得静默改投）；
+  完全未识别→兜底自动选在线真机并在 detail 全程保留"未识别节点 X，已自动
+  选择 Y"备注；实际执行机写回 step.node_id。TDD 3 用例。
+- 无线路 quantum 步（云模式）detail 标注"本地模拟执行（未提交真机）"。
+- main.py 模块级 app 改 PEP 562 惰性创建（本机 logicalcloud 配置下测试
+  import 不再触发真实配置加载而爆收集错误）。
+
+### Added（v1.5 电路契约，用户渲染反馈的提交侧治理）
+- circuit 校验：CircuitOperation 增 params（有限数列表）；RX/RY/RZ 角度
+  双轨（params[0] 正式/旧 theta 兼容）缺省拒绝；新 RZZ 门（targets 恰 2
+  无 controls 需角度）；**测量后不变量**——每比特 MEASURE 后任何作用它的
+  操作（含控制位/再测量）拒绝。TDD 6 用例。
+- 真机转换器：params 角度；RZZ 标准分解 CX·RZ·CX（逻辑指令层断言）；
+  测量后守卫兜底；支持门列表更新。TDD 5 用例。
+
+### Validation
+- `pytest` **500 passed**（489 基线全保持 + 新增 11）。
+- 真实 E2E 第一轮证据：问题出发（不指定算法）→ GLM-5.3-flash 自主选择
+  VQE+UCCSD（4 比特 JW 映射、θ=0.11、引用文献值 −1.1373 Ha）并诚实声明
+  "计数未返回不编造能量"；暴露模糊节点 bug（lq-logicalcloud）已由本切片修复。
+
+### Known defects
+- GLM 若不传 shots 则用默认 1024（其文本声称 4096 与实际不符——后续可在
+  专家提示中强调随任务显式传 shots）。
+
+
 
 ## 2026-10-14 `backend: 冒烟修正 II——门名大小写归一（GLM 实测产出小写 h/cx）`
 

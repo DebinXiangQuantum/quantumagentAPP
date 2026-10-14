@@ -34,6 +34,10 @@ SINGLE_QUBIT_GATES = frozenset(
 CONTROLLED_GATES = frozenset({"CNOT", "CX", "CY", "CZ", "CRX", "CRY", "CRZ", "CP"})
 #: 已知两量子对称门（targets 恰 2、无 controls）
 SYMMETRIC_TWO_QUBIT_GATES = frozenset({"SWAP", "ISWAP", "XX", "YY", "ZZ"})
+#: v1.5 双比特 ZZ 旋转（targets 恰 2 + 角度；真机分解 CX·RZ·CX）
+RZZ_GATE = "RZZ"
+#: v1.5 需要角度的单比特旋转门（params=[θ] 正式 / 旧 theta 字段兼容）
+ROTATION_GATES = frozenset({"RX", "RY", "RZ"})
 #: 测量伪门（targets ≥ 1、无 controls）
 MEASURE_GATE = "MEASURE"
 
@@ -52,6 +56,26 @@ def _validate_qubit_index(value: Any, qubits: int, artifact_type: str, field: st
     return value
 
 
+def _finite_or_none(value: Any) -> float | None:
+    """数值且有限 → float；否则 None（bool 显式排除——Python 的 bool 是 int）。"""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    value = float(value)
+    return value if math.isfinite(value) else None
+
+
+def _resolve_rotation_angle(op: dict[str, Any]) -> float | None:
+    """旋转门角度双轨解析（§6 v1.5）：params[0]（正式）优先，旧 theta 兼容。
+
+    返回有限角度或 None（缺角度/非有限/形状非法均 None，调用方拒绝）。
+    params 字段本身存在时必须是有限数列表（形状校验在 _validate_circuit）。
+    """
+    params = op.get("params")
+    if isinstance(params, list) and params:
+        return _finite_or_none(params[0])
+    return _finite_or_none(op.get("theta"))
+
+
 def _validate_circuit(payload: dict[str, Any]) -> None:
     """circuit 载荷校验（见模块 docstring 的门级约束）。"""
     qubits = payload.get("qubits")
@@ -63,6 +87,7 @@ def _validate_circuit(payload: dict[str, Any]) -> None:
     if not isinstance(operations, list) or not operations:
         _fail("circuit", "operations must be a non-empty list")
     seen_op_ids: set[str] = set()
+    measured_qubits: set[int] = set()  # v1.5 测量后不变量的已测量比特
     for op in operations:
         if not isinstance(op, dict):
             _fail("circuit", "each operation must be an object")
@@ -89,12 +114,34 @@ def _validate_circuit(payload: dict[str, Any]) -> None:
         combined = list(targets) + list(controls)
         if len(combined) != len(set(combined)):
             _fail("circuit", f"operation {op_id}: duplicate qubit in targets/controls")
+        # v1.5 params 形状：存在即必须是有限数列表（无参数门携带合法 params 放行）
+        params = op.get("params")
+        if params is not None:
+            if not isinstance(params, list) or not all(
+                _finite_or_none(v) is not None for v in params
+            ):
+                _fail("circuit", f"operation {op_id}: params must be a list of finite numbers")
+        # v1.5 测量后不变量：某比特 MEASURE 后任何作用它的操作（含控制位/再测量）非法
+        if measured_qubits & (set(targets) | set(controls)):
+            _fail(
+                "circuit",
+                f"operation {op_id} ({gate}) acts on a qubit already measured; "
+                f"no operations may follow a qubit's MEASURE",
+            )
         if gate == MEASURE_GATE:
             if controls:
                 _fail("circuit", "MEASURE must not have controls")
+            measured_qubits.update(int(q) for q in targets)
+        elif gate == RZZ_GATE:
+            if len(targets) != 2 or controls:
+                _fail("circuit", "RZZ takes exactly 2 targets and no controls")
+            if _resolve_rotation_angle(op) is None:
+                _fail("circuit", "RZZ requires a finite angle (params[0] or theta)")
         elif gate in SINGLE_QUBIT_GATES:
             if len(targets) != 1 or controls:
                 _fail("circuit", f"single-qubit gate {gate} takes exactly 1 target, no controls")
+            if gate in ROTATION_GATES and _resolve_rotation_angle(op) is None:
+                _fail("circuit", f"{gate} requires a finite angle (params[0] or theta)")
         elif gate in CONTROLLED_GATES:
             if len(controls) != 1 or len(targets) != 1:
                 _fail("circuit", f"controlled gate {gate} takes 1 control and 1 target")

@@ -200,6 +200,13 @@ CPU/内存）、步骤实测 profile（真实计算负载 + perf_counter/tracema
 dispatch 子任务自动挂接）、租户角色（/admin/* 403 强制）、附件上传与注入、
 `GET /api/v1/models` 用户级选择器列表。pytest 418 passed。
 
+**v1.4/v1.5（2026-10-14，main）**：logicalcloud 真机执行（5 台实拉、排队外显、
+真实 counts artifact cloud-observed）；model_ref="default" 保留别名（修复专家
+误走 mock 剧本）；模糊节点归一化（离线诚实报错/未知兜底自动选+备注）；
+电路契约 v1.5（params 角度双轨、RZZ 门与 CX·RZ·CX 分解、测量后不变量）。
+pytest 500 passed。真实 E2E：H₂ 问题→GLM 自选 VQE+UCCSD→真机任务（模糊
+节点 bug 由真实测试暴露并修复）。
+
 **B1（v1.1 渠道池与配置覆盖层）**：
 - `qap/core/config.py`：加载顺序改为 **config.toml（基底）← config.local.toml
   （同目录，gitignored）深合并**——dict 递归按键合并（models 按键覆盖/新增、

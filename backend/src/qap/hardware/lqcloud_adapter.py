@@ -59,6 +59,25 @@ _ROTATION_GATES = {"RX": "rx", "RY": "ry", "RZ": "rz"}
 _CONTROLLED_GATES = {"CX": "cx", "CNOT": "cx", "CZ": "cz"}
 #: 测量伪门（§6）
 _MEASURE_GATE = "MEASURE"
+#: v1.5 双比特 ZZ 旋转门（分解 CX·RZ·CX）
+_RZZ_GATE = "RZZ"
+
+
+def _rotation_angle(op: dict[str, Any]) -> float:
+    """旋转角度双轨解析（§6 v1.5）：params[0]（正式）优先，旧 theta 兼容。
+
+    :raises ValueError: 缺角度 / 非数值 / 非有限（NaN/Inf 一律拒绝）。
+    """
+    params = op.get("params")
+    raw = params[0] if isinstance(params, list) and params else op.get("theta")
+    if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+        raise ValueError(
+            f"gate {op.get('gate')!r} requires a numeric angle (params[0] or theta)"
+        )
+    angle = float(raw)
+    if angle != angle or angle in (float("inf"), float("-inf")):
+        raise ValueError(f"gate {op.get('gate')!r} angle must be finite, got {raw!r}")
+    return angle
 
 
 def circuit_to_lqcloud(circuit_json: dict[str, Any]):
@@ -83,6 +102,7 @@ def circuit_to_lqcloud(circuit_json: dict[str, Any]):
         raise ValueError("circuit.operations must be a non-empty list")
     circuit = QuantumCircuit(qubits, qubits)
     barrier_inserted = False
+    measured: set[int] = set()  # v1.5 测量后守卫状态
     for index, op in enumerate(operations):
         if not isinstance(op, dict):
             raise ValueError(f"operation[{index}] must be an object")
@@ -101,18 +121,33 @@ def circuit_to_lqcloud(circuit_json: dict[str, Any]):
                 circuit.barrier()  # 平台硬约束：测量前必须有 barrier 分隔读出窗口
                 barrier_inserted = True
             circuit.measure(list(targets), list(range(len(targets))))
+            measured.update(int(q) for q in targets)
             continue
+        # v1.5 测量后守卫（§6 不变量的提交侧兜底）：已测量比特不得再被作用
+        touched = {int(q) for q in targets} | {int(q) for q in controls}
+        if touched & measured:
+            raise ValueError(
+                f"operation[{index}] ({gate}) acts on a qubit already measured; "
+                f"no operations may follow a qubit's MEASURE"
+            )
         if gate in _SINGLE_QUBIT_METHODS:
             if len(targets) != 1 or controls:
                 raise ValueError(f"gate {gate} takes exactly 1 target and no controls")
             getattr(circuit, _SINGLE_QUBIT_METHODS[gate])(targets[0])
+        elif gate == _RZZ_GATE:
+            # RZZ(θ) ≡ CX(a,b)·RZ(θ,b)·CX(a,b)（Qiskit RZZGate 等价定义）
+            if len(targets) != 2 or controls:
+                raise ValueError("RZZ takes exactly 2 targets and no controls")
+            a, b = int(targets[0]), int(targets[1])
+            theta = _rotation_angle(op)
+            circuit.cx(a, b)
+            circuit.rz(theta, b)
+            circuit.cx(a, b)
         elif gate in _ROTATION_GATES:
             if len(targets) != 1 or controls:
                 raise ValueError(f"gate {gate} takes exactly 1 target and no controls")
-            theta = op.get("theta")
-            if isinstance(theta, bool) or not isinstance(theta, (int, float)):
-                raise ValueError(f"gate {gate} requires a numeric 'theta'")
-            getattr(circuit, _ROTATION_GATES[gate])(float(theta), targets[0])
+            theta = _rotation_angle(op)
+            getattr(circuit, _ROTATION_GATES[gate])(theta, targets[0])
         elif gate in _CONTROLLED_GATES:
             if len(controls) != 1 or len(targets) != 1:
                 raise ValueError(f"gate {gate} takes exactly 1 control and 1 target")
@@ -120,7 +155,7 @@ def circuit_to_lqcloud(circuit_json: dict[str, Any]):
         else:
             raise ValueError(
                 f"unsupported gate {gate!r} for logicalcloud submission; "
-                f"supported: H/X/Y/Z/RX/RY/RZ/CX/CZ/MEASURE"
+                f"supported: H/X/Y/Z/RX/RY/RZ/CX/CZ/RZZ/MEASURE"
             )
     return circuit
 

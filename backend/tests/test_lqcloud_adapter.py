@@ -206,3 +206,64 @@ class TestGateNameNormalization:
                     {"id": "op-1", "gate": "MEASURE", "targets": [0]},
                 ]}
             )
+
+
+class TestV15ParamsRzzMeasureGuard:
+    """v1.5：params 双轨角度、RZZ 分解（CX·RZ·CX）、测量后守卫。"""
+
+    def test_params_angle_preferred_over_legacy_theta(self) -> None:
+        qc = circuit_to_lqcloud({"qubits": 1, "operations": [
+            {"id": "op-0", "gate": "RZ", "targets": [0], "params": [0.25], "theta": 9.9},
+            {"id": "op-1", "gate": "MEASURE", "targets": [0]},
+        ]})
+        serialized = serialize_instructions(qc)
+        # rz 原名保留且角度来自 params[0]（0.25 而非旧 theta=9.9）
+        rz = next(i for i in serialized if i["name"] == "rz")
+        assert "0.25" in str(rz) or 0.25 in [v for v in _flatten(rz.values())]
+
+    def test_rzz_decomposes_to_cx_rz_cx(self) -> None:
+        qc = circuit_to_lqcloud({"qubits": 2, "operations": [
+            {"id": "op-0", "gate": "RZZ", "targets": [0, 1], "params": [0.23]},
+            {"id": "op-1", "gate": "MEASURE", "targets": [0, 1]},
+        ]})
+        # 断言在**逻辑指令层**（qc.data）：序列化层会把 CX 再分解为原生门并
+        # 自动前置 reset，不适合做分解结构断言。
+        logical = [(g.name, getattr(g, "params", None)) for g, *_ in qc.data]
+        assert [n for n, _ in logical[:3]] == ["cx", "rz", "cx"]
+        assert abs(logical[1][1][0] - 0.23) < 1e-12  # 角度来自 params[0]
+        assert [n for n, _ in logical[3:]] == ["barrier", "measure", "measure"]
+
+    def test_rzz_malformed_rejected(self) -> None:
+        for bad in (
+            {"id": "a", "gate": "RZZ", "targets": [0, 1]},                      # 缺角度
+            {"id": "b", "gate": "RZZ", "targets": [0], "params": [0.2]},        # 单比特
+            {"id": "c", "gate": "RZZ", "targets": [0, 1], "params": ["x"]},     # 非数角度
+        ):
+            with pytest.raises(ValueError):
+                circuit_to_lqcloud({"qubits": 2, "operations": [bad]})
+
+    def test_rotation_without_angle_rejected(self) -> None:
+        with pytest.raises(ValueError):
+            circuit_to_lqcloud({"qubits": 1, "operations": [
+                {"id": "a", "gate": "RX", "targets": [0]},
+            ]})
+
+    def test_gate_after_measure_rejected(self) -> None:
+        with pytest.raises(ValueError, match="[Mm]EASURE"):
+            circuit_to_lqcloud({"qubits": 2, "operations": [
+                {"id": "op-0", "gate": "MEASURE", "targets": [0]},
+                {"id": "op-1", "gate": "CNOT", "controls": [0], "targets": [1]},
+            ]})
+
+
+def _flatten(values) -> list:
+    """序列化指令的值递归摊平（取数值用于角度断言）。"""
+    out: list = []
+    for v in values:
+        if isinstance(v, dict):
+            out.extend(_flatten(v.values()))
+        elif isinstance(v, (list, tuple)):
+            out.extend(_flatten(v))
+        else:
+            out.append(v)
+    return out

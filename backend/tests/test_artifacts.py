@@ -203,3 +203,70 @@ class TestUnknownType:
     def test_known_type_non_dict_payload_rejected(self) -> None:
         with pytest.raises(ValidationFailed):
             validate_artifact_payload("counts", [1, 2, 3])
+
+
+class TestCircuitV15ParamsRzzMeasureGuard:
+    """§6 v1.5：params 角度、RZZ 门、测量后不变量（真实反馈驱动）。
+
+    - 角度双轨：params=[θ]（v1.5 正式）与旧 theta 字段（兼容）均可；
+      RX/RY/RZ/RZZ 缺角度/非有限角度 → 拒绝；
+    - RZZ：targets 恰 2、无 controls、需角度；
+    - 测量后不变量：某比特 MEASURE 之后任何作用该比特的操作（含控制位、
+      含再次测量）→ 拒绝；作用其它未测量比特的操作 → 允许。
+    """
+
+    def _circ(self, ops: list[dict], qubits: int = 2) -> dict:
+        return {"qubits": qubits, "operations": ops}
+
+    def test_rotation_params_and_legacy_theta_both_ok(self) -> None:
+        validate_artifact_payload("circuit", self._circ([
+            {"id": "op-0", "gate": "RY", "targets": [0], "params": [0.11]},
+            {"id": "op-1", "gate": "RZ", "targets": [1], "theta": -0.5},
+        ]))
+        validate_artifact_payload("circuit", self._circ([
+            {"id": "op-2", "gate": "H", "targets": [0], "params": [1.0]},
+        ]))  # 无参数门携带 params：形状合法即放行（向后兼容）
+
+    def test_rotation_missing_or_nonfinite_angle_rejected(self) -> None:
+        for bad_op in (
+            {"id": "a", "gate": "RX", "targets": [0]},
+            {"id": "b", "gate": "RX", "targets": [0], "params": []},
+            {"id": "c", "gate": "RX", "targets": [0], "params": ["0.1"]},
+            {"id": "d", "gate": "RZ", "targets": [0], "theta": float("nan")},
+        ):
+            with pytest.raises(Exception):
+                validate_artifact_payload("circuit", self._circ([bad_op]))
+
+    def test_rzz_valid_and_malformed(self) -> None:
+        validate_artifact_payload("circuit", self._circ([
+            {"id": "op-0", "gate": "RZZ", "targets": [0, 1], "params": [0.23]},
+        ]))
+        for bad in (
+            {"id": "a", "gate": "RZZ", "targets": [0, 1]},                       # 缺角度
+            {"id": "b", "gate": "RZZ", "targets": [0], "params": [0.2]},          # 单比特
+            {"id": "c", "gate": "RZZ", "targets": [0, 1], "controls": [1], "params": [0.2]},
+        ):
+            with pytest.raises(Exception):
+                validate_artifact_payload("circuit", self._circ([bad]))
+
+    def test_gate_after_measure_on_same_qubit_rejected(self) -> None:
+        with pytest.raises(Exception):
+            validate_artifact_payload("circuit", self._circ([
+                {"id": "op-0", "gate": "H", "targets": [0]},
+                {"id": "op-1", "gate": "MEASURE", "targets": [0, 1]},
+                {"id": "op-2", "gate": "CNOT", "controls": [0], "targets": [1]},  # 0 已测量
+            ]))
+
+    def test_double_measure_same_qubit_rejected(self) -> None:
+        with pytest.raises(Exception):
+            validate_artifact_payload("circuit", self._circ([
+                {"id": "op-0", "gate": "MEASURE", "targets": [0]},
+                {"id": "op-1", "gate": "MEASURE", "targets": [0, 1]},
+            ]))
+
+    def test_gate_on_unmeasured_qubit_after_measure_ok(self) -> None:
+        validate_artifact_payload("circuit", self._circ([
+            {"id": "op-0", "gate": "MEASURE", "targets": [0]},
+            {"id": "op-1", "gate": "X", "targets": [1]},  # 1 未测量 → 合法
+            {"id": "op-2", "gate": "MEASURE", "targets": [1]},
+        ]))
