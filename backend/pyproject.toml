@@ -23,6 +23,11 @@ dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
 ]
+# v1.4 §9：logicalcloud 真机接入（hardware provider 模式）的可选依赖；
+# simulated 模式无需安装（适配层惰性导入，见 hardware/lqcloud_adapter.py）。
+hardware = [
+    "lqcloud==0.5.1",
+]
 
 # 原型刻意保持最小依赖面：不引入 ORM/agent 框架（见 docs/ARCHITECTURE.md §2 工程选择）。
 [tool.hatch.build.targets.wheel]

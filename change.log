@@ -5,7 +5,44 @@ Validation（本切片测试结论）+ Known defects（已知缺陷，无则写�
 scope 与流程见 docs/DEVELOPMENT.md §2。
 
 
-## 2026-10-14 `integration: v3 走查修复——用户级模型列表、同源代理、设置页外观迁移收口`
+## 2026-10-14 `backend: V1（v4 轮）——logicalcloud 适配层（circuit 转换 + barrier 硬约束 + LqCloudAdapter）`
+
+### Added
+- `backend/src/qap/hardware/lqcloud_adapter.py`（契约 §3 v1.4 / §9 v1.4）：
+  - `circuit_to_lqcloud(circuit_json)`：契约 §6 线路 JSON →
+    `lqcloud.QuantumCircuit`；门 H/X/Y/Z/RX/RY/RZ(theta)/CX/CZ（CNOT 为
+    CX 别名，对齐 §6 演示线路用名）+ MEASURE（targets 顺序 → 经典比特
+    0..k-1）；**首个 MEASURE 前自动插入全比特 barrier**（平台实测硬约束：
+    无 barrier 分隔读出窗口的提交即 CircuitError）；未知门/缺 targets/
+    非法 theta → `ValueError`（诚实拒绝）。
+  - `LqCloudAdapter`：lqcloud provider 对象的薄封装（**构造注入**，生产
+    注入 `LQCloudProvider`、测试注入 FakeCloudProvider，零真实网络）：
+    `list_backends()`（原始记录 → 规范 dict name/chip_architecture/status/
+    qubits/topology，缺字段降级不猜测）、`submit(circuit_json, shots,
+    backend_name)`（固定 `readout_correction=True`，服务端 CircuitError 等
+    原样上抛）、`poll(job)`（单次 → `{status, queue_position}`，
+    cloud-observed）、`result_counts(job)`（真实计数，键去空格分隔）。
+  - 序列化助手 `serialize_instructions`（与 lqcloud 序列化同源，测试
+    断言"提交产物含 barrier"）；节点 id 映射 `cloud_node_id`/
+    `backend_name_of`（`lq-<name>` 前缀，V2 注册表用）。
+- `pyproject.toml` 新增 optional extra `hardware = ["lqcloud==0.5.1"]`
+  （`pip install -e ".[hardware]"`；simulated 模式无需安装——适配层惰性
+  导入并给出可操作的 ImportError）。
+- `tests/fake_cloud.py`：lqcloud 网络层的进程内替身（现网同构 5 台真机
+  样例：MQ02/AGate-100/QZ01-surface_code/QZ01-repetition_code active、
+  QZ02 offline；脚本化轮询序列；真实 `serialize_circuit` 序列化提交产物；
+  提交即抛/终态 failed/拉取失败三类故障注入）。
+
+### Validation
+- 新增 `tests/test_lqcloud_adapter.py` 12 用例（转换器门库/自动 barrier/
+  未知门与畸形拒绝；适配器全链 submit→queued(#2)→running→completed
+  counts；提交参数与 barrier 落账；CircuitError/未知 backend/拉取失败/
+  终态 failed 服务端错误透传）。其余切片测试不受影响（本切片不动既有源）。
+
+### Known defects
+- 无（`submit` 的 readout_correction 计数经 SDK round 取整，总数可能偏离
+  shots ±1——契约不变量 2 的守恒按"实际返回总数"落 counts artifact，
+  V3 落地时在载荷 shots 字段采用实际合计并注明）。
 
 ### Fixed
 - **用户级模型选择器列表**：普通用户（role=user）的输入区模型下拉原先走

@@ -405,6 +405,21 @@ dispatch 子任务自动挂接）、租户角色（/admin/* 403 强制）、附�
   样本 + 不变量 5 正/负样本；test_step_profile 增真实任务整包复核），
   全量 **416 passed**。
 
+**v4 后端（2026-10-14 起，`feat/backend-v4`，契约 v1.4：logicalcloud 真机
+接入、专家真实化、dispatch 实时外显）**：五片 TDD 提交——
+
+**V1（logicalcloud 适配层）**：`hardware/lqcloud_adapter.py`——契约 §6
+线路 JSON → `lqcloud.QuantumCircuit` 转换器（门 H/X/Y/Z/RX/RY/RZ(theta)/
+CX/CZ，CNOT 为 CX 别名；**首个 MEASURE 前自动插入 barrier**——平台实测
+硬约束，无 barrier 提交即 CircuitError；未知门/畸形 → ValueError）；
+`LqCloudAdapter` 薄封装（构造注入 provider：生产 `LQCloudProvider`、测试
+FakeCloudProvider 零网络）：`list_backends`（规范 dict）/`submit`（固定
+`readout_correction=True`）/`poll`（{status, queue_position}）/
+`result_counts`（cloud-observed 真实计数）；服务端异常原样上抛。
+依赖为可选 extra：`pip install -e ".[hardware]"`（lqcloud==0.5.1）。
+测试：`tests/test_lqcloud_adapter.py`（12 用例）+ 共享替身
+`tests/fake_cloud.py`（现网同构 5 台真机、脚本化轮询、故障注入）。
+
 ## 前端 (Frontend)
 
 *本节由 `feat/frontend` 分支的开发切片维护更新：组件清单、页面说明、测试结果。*
