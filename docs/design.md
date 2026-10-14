@@ -186,11 +186,21 @@ token 三主题共用。实现于 `tokens.ts` 的 `buildTokenCss()`：输出
 2. **CountsHistogram**：横轴比特串（等宽）、纵轴概率（counts/shots）；
    条形从基线生长动画 160ms；hover 显示计数与占比；总 shots 显示于副标题；
    最大值归一化不变量：`max(高度)/绘图高 == max(counts)/max_count`。
-3. **DagView**：**纵向流水线布局**（依赖层自上而下堆叠、同层并排；2026-10-13
-   修订——横向布局在 360px 检查器上溢出且画布高度塌缩）。节点 = Step
-   （kind 色 + 状态图标 + 等宽 id）；边 = 依赖（箭头，竖向贝塞尔）；
-   运行中节点呼吸光晕（2s 循环，reduced-motion 时改为实线描边）；
-   点击节点 → 右侧详情（node_id、起止时间、detail/error）。
+3. **DagView**（v1.3 升级：时间分析 + 嵌套下钻）：**纵向流水线布局**不变
+   （层自上而下、同层并排）；节点 = Step（kind 色 + 状态徽标 + 等宽 id）。
+   新增：
+   - **实测标注**：节点内显示 `时长 412ms`（等宽，--font-data）与
+     `内存 18.3MB`（不可得显示 "—"）——来自后端 perf_counter/tracemalloc
+     真实测量（measured，非编造；UI 与文案不得称硬件观测）。
+   - **时间线（Gantt）模式**：DagView 头部「结构 / 时间线」二段切换；时间线
+     视图为水平条形——x 轴=任务起点起算的相对时间，条宽=duration_ms，
+     kind 色，运行中步骤条宽随实时增长（transition ≤200ms），左缘刻度线
+     （0 / 25% / 50% / 75% / 100% 总时长）；悬停显示起止时刻与时长。
+   - **嵌套下钻**：含 `subtask_id` 的节点显示 ⊕ 展开角标；点击 → 加载子任务
+     DAG（同一 DagView 递归渲染），顶部面包屑「VQE 全流程 / 分子积分计算 / …」
+     逐级返回；子图同样支持结构/时间线切换。
+   - Drawer 详情补实测时长/峰值内存/子任务链接；
+   - 运行中节点呼吸光晕、reduced-motion 降级、环/畸形降级（既有规则不变）。
 4. **HardwareTopology**（v1.2 升级：性能监控与 QPU 拓扑保真度图）：
    - 按 kind 分组的卡片网格；活动 allocation 徽标（"algorithm-designer · t-1/s-2"）、
      离线节点降饱和 + 斜纹（不变）。

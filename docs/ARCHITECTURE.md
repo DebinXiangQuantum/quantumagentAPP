@@ -107,6 +107,14 @@ wire format + Mock）、SSE 实时事件。
   "node_id": "cpu-node-0",            // 分配到的硬件节点；未调度为 null
   "depends_on": [],                    // 前置 Step id 列表
   "started_at": null, "finished_at": null,
+  "duration_ms": 412.7,                // v1.3 实测墙钟时长（perf_counter 差）；
+                                      //   未完成/不可得为 null
+  "peak_memory_mb": 18.3,             // v1.3 实测峰值内存（tracemalloc，MB）；
+                                      //   不可得为 null（前端显示 "—"）
+  "subtask_id": null,                  // v1.3 该步展开的子任务（嵌套 DAG）；
+                                      //   dispatch_agent 步执行期间子 Agent 经
+                                      //   submit_task 提交的任务自动挂接于此
+                                      //   （运行时上下文链接，非手工指定）
   "detail": "人类可读的执行说明", "error": null }
 
 // HardwareNode / Allocation
@@ -148,12 +156,25 @@ v1.2 不变量（测试必须覆盖）：所有 fidelity ∈ (0,1]；`t1_us/t2_u
 模拟区间（工程选择，标注为模拟）：T1 20–80µs、T2 10–60µs、readout
 0.95–0.995、1Q 0.995–0.9999、2Q 0.98–0.995；漂移幅度每 tick ≤ 0.0002。
 
+**v1.3 步骤执行=真实测量（profile 语义）**：simulated runner 不再 sleep 冒充
+计算——每步执行一段**真实的小型计算负载**并实测资源：
+- quantum 步：纯 Python 态矢量模拟（按步规格的 qubit 数构造幅度列表并做
+  门作用迭代）；
+- classical 步：JSON 序列化/压缩负载（zlib 标准库）；
+- agent 步（dispatch_agent）：子运行的真实总时长；内存不可得 → null。
+时长 `perf_counter` 差、峰值内存 `tracemalloc` 峰值（MB，1 位小数）。
+**全部为真实执行的真实测量值（measured），不是编造数字**；负载规模来自步骤
+规格（如 `workload` 字段，缺省小规模），文档与 UI 不得表述为硬件观测。
+
 不变量（测试必须覆盖）：
 1. Task 为 DAG：`depends_on` 传递闭包无环、无未知 id、无重复 step id。
 2. counts Artifact：`sum(counts.values()) == shots`；比特串长度 == `qubits`；
    值非负、shots > 0。
 3. `utilization ∈ [0,1]`；单节点活动租约数 ≤ `capacity`。
 4. 所有 id 前缀固定（`c-` `m-` `t-` `s-` `a-`）且全局唯一。
+5. v1.3：`duration_ms ≥ 0`；`peak_memory_mb > 0` 或 null；`finished` 步的
+   `duration_ms ≈ finished_at - started_at`（容差 ±50ms）；dispatch 步执行
+   期间子 Agent 提交的任务 `subtask_id` 恰好挂接该步（一次一层，不误挂）。
 
 ## 5. REST API v1 契约
 
