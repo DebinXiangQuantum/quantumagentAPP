@@ -24,8 +24,11 @@ from typing import Any
 EVENT_BUFFER_SIZE = 1024
 #: 全局 SSE（GET /api/v1/events）转发的事件名（契约 §5：task/hardware 事件）
 GLOBAL_STREAM_NAMES = frozenset({"task.updated", "hardware.updated"})
-#: 契约 §7：data 载荷需要注入 seq 的事件（增量流，供客户端排序/续传）
-SEQ_CARRYING_EVENT_NAMES = frozenset({"message.delta", "message.reasoning"})
+#: 契约 §7：data 载荷需要注入 seq 的事件（增量流，供客户端排序/续传）。
+#: v1.4 增 `agent.activity`（dispatch 子运行的实时外显流，载荷按 §7 带 seq）。
+SEQ_CARRYING_EVENT_NAMES = frozenset(
+    {"message.delta", "message.reasoning", "agent.activity"}
+)
 #: 订阅者队列上限：超过则丢弃最旧事件（SSE 客户端可用 ?after= 补齐）
 SUBSCRIBER_QUEUE_SIZE = 256
 

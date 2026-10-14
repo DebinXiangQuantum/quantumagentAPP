@@ -89,9 +89,12 @@ class UtilizationSimulator:
         v1.2：metrics 同拍漂移——QPU 保真度 ±0.0002 随机游走 clamp (0,1]，
         CPU/GPU used 值随机游走 clamp [0,total]（T1/T2 静态规格）；
         构造性满足 §4 v1.2 不变量（domain.invariants 可复核）。
+        v1.4：只作用于 ``simulated_ids()``（config 手写节点）——logicalcloud
+        实拉的 lq-* 节点利用率无云端数据 → 恒 0 不漂移（诚实降级，
+        绝不伪造监控数值）。
         """
         changed = False
-        for node_id in self._registry.all_ids():
+        for node_id in self._registry.simulated_ids():
             node = self._registry.get(node_id)
             new_value = self._next_utilization(node)
             if new_value != node.utilization:

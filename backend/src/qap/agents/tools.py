@@ -24,6 +24,7 @@ from qap.core.errors import QapError, ValidationFailed
 from qap.core.ids import IdGenerator
 from qap.domain.models import Artifact, Task
 from qap.domain.store import TaskStore
+from qap.events.bus import EventBus
 from qap.orchestrator.dag import StepSpec, build_steps, validate_step_specs
 from qap.orchestrator.scheduler import Scheduler
 from qap.orchestrator.step_context import current_dispatch_step
@@ -90,16 +91,35 @@ _SUBMIT_TASK_SPEC = {
             "steps": {
                 "type": "array",
                 "description": "步骤数组；depends_on 引用更早元素的下标",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "name": {"type": "string"},
-                        "kind": {"type": "string", "enum": ["classical", "quantum", "agent"]},
-                        "detail": {"type": "string"},
-                        "depends_on": {"type": "array", "items": {"type": "integer"}},
-                    },
-                    "required": ["name", "kind"],
-                },
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "name": {"type": "string"},
+                                "kind": {"type": "string", "enum": ["classical", "quantum", "agent"]},
+                                "detail": {"type": "string"},
+                                "depends_on": {"type": "array", "items": {"type": "integer"}},
+                                "circuit": {
+                                    "type": "object",
+                                    "description": (
+                                        "v1.4 quantum 步线路（§6 载荷：qubits + "
+                                        "operations[gate/targets/controls/theta]）；"
+                                        "logicalcloud 模式将真实提交真机执行"
+                                    ),
+                                },
+                                "shots": {
+                                    "type": "integer",
+                                    "description": "采样数（缺省 1024）",
+                                },
+                                "node_id": {
+                                    "type": "string",
+                                    "description": (
+                                        "指定执行节点（lq-<name> 或裸后端名；"
+                                        "缺省自动选首个 online QPU）"
+                                    ),
+                                },
+                            },
+                            "required": ["name", "kind"],
+                        },
             },
         },
         "required": ["name", "steps"],
@@ -141,13 +161,18 @@ class PlatformTools:
         hardware_snapshot: HardwareSnapshotFn,
         *,
         dispatcher: DispatcherFn | None = None,
+        events: EventBus | None = None,
     ) -> None:
+        """``events``（v1.4 §7）：注入总线后 ``emit_artifact`` 产生即推
+        ``artifact.created``（前端流式插卡）；None = 本部署不外显（测试
+        Rig 缺省，行为与 v1.3 完全一致——产物仍全量随 message.completed）。"""
         self._idgen = idgen
         self._tenants = tenants
         self._scheduler = scheduler
         self._tasks = tasks
         self._hardware_snapshot = hardware_snapshot
         self._dispatcher = dispatcher
+        self._events = events
 
     def bind_dispatcher(self, dispatcher: DispatcherFn) -> None:
         """绑定 dispatch_agent 执行器（AgentRuntime.run_subagent，组装期）。"""
@@ -197,7 +222,12 @@ class PlatformTools:
     # ---------- 各工具实现 ----------
 
     def _emit_artifact(self, context: ToolContext, args: dict) -> dict:
-        """构造并校验 Artifact，挂到运行上下文（§6：非法载荷生成侧拒绝）。"""
+        """构造并校验 Artifact，挂到运行上下文（§6：非法载荷生成侧拒绝）。
+
+        v1.4 §7：注入总线时**产生即推** ``artifact.created``（载荷
+        conversation_id/message_id/artifact）——前端流式插卡，无需等
+        message.completed；completed 帧仍全量携带（既有事件不变）。
+        """
         envelope = args.get("artifact")
         if not isinstance(envelope, dict):
             raise ValidationFailed("emit_artifact requires an 'artifact' object")
@@ -208,6 +238,16 @@ class PlatformTools:
             payload=envelope.get("payload", {}),
         )
         context.pending_artifacts.append(artifact)
+        if self._events is not None:
+            self._events.publish(
+                "artifact.created",
+                {
+                    "conversation_id": context.conversation_id,
+                    "message_id": context.message_id,
+                    "artifact": artifact.model_dump(),
+                },
+                conversation_id=context.conversation_id,
+            )
         return {"artifact_id": artifact.id, "type": artifact.type}
 
     def _submit_task(self, context: ToolContext, args: dict) -> dict:
@@ -228,6 +268,9 @@ class PlatformTools:
         # v1.3 记录提交深度：dispatch 子运行内提交的任务，其 agent 步
         # 不可再分派（"一次一层"）；见 scheduler 绑定的 agent 步执行器。
         task._submit_depth = context.dispatch_depth
+        # v1.4 记录消息锚点：quantum 步自动 emit 的 counts artifact 经此
+        # 定位归属消息（SSE artifact.created 与消息产物列表回写）。
+        task._message_id = context.message_id
         self._tenants.register_task(context.tenant_id, task.id)  # 超配额 → QuotaError
         self._tasks.add(task)
         self._scheduler.submit(task, agent_id=context.agent_id)

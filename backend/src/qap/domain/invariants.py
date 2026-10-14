@@ -52,6 +52,13 @@ def validate_node_metrics(kind: str, metrics: dict[str, Any] | None) -> None:
 
 
 def _validate_qpu_metrics(metrics: dict[str, Any]) -> None:
+    # v1.4 cloud-observed 分支：真机实拉拓扑（平台未提供保真度 → 全 null、
+    # 无耦合器数据 → 空列表）——结构校验保留，物理量校验按"诚实为空"放行。
+    if metrics.get("source") == "cloud-observed" or metrics.get("topology", {}).get(
+        "layout"
+    ) == "cloud":
+        _validate_cloud_qpu_metrics(metrics)
+        return
     topology = metrics.get("topology")
     if not isinstance(topology, dict):
         _fail("qpu metrics require a topology object")
@@ -103,6 +110,58 @@ def _validate_qpu_metrics(metrics: dict[str, Any]) -> None:
         if not ((delta == 1 and same_row) or (delta == cols and same_col)):
             _fail(f"coupler ({a},{b}) is not a grid-adjacent pair")
         _check_unit_fidelity(coupler.get("tq_fidelity"), f"coupler ({a},{b}) tq")
+
+
+def _validate_cloud_qpu_metrics(metrics: dict[str, Any]) -> None:
+    """cloud-observed QPU metrics 校验（契约 §3 v1.4 / §4 v1.4）。
+
+    与 simulated 形状的差异（诚实性约束）：
+    - ``qubits_count == len(qubits)``（云拓扑非满网格，**不要求**
+      rows*cols——rows/cols 为云端画布尺寸或坐标极值 + 1）；
+    - 每比特 t1/t2/readout/sq 必须**全为 None**（平台未提供保真度，
+      出现数值即疑似伪造 → 拒绝）；
+    - ``couplers`` 允许携带云端 coupling_map 的连接对（a/b 为 int），
+      但 ``tq_fidelity`` 必须 None（**连接拓扑是云端事实照录；保真度
+      云端未提供，出现数值即伪造 → 拒绝**）；
+    - qubit id 仍要求 ∈ [0, count) 且唯一。
+    """
+    topology = metrics.get("topology")
+    if not isinstance(topology, dict):
+        _fail("qpu metrics require a topology object")
+    rows, cols = topology.get("rows"), topology.get("cols")
+    if not isinstance(rows, int) or not isinstance(cols, int) or rows < 1 or cols < 1:
+        _fail(f"cloud topology rows/cols must be positive ints, got {rows}x{cols}")
+    qubits, couplers = topology.get("qubits") or [], topology.get("couplers")
+    if not isinstance(couplers, list):
+        _fail("cloud topology couplers must be a list")
+    count = metrics.get("qubits_count")
+    if not isinstance(count, int) or count != len(qubits):
+        _fail(f"qubits_count must equal len(qubits) (count={count}, len={len(qubits)})")
+    seen_ids: set[int] = set()
+    for qubit in qubits:
+        qubit_id = qubit.get("id")
+        if not isinstance(qubit_id, int) or not 0 <= qubit_id < count:
+            _fail(f"qubit id out of range [0,{count}): {qubit_id!r}")
+        if qubit_id in seen_ids:
+            _fail(f"duplicate qubit id {qubit_id}")
+        seen_ids.add(qubit_id)
+        for field in ("t1_us", "t2_us", "readout_fidelity", "sq_fidelity"):
+            if qubit.get(field) is not None:
+                _fail(
+                    f"qubit {qubit_id} {field} must be null in cloud-observed "
+                    "topology (platform does not provide it)"
+                )
+    for coupler in couplers:
+        a, b = coupler.get("a"), coupler.get("b")
+        if not isinstance(a, int) or not isinstance(b, int):
+            _fail(f"cloud coupler endpoints must be ints, got {a!r},{b!r}")
+        if not 0 <= a < count or not 0 <= b < count:
+            _fail(f"cloud coupler endpoints out of range [0,{count}): {a},{b}")
+        if coupler.get("tq_fidelity") is not None:
+            _fail(
+                f"coupler ({a},{b}) tq_fidelity must be null in cloud-observed "
+                "topology (platform does not provide it; fabricating is forbidden)"
+            )
 
 
 def _validate_cpu_metrics(metrics: dict[str, Any]) -> None:

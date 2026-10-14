@@ -24,11 +24,13 @@ from qap.domain.attachments import (
     TEXT_INJECTION_CHAR_LIMIT,
     AttachmentStore,
 )
+from qap.domain.models import Artifact
 from qap.domain.store import ConversationStore, MessageStore, TaskStore
 from qap.events.bus import EventBus
 from qap.hardware.allocator import Allocator
-from qap.hardware.registry import NodeRegistry
+from qap.hardware.registry import NodeRegistry, build_node_registry, make_cloud_adapter
 from qap.hardware.simulator import UtilizationSimulator
+from qap.orchestrator.cloud_runner import CloudStepRunner
 from qap.orchestrator.scheduler import Scheduler
 from qap.tenancy.service import TenantService
 
@@ -52,6 +54,8 @@ class AppState:
     scheduler: Scheduler
     simulator: UtilizationSimulator
     runtime: AgentRuntime
+    #: 平台工具实例（v1.4 显式暴露：云步产物发射锚点测试与管理扩展用）
+    tools: PlatformTools
     #: 插件安装生命周期管理（admin 端点，v1.1 §8）
     plugin_manager: PluginManager
     #: model_ref → provider 实例（admin 渠道编辑后原地增删改，v1.1 §5）
@@ -124,13 +128,21 @@ def _spawn(coroutine):
     return asyncio.get_running_loop().create_task(coroutine)
 
 
-def build_app_state(config: AppConfig | LoadedConfig) -> AppState:
+def build_app_state(
+    config: AppConfig | LoadedConfig,
+    *,
+    cloud_adapter: "object | None" = None,
+) -> AppState:
     """从已校验配置组装全部服务（构造顺序即依赖顺序）。
 
     接受 ``LoadedConfig``（生产路径：含 base/local 溯源与 plugins_dir 根）
     或裸 ``AppConfig``（测试注入：无文件溯源，plugins_dir/local 落点取
     CWD）。利用率模拟器是否启动由 ``main.py`` 的 lifespan 按
     ``config.hardware.simulated`` 决定（测试常关）。
+
+    ``cloud_adapter``（v1.4）：``hardware.provider = "logicalcloud"`` 时的
+    适配器注入点（测试传 FakeCloudProvider 包装；None 时按 config 构造
+    真实 ``LQCloudProvider``——密钥缺失/云端不可达 → 启动 fail-fast）。
     """
     if isinstance(config, LoadedConfig):
         loaded = config
@@ -148,18 +160,64 @@ def build_app_state(config: AppConfig | LoadedConfig) -> AppState:
     attachments = AttachmentStore()
     tenants = TenantService(app_config.tenancy)
     plugins = PluginRegistry(app_config.agents, base_dir=base_dir)
-    nodes = NodeRegistry(app_config.hardware)
+    # v1.4：logicalcloud 模式解析一次适配器（密钥缺失 → 此处 fail-fast），
+    # 注册表实拉与步骤 runner 共用同一实例。
+    cloud_adapter_resolved = cloud_adapter
+    if app_config.hardware.provider == "logicalcloud" and cloud_adapter_resolved is None:
+        cloud_adapter_resolved = make_cloud_adapter(app_config.hardware)
+    nodes = build_node_registry(app_config.hardware, adapter=cloud_adapter_resolved)
     allocator = Allocator(nodes, events)
+
+    def emit_step_artifact(task, step, artifact_type: str, title: str, payload: dict):
+        """quantum 步真实计数的产物发射（v1.4 §9）。
+
+        - 构造并校验 Artifact（非法载荷在此即拒绝）；
+        - 立即经 EventBus 推 ``artifact.created``（载荷含归属消息锚点
+          ``task._message_id``——前端流式插卡，无需等任何 completed 帧）；
+        - 锚点消息存在时把产物追加进其 artifacts 列表（会话刷新可见；
+          message.completed 早已发出，后续到达仅经 artifact.created 流式
+          呈现——契约 §7 v1.4 设计）。
+        """
+        artifact = Artifact(
+            id=idgen.next("a"), type=artifact_type, title=title, payload=payload
+        )
+        message_id = getattr(task, "_message_id", None)
+        events.publish(
+            "artifact.created",
+            {
+                "conversation_id": task.conversation_id,
+                "message_id": message_id,
+                "artifact": artifact.model_dump(),
+            },
+            conversation_id=task.conversation_id,
+        )
+        if message_id:
+            for message in messages.list(task.conversation_id):
+                if message.id == message_id:
+                    message.artifacts.append(artifact)
+                    break
+        return artifact
 
     def on_task_finished(task) -> None:
         """任务终态 → 释放租户并发额度（S3 回调接缝的落点）。"""
         tenants.release_task(task.tenant_id, task.id)
 
     scheduler = Scheduler(
-        app_config.scheduler, allocator, events, on_task_finished=on_task_finished
+        app_config.scheduler,
+        allocator,
+        events,
+        runner=CloudStepRunner(
+            adapter=cloud_adapter_resolved,
+            registry=nodes,
+            events=events,
+            artifact_emitter=emit_step_artifact,
+        ),
+        on_task_finished=on_task_finished,
     )
     simulator = UtilizationSimulator(nodes, events, app_config.hardware.tick_seconds)
-    tools = PlatformTools(idgen, tenants, scheduler, tasks, nodes.snapshot)
+    tools = PlatformTools(
+        idgen, tenants, scheduler, tasks, nodes.snapshot, events=events
+    )
 
     # Provider 表：model_ref → provider 实例（mock 共享剧本游标，天然单例）。
     # 存于 providers dict 并挂到 state：admin 渠道编辑（v1.1 §5）原地增删改。
@@ -286,6 +344,7 @@ def build_app_state(config: AppConfig | LoadedConfig) -> AppState:
         scheduler=scheduler,
         simulator=simulator,
         runtime=runtime,
+        tools=tools,
         plugin_manager=plugin_manager,
         providers=providers,
         local_store=local_store,

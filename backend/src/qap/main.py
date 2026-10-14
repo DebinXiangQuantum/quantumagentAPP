@@ -34,11 +34,18 @@ async def _lifespan(app: FastAPI):
     await state.shutdown()
 
 
-def create_app(config: AppConfig | LoadedConfig | None = None) -> FastAPI:
+def create_app(
+    config: AppConfig | LoadedConfig | None = None,
+    *,
+    cloud_adapter: object | None = None,
+) -> FastAPI:
     """构造 FastAPI 应用。
 
     ``config`` 可注入已加载的 ``AppConfig``/``LoadedConfig``（测试）；
     None 时按契约加载（基底 config.toml ← 同目录 config.local.toml 深合并）。
+    ``cloud_adapter``（v1.4）：logicalcloud 模式适配器注入点（测试用
+    FakeCloudProvider 包装；None = 生产真实 ``LQCloudProvider``，
+    密钥缺失/云端不可达 → 启动 fail-fast）。
     """
     resolved = config if config is not None else load_config_with_sources()
     resolved_config = resolved.config if isinstance(resolved, LoadedConfig) else resolved
@@ -47,7 +54,7 @@ def create_app(config: AppConfig | LoadedConfig | None = None) -> FastAPI:
         version=__version__,
         lifespan=_lifespan,
     )
-    app.state.qap = build_app_state(resolved)
+    app.state.qap = build_app_state(resolved, cloud_adapter=cloud_adapter)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=resolved_config.server.cors_origins,

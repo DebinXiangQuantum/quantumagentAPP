@@ -9,6 +9,9 @@
   message.reasoning 链路）、``("tool", name, arguments_dict)`` 完整工具
   调用、``("error", message)`` 注入式故障（负样本测试用）；
 - 剧本耗尽后回退为一句固定文本（保证任何额外轮次仍能正常收束）；
+- **v1.4 诚实化**：剧本未覆盖的 agent（无剧本且非 echo）→ 单条
+  ``[mock 渠道]`` 明确说明（:data:`UNCOVERED_NOTICE`），绝不产出看似
+  真实推理的模板内容，指引用户切换真实渠道；
 - ``echo`` agent 特殊处理：首轮原样返回最后一条用户消息（回声演示）。
 
 v1.1 思考程度语义：mock **忽略但记录**——每次 ``stream`` 把
@@ -115,6 +118,13 @@ DEFAULT_SCRIPTS: dict[str, list[list[tuple]]] = {
 #: 剧本耗尽时的回退文本（保证任何轮次都能正常收束）
 _FALLBACK_TEXT = "（mock 剧本已耗尽——这是一条收束文本。）"
 
+#: v1.4 mock 诚实化：剧本未覆盖的 agent/prompt 组合返回的**单条明确说明**
+#: ——绝不产出看似真实推理的模板内容，并指引用户切换真实渠道。
+UNCOVERED_NOTICE = (
+    "[mock 渠道] 演示脚本未覆盖该请求——mock 不进行任何真实推理；"
+    "请在输入区选择真实渠道（如 glm-5.3-flash）后重试。"
+)
+
 
 class MockProvider:
     """内置脚本化 Provider；可通过注入 scripts 覆盖默认演示剧本。
@@ -154,8 +164,10 @@ class MockProvider:
                 yield event
             return
         script = self._scripts.get(agent_id)
-        if script is None:  # 未提供剧本 → 回声式收束，避免运行时死循环
-            yield TextDelta(_FALLBACK_TEXT)
+        if script is None:
+            # v1.4 诚实化：剧本未覆盖的组合 → 单条"[mock 渠道]"说明，
+            # 不产出看似真实推理的模板（指引用户切换真实渠道）。
+            yield TextDelta(UNCOVERED_NOTICE)
             yield TurnCompleted("stop")
             return
         turn_index = self._cursors.get(run_key, 0)

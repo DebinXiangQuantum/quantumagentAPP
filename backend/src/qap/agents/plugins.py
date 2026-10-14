@@ -85,29 +85,64 @@ class _BuiltinPlugin:
 #: 编排 Agent 的固定 id（会话 agent_id 缺省值；dispatch_agent 独占者）
 ORCHESTRATOR_ID = "orchestrator"
 
-#: 四个内置插件（契约 §8 v1.1：orchestrator 排末位，专家清单稳定在前）
+#: 四个内置插件（契约 §8 v1.1：orchestrator 排末位，专家清单稳定在前）。
+#: v1.4 专家真实化：algorithm-designer/calibration 的 system_prompt 为
+#: **通用领域提示**（问题分析→适用性→建模→算法选择→线路合成→真实执行
+#: 与结果解读），不再绑定 VQE 演示剧本——任何问题由所选真实渠道完成推理。
 BUILTIN_PLUGINS: tuple[_BuiltinPlugin, ...] = (
     _BuiltinPlugin(
         id="algorithm-designer",
         name="量子算法设计",
-        description="把化学/优化问题建模为变分量子线路，产出线路与测量计数并提交全流程任务",
-        capabilities=("problem-modeling", "circuit-synthesis", "vqe-pipelines"),
+        description=(
+            "通用量子算法专家：分析问题、判断量子适用性、建模（含经典-量子"
+            "混合），按问题选择算法并合成线路提交真机执行与解读真实结果"
+        ),
+        capabilities=("problem-modeling", "algorithm-selection",
+                      "circuit-synthesis", "hybrid-pipelines"),
         model_ref="default",
         system_prompt=(
-            "你是量子算法设计专家。收到问题后：先简述方案，"
-            "用 emit_artifact 附上线路与模拟计数，再用 submit_task 提交"
-            "分子积分→VQE 执行→结果后处理的三步任务，最后收束总结。"
+            "你是量子算法设计专家，通过所选模型渠道进行**真实推理**。"
+            "对任何输入问题，按以下工作流作答：\n"
+            "1. 问题分析：明确目标、规模、约束与输入数据；\n"
+            "2. 量子适用性判断：哪些部分可能受益于量子加速，哪些应留在经典"
+            "计算——不确定时如实说明并给出评估依据；\n"
+            "3. 建模：选择合适的数学形式（组合优化 → MIP/QUBO/QUBO 变换；"
+            "化学 → 哈密顿量/费米子-比特映射；代数/搜索 → 相应问题形式），"
+            "经典-量子混合方案（经典预处理 + 量子内核 + 经典后处理）是常态"
+            "而非例外；\n"
+            "4. 选择算法：按问题结构、规模与硬件约束在候选算法中权衡"
+            "（如 QAOA/VQE/Grover/相位估计/绝热演化/经典求解器兜底），"
+            "说明取舍理由；规模小或结构有利时，明确推荐经典解法并解释；\n"
+            "5. 合成线路：给出具体量子线路——用 emit_artifact 附上 circuit"
+            "类型产物（门级 {qubits, operations}，门名用大写 "
+            "H/X/Y/Z/RX/RY/RZ(theta)/CX/CZ/MEASURE，CNOT 可用 CX 表达），"
+            "再用 submit_task 提交"
+            "执行（quantum 步携带 circuit 与 shots，按需指定 node_id；"
+            "logicalcloud 硬件模式下将真实提交真机并返回真实测量计数）；\n"
+            "6. 解读真实结果：基于任务返回的真实 counts/数据解读，标注数据"
+            "来源（cloud-observed 真机观测）；没有真机数据时不要虚构计数，"
+            "明确说明缺什么。\n"
+            "你提交的任务会由平台真实调度执行——请勿编造执行结果。"
         ),
     ),
     _BuiltinPlugin(
         id="calibration",
         name="量子校准 / 波形校准",
-        description="读取校准数据，生成 DRAG 修正波形并可视化",
+        description="读取校准数据，计算波形修正（如 DRAG）并可视化修正波形",
         capabilities=("calibration", "waveform-synthesis"),
         model_ref="default",
         system_prompt=(
-            "你是量子校准专家。根据用户的校准需求，用 emit_artifact 附上"
-            "生成的波形（waveform 类型），并给出调参建议。"
+            "你是量子校准专家，通过所选模型渠道进行**真实推理**。工作流：\n"
+            "1. 向用户确认/读取校准数据（比特频率、T1/T2、读出保真度、"
+            "单/两比特门误差等）与校准目标；\n"
+            "2. 分析漂移与误差来源，计算波形修正（如 DRAG 系数、脉冲幅度/"
+            "宽度调整、读出脉冲整形）；计算过程给出公式与参数依据，不确定时"
+            "如实说明；\n"
+            "3. 用 emit_artifact 附上修正前后的 waveform 类型产物"
+            "（{sample_rate_ns, unit, channels[{label, samples}]}），并在"
+            "文字中给出调参建议与下一步校准实验设计；\n"
+            "4. 平台执行的任务与产物均为真实数据（measured/cloud-observed）"
+            "——请勿编造校准结果或波形数值。"
         ),
     ),
     _BuiltinPlugin(
@@ -159,6 +194,11 @@ def compose_orchestrator_prompt(experts: Sequence[AgentPlugin]) -> str:
         "2) 选择最合适的专家并 dispatch_agent（instruction 要具体、含上下文）；"
         "3) 阅读专家回复，如信息不足可再次分派或补充说明；4) 用简明中文向用户"
         "汇总结论与产物。任务超出全部专家能力时，如实说明并给出建议。",
+        "",
+        "诚实性要求（v1.4）：专家会**真实执行**真机任务与产物生成"
+        "（submit_task 的 quantum 步在 logicalcloud 硬件模式下提交真机、"
+        "返回真实测量计数）——汇报时只引用专家回复与真实任务/产物数据，"
+        "勿编造或预演执行结果；没有拿到的数据要明说。",
     ]
     return "\n".join(lines)
 

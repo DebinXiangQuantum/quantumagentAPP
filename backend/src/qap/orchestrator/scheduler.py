@@ -29,6 +29,7 @@ from qap.events.bus import EventBus
 from qap.hardware.allocator import Allocator
 from qap.orchestrator.dag import validate_dag
 from qap.orchestrator.runners import simulate_step
+from qap.orchestrator.step_context import running_task_scope
 
 #: Step.kind → 硬件节点类型（契约 §10 演示第 3 条的分配语义）
 STEP_KIND_TO_NODE_KIND = {"classical": "cpu", "quantum": "qpu", "agent": "gpu"}
@@ -227,14 +228,17 @@ class Scheduler:
         started = perf_counter()
         try:
             executor = self._agent_executor if step.kind == "agent" else None
-            if executor is not None:
-                detail = await asyncio.wait_for(
-                    executor(task, step), timeout=self._step_timeout
-                )
-            else:
-                detail = await asyncio.wait_for(
-                    self._runner(step), timeout=self._step_timeout
-                )
+            # v1.4：执行期间把所属 Task 挂进运行上下文——云 runner 轮询
+            # queue_position 时经此取回 Task 推 task.updated（协议签名不变）。
+            with running_task_scope(task):
+                if executor is not None:
+                    detail = await asyncio.wait_for(
+                        executor(task, step), timeout=self._step_timeout
+                    )
+                else:
+                    detail = await asyncio.wait_for(
+                        self._runner(step), timeout=self._step_timeout
+                    )
             step.status = "succeeded"
             step.detail = detail
         except asyncio.TimeoutError:

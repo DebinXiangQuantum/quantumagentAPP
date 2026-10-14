@@ -189,11 +189,38 @@ class HardwareNodeConfig(_StrictModel):
 
 
 class HardwareConfig(_StrictModel):
-    """``[hardware]``：是否启用利用率模拟器与刷新周期。"""
+    """``[hardware]``：数据源模式与利用率模拟器（契约 §3 v1.4）。
 
+    - ``provider``（v1.4）：``simulated``（缺省——本地模拟机群）|
+      ``logicalcloud``（QPU 节点启动时从云端实拉，config 手写 qpu 条目被
+      忽略、GPU/CPU 模拟节点保留；拉取失败或密钥缺失 → 启动 fail-fast，
+      真实模式禁止静默回退到伪造数据）；
+    - ``lqcloud_base_url`` / ``lqcloud_api_key_env``（v1.4）：logicalcloud
+      端点与密钥环境变量名（密钥绝不写入本文件；缺省
+      https://cloud.logicalqubit.com / LQCLOUD_API_KEY）；
+    - ``simulated``/``tick_seconds``：利用率模拟器开关与刷新周期——
+      模拟器只作用于 simulated 节点（logicalcloud 的 lq-* 节点利用率
+      无云端数据 → 恒 0 不漂移，诚实降级）；
+    - ``nodes``：手写节点表。simulated 模式要求非空；logicalcloud 模式
+      允许为空（QPU 全部实拉）。
+    """
+
+    provider: Literal["simulated", "logicalcloud"] = "simulated"
+    lqcloud_base_url: str = Field(
+        default="https://cloud.logicalqubit.com", min_length=1
+    )
+    lqcloud_api_key_env: str = Field(default="LQCLOUD_API_KEY", min_length=1)
     simulated: bool
     tick_seconds: float = Field(gt=0)
-    nodes: list[HardwareNodeConfig] = Field(min_length=1)
+    nodes: list[HardwareNodeConfig] = Field(default_factory=list)
+
+    @field_validator("lqcloud_base_url", "lqcloud_api_key_env")
+    @classmethod
+    def _reject_blank(cls, value: str) -> str:
+        # 空白串与缺键同罪：fail-fast（对齐 ModelConfig 的同款规则）。
+        if not value.strip():
+            raise ValueError("must be a non-empty string when present")
+        return value
 
     @field_validator("nodes")
     @classmethod
@@ -203,6 +230,16 @@ class HardwareConfig(_StrictModel):
             dupes = sorted({i for i in ids if ids.count(i) > 1})
             raise ValueError(f"duplicate hardware node ids: {dupes}")
         return nodes
+
+    @model_validator(mode="after")
+    def _check_provider_node_requirements(self) -> "HardwareConfig":
+        if self.provider == "simulated" and not self.nodes:
+            raise ValueError(
+                "hardware.provider='simulated' requires at least one "
+                "[[hardware.nodes]] entry (switch provider='logicalcloud' "
+                "to fetch QPUs from the cloud)"
+            )
+        return self
 
 
 class SchedulerConfig(_StrictModel):
