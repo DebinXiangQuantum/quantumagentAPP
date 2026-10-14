@@ -5,6 +5,48 @@ Validation（本切片测试结论）+ Known defects（已知缺陷，无则写�
 scope 与流程见 docs/DEVELOPMENT.md §2。
 
 
+## 2026-10-14 `backend: V4（v4 轮）——内置专家真实化（通用领域提示）+ mock 渠道诚实化`
+
+### Changed
+- `agents/plugins.py` 内置专家 system_prompt 重写为**通用领域提示**
+  （契约 §8 v1.4"内置专家=真实推理（去模板）"）：
+  - algorithm-designer：六步工作流——问题分析→量子适用性判断（不确定时
+    如实说明）→建模（组合优化→MIP/QUBO、化学→哈密顿量映射；经典-量子
+    混合是常态）→**选择算法**（QAOA/VQE/Grover/相位估计/绝热演化/经典
+    求解器兜底，按问题结构权衡并说明取舍；小规模明确推荐经典解法）→
+    合成线路（emit_artifact(circuit) + submit_task 携带 circuit/shots/
+    node_id，logicalcloud 真机执行）→解读真实结果（cloud-observed 标注，
+    无真机数据时不虚构计数）。capabilities 改 problem-modeling/
+    algorithm-selection/circuit-synthesis/hybrid-pipelines（原
+    vqe-pipelines 移除）；description 同步去 VQE 化。
+  - calibration：校准数据读取→漂移与误差分析→波形修正计算（DRAG 系数/
+    幅宽调整/读出脉冲整形，公式与参数依据）→emit_artifact(waveform)+
+    调参建议与下一步实验设计；勿编造校准数值。
+  - `compose_orchestrator_prompt` 增**诚实性要求**段：专家会真实执行真机
+    任务与产物生成，汇报只引用真实回复与任务/产物数据，勿编造或预演
+    执行结果。
+- `agents/providers/mock_provider.py` **诚实化**：剧本未覆盖的 agent
+  （无剧本且非 echo）→ 单条 :data:`UNCOVERED_NOTICE`
+  （"[mock 渠道] 演示脚本未覆盖该请求——mock 不进行任何真实推理；请在
+  输入区选择真实渠道（如 glm-5.3-flash）后重试。"），不再产出看似真实
+  推理的模板内容；剧本耗尽回退与命中剧本的演示链路（orchestrator/
+  algorithm-designer/calibration + echo）行为保持。
+
+### Validation
+- 新增 `tests/test_expert_prompts.py` 9 用例（三专家提示正断言：选择算法/
+  QUBO/waveform/诚实性；负断言：不含"分子积分""变分量子本征求解器"
+  "VQE 基线"等剧本文案；mock 未覆盖 → 单条 [mock 渠道] 且重复轮一致；
+  演示链路保持：orchestrator 首轮 dispatch_agent、algorithm-designer
+  首轮 emit_artifact×2 + submit_task 3 步）。全量 **470 passed**
+  （461 + 9）。
+
+### Known defects
+- mock 剧本仍按 agent_id 命中（不按 prompt 内容）——演示渠道向
+  algorithm-designer 发任意文案都会命中 VQE 演示剧本；诚实化覆盖
+  "无剧本 agent"组合，提示层已声明该渠道不做真实推理（彻底解法=
+  弃用 mock 演示剧本，留待后续决策）。
+
+
 ## 2026-10-14 `backend: V3（v4 轮）——quantum 步真实执行（Step v1.4 字段 + CloudStepRunner + counts artifact 自动发射）`
 
 ### Added

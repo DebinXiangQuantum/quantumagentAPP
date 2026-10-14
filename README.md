@@ -463,6 +463,21 @@ artifact**（标题注明后端名与 job_id、cloud-observed；计数守恒按�
 显式暴露。测试：`tests/test_cloud_steps.py`（15 用例，含组装根全链：
 artifact.created 即时事件 + 消息产物回写）。
 
+**V4（专家真实化 + mock 诚实化）**：内置专家 system_prompt 全部重写为
+**通用领域提示**（去模板化）——algorithm-designer：问题分析→量子适用性
+判断→建模（MIP/QUBO/化学映射等，经典-量子混合为常态）→**选择算法**
+（QAOA/VQE/Grover/相位估计/绝热演化/经典求解器兜底，不预设 VQE）→合成
+线路（emit_artifact(circuit) + submit_task 携带 circuit/shots/node_id，
+logicalcloud 模式真机执行）→解读真实结果（cloud-observed 标注、勿虚构）；
+calibration：校准数据→误差分析→波形修正计算（DRAG/脉冲整形，公式与参数
+依据）→emit_artifact(waveform)+调参建议；orchestrator 提示增**诚实性
+要求**（专家会真实执行真机任务，只引用真实回复与产物，勿编造结果）。
+**mock 诚实化**：剧本未覆盖的 agent → 单条 `[mock 渠道] 演示脚本未覆盖
+该请求——请在输入区选择真实渠道（如 glm-5.3-flash）`，不再产出看似真实
+推理的模板；命中剧本的演示链路（orchestrator/algorithm-designer/
+calibration）保持不变。测试：`tests/test_expert_prompts.py`（9 用例：
+通用提示正/负断言 + 诚实通知 + 演示链路保持）。
+
 ## 前端 (Frontend)
 
 *本节由 `feat/frontend` 分支的开发切片维护更新：组件清单、页面说明、测试结果。*
