@@ -669,6 +669,9 @@
 .qpu-topo__scroll[data-scrollable='false'] {
   overflow: hidden;
 }
+.qpu-topo--bare .qpu-topo__qubit {
+  stroke: var(--text-secondary);
+}
 .qpu-topo--success {
   color: var(--success);
 }

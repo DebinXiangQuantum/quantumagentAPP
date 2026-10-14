@@ -28,28 +28,59 @@ describe('HardwareTopology（v1.2 性能监控与 QPU 拓扑）', () => {
     expect(screen.getByTestId('hw-group-header-qpu').textContent).toContain('QPU');
     expect(screen.getByTestId('hw-group-header-gpu').textContent).toContain('GPU');
     expect(screen.getByTestId('hw-group-header-cpu').textContent).toContain('CPU');
-    expect(screen.getAllByTestId(/^hw-card-/).length).toBe(14);
+    expect(screen.getAllByTestId(/^hw-card-/).length).toBe(19); // 10 模拟 QPU + 5 云端 + 3 GPU + 1 CPU
   });
 
   it('QPU 分组头：`QPU · 在线 6/10`（离线计入总数）', () => {
     render(<HardwareTopology nodes={HARDWARE_NODES} tasks={TASKS} history={{}} />);
     const header = screen.getByTestId('hw-group-header-qpu');
     expect(header.textContent).toContain('QPU');
-    expect(header.textContent).toContain('在线 6/10');
+    expect(header.textContent).toContain('在线 10/15'); // 6 模拟在线 + 4 云端在线
   });
 
-  it('QPU 卡副行：`20Q · 2Q 保真度中位 NN.NN%`（等宽）；离线卡降饱和 + 离线徽标', () => {
+  it('QPU 卡副行来源标注（v1.4）：simulated「模拟 · N 比特」；离线卡降饱和 + 离线徽标', () => {
     render(<HardwareTopology nodes={HARDWARE_NODES} tasks={TASKS} history={{}} />);
     const card = screen.getByTestId('hw-card-qpu-quanta-20q');
     const subline = card.querySelector('.hw-card__qpu-subline');
     expect(subline).not.toBeNull();
     expect(subline).toHaveClass('mono');
-    expect(subline!.textContent).toBe(
-      `20Q · 2Q 保真度中位 ${formatFidelity(qpuMedian)}`,
-    );
+    expect(subline!.textContent).toBe('模拟 · 20 比特');
     const offlineCard = screen.getByTestId('hw-card-qpu-phoenix-16q');
     expect(offlineCard).toHaveClass('hw-card--offline');
     expect(offlineCard.textContent).toContain('离线');
+  });
+
+  it('云端真机卡：副行「云端 · N 比特 · <model>」；利用率无数据显示 "—"', () => {
+    render(<HardwareTopology nodes={HARDWARE_NODES} tasks={TASKS} history={{}} />);
+    const card = screen.getByTestId('hw-card-lq-agate-100');
+    const subline = card.querySelector('.hw-card__qpu-subline');
+    expect(subline).not.toBeNull();
+    expect(subline!.textContent).toContain('云端 · 12 比特 ·');
+    // 云端 utilization=0（平台无数据）→ 数值 "—"，不为 0%
+    const utilNum = card.querySelector('.hw-card__util-num');
+    expect(utilNum!.textContent).toBe('—');
+    // simulated 节点利用率照常百分数
+    const simNum = screen
+      .getByTestId('hw-card-qpu-quanta-20q')
+      .querySelector('.hw-card__util-num');
+    expect(simNum!.textContent).toContain('%');
+  });
+
+  it('云端真机 Drawer：坐标点拓扑（无 coupler/读出标注/图例），tooltip 平台未提供', () => {
+    render(<HardwareTopology nodes={HARDWARE_NODES} tasks={TASKS} history={{}} />);
+    fireEvent.click(screen.getByTestId('hw-card-lq-qz01-surface-code'));
+    const drawer = screen.getByTestId('drawer');
+    expect(drawer).toHaveTextContent('lq-qz01-surface-code');
+    // 摘要为云端来源行
+    expect(screen.getByTestId('hw-drawer-topo-summary').textContent).toContain('云端 · 9 比特');
+    // 9 比特坐标点；无 coupler 连线、无 readout 标注、图例隐藏
+    expect(screen.getAllByTestId(/^qpu-topo-qubit-/).length).toBe(9);
+    expect(screen.queryAllByTestId(/^qpu-topo-coupler-/)).toHaveLength(0);
+    expect(screen.queryAllByTestId(/^qpu-topo-readout-/)).toHaveLength(0);
+    expect(screen.queryAllByTestId('qpu-topo-legend-item')).toHaveLength(0);
+    const title = screen.getByTestId('qpu-topo-qubit-0').querySelector('title');
+    expect(title?.textContent).toContain('平台未提供');
+    fireEvent.click(screen.getByTestId('drawer-close'));
   });
 
   it('CPU 卡：CPU 使用率 + 内存双迷你条；GPU 卡：VRAM 迷你条（usageLevel 着色）', () => {

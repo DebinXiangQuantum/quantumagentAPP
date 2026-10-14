@@ -135,13 +135,14 @@ export function createMockClient(): MockClient {
 
   function emitConv(cid: string, evt: ConversationStreamEvent): void {
     const logSeq = nextSeq(cid);
-    // delta / reasoning 的 data.seq 与内部 logSeq 同源分配（§7 seq 单调契约）
+    // delta / reasoning / agent.activity 的 data.seq 与内部 logSeq 同源分配
+    // （§7 seq 单调契约；v1.4 agent.activity 同样携带 seq）
     const normalized: ConversationStreamEvent =
-      evt.event === 'message.delta' || evt.event === 'message.reasoning'
-        ? {
+      evt.event === 'message.delta' || evt.event === 'message.reasoning' || evt.event === 'agent.activity'
+        ? ({
             event: evt.event,
             data: { ...evt.data, seq: logSeq },
-          }
+          } as ConversationStreamEvent)
         : evt;
     const log = convLog.get(cid) ?? [];
     log.push({ logSeq, evt: normalized });

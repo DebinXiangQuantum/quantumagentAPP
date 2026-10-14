@@ -5,6 +5,47 @@ Validation（本切片测试结论）+ Known defects（已知缺陷，无则写�
 scope 与流程见 docs/DEVELOPMENT.md §2。
 
 
+## 2026-10-14 `frontend: v4 W4——logicalcloud 真机展示与 mock 全链（硬件降级/剧本/三语）`
+
+### Added
+- **硬件真机展示（design.md §5 v1.4）**：QPU 卡副行来源标注——`lq-*` 真机
+  或无保真度节点显示「云端 · N 比特 · <model>」（在线/离线为云端真实状态），
+  simulated 显示「模拟 · N 比特」（2Q 保真度中位保留在 Drawer 摘要行）；
+  云端利用率 0（平台无数据）→ 数值 "—"。
+- **QpuTopologyCanvas 云端降级**：无 couplers/保真度时只渲染比特**坐标点**
+  （按 topology.qubit_coordinates 摆放，画布尺寸由最大坐标推导；无坐标
+  回退 grid、均无 → 降级提示行）；coupler/readout 标注与三档图例隐藏；
+  tooltip「Q{id} · T1/T2/保真度：平台未提供」；混合数据逐元素降级
+  （有 readout 的照常标注）。`QubitInfo`/`Coupler` 保真度字段改可选、
+  `QpuTopology.qubit_coordinates?`（契约 §3/§4 v1.4 云端形状）。
+- **mock 全链**：fixtures 增 5 台 lq-* 真机（MQ02/AGate-100/
+  QZ01-surface_code/QZ01-repetition_code 在线、QZ02 离线——镜像
+  get_backends() 实拉；拓扑仅坐标点、无保真度、利用率 0）；scripts 增
+  专家工作区剧本（VQE 8 拍/校准 6 拍/回显 3 拍，与正文流交错）、
+  artifact.created 流（circuit → counts → completed 全量）、quantum 步
+  queue_position 3→2→1 → 运行清空并携带 cloud_job_id/circuit；engine 对
+  agent.activity 同源分配 seq。
+- **三语字典**：hw.qpu.sublineCloud/sublineSim、hw.topo.notProvided 三语
+  同步（key 集合一致性测试保持绿）。
+
+### Changed
+- HardwareTopology.test 断言随 fixtures 演进更新：机群 14→19 卡、QPU 分组
+  头 `在线 10/15`、副行新格式（simulated「模拟 · 20 比特」）；fixtures.test
+  不变量作用域化为 simulated 节点 + 新增云端契约 describe；engine.test
+  事件顺序白名单纳入 agent.activity/artifact.created。
+
+### Validation
+- `npm test` 223 passed（+13：fixtures 云端契约 3、HardwareTopology 云端
+  卡/降级 Drawer 2、QpuTopologyCanvas 坐标降级 4、engine v1.4 剧本 3、
+  mock 全链 store 集成 1）；`npm run build` 零错误；`VITE_USE_MOCK=1
+  npm run dev` 启动冒烟通过（专家工作区流式/插卡/徽标/云端拓扑/排队徽标
+  均由 223 条测试与 mock 剧本驱动可演示）。
+
+### Known defects
+- 云端真机不提供利用率/保真度（平台事实）：面板相应降级为 "—"/坐标点，
+  属契约内降级而非缺陷。
+- 专家工作区为内存态（刷新不回放，见 W2）。
+
 ## 2026-10-14 `frontend: v4 W3——artifact 流式插卡 + 演示徽标 + 排队徽标`
 
 ### Added

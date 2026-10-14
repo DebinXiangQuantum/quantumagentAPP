@@ -32,6 +32,22 @@ interface Harness {
   closeGlobal: () => void;
 }
 
+/** 订阅两条流并发送一条消息，随后快进全部定时器。 */
+function runScript(client: ReturnType<typeof createMockClient>, text: string): Harness {
+  const convEvents: ConversationStreamEvent[] = [];
+  const globalEvents: GlobalStreamEvent[] = [];
+  const conv = client.openConversationStream('c-1', null, {
+    onEvent: (e) => convEvents.push(e),
+  });
+  const global = client.openGlobalStream({
+    onEvent: (e) => globalEvents.push(e),
+  });
+  void client.sendMessage('c-1', text);
+  // 脚本总时长约 9s，快进 20s 覆盖全部阶段
+  vi.advanceTimersByTime(20_000);
+  return { convEvents, globalEvents, closeConv: conv.close, closeGlobal: global.close };
+}
+
 describe('Mock 引擎脚本化运行', () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -40,31 +56,15 @@ describe('Mock 引擎脚本化运行', () => {
     vi.useRealTimers();
   });
 
-  /** 订阅两条流并发送一条消息，随后快进全部定时器。 */
-  function runScript(client: ReturnType<typeof createMockClient>, text: string): Harness {
-    const convEvents: ConversationStreamEvent[] = [];
-    const globalEvents: GlobalStreamEvent[] = [];
-    const conv = client.openConversationStream('c-1', null, {
-      onEvent: (e) => convEvents.push(e),
-    });
-    const global = client.openGlobalStream({
-      onEvent: (e) => globalEvents.push(e),
-    });
-    void client.sendMessage('c-1', text);
-    // 脚本总时长约 9s，快进 20s 覆盖全部阶段
-    vi.advanceTimersByTime(20_000);
-    return { convEvents, globalEvents, closeConv: conv.close, closeGlobal: global.close };
-  }
-
   it('事件顺序（v1.1）：先全部 reasoning，再全部 delta，后 completed（含 circuit+counts + reasoning 全文）', () => {
     const client = createMockClient();
     const { convEvents } = runScript(client, '请设计 VQE 线路');
     const kinds = convEvents.map((e) => e.event);
     const firstCompleted = kinds.indexOf('message.completed');
     expect(firstCompleted).toBeGreaterThan(0);
-    // completed 之前只有 reasoning / delta，之后没有流式事件
+    // completed 之前只有 reasoning / delta / agent.activity / artifact.created
     for (let i = 0; i < firstCompleted; i += 1) {
-      expect(['message.reasoning', 'message.delta']).toContain(kinds[i]);
+      expect(['message.reasoning', 'message.delta', 'agent.activity', 'artifact.created']).toContain(kinds[i]);
     }
     for (let i = firstCompleted; i < kinds.length; i += 1) {
       expect(kinds[i]).toBe('message.completed');
@@ -244,5 +244,95 @@ describe('Mock 引擎脚本化运行', () => {
     expect(detail.messages.length).toBeGreaterThanOrEqual(2);
     const tasks = await client.listTasks(convs[0].id);
     expect(tasks.length).toBeGreaterThanOrEqual(1);
+  });
+});
+
+
+/** v1.4：专家工作区剧本（agent.activity）与 artifact.created 流式插卡。 */
+describe('Mock 引擎 v1.4 实时外显（agent.activity / artifact.created / queue_position）', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('专家工作区剧本：dispatch_started → reasoning/text_delta → tool_call → dispatch_completed；seq 单调', () => {
+    const client = createMockClient();
+    const { convEvents } = runScript(client, '请设计 VQE 线路');
+    const acts = convEvents.filter(
+      (e): e is Extract<ConversationStreamEvent, { event: 'agent.activity' }> =>
+        e.event === 'agent.activity',
+    );
+    expect(acts.length).toBeGreaterThanOrEqual(8);
+    const phases = acts.map((e) => e.data.phase);
+    expect(phases[0]).toBe('dispatch_started');
+    expect(phases[phases.length - 1]).toBe('dispatch_completed');
+    // phase 集合覆盖四类（started/reasoning/text/tool/completed）
+    expect(new Set(phases)).toEqual(
+      new Set(['dispatch_started', 'reasoning_delta', 'text_delta', 'tool_call', 'dispatch_completed']),
+    );
+    // 同一专家与消息归属（orchestrator 的 assistant 消息）
+    expect(new Set(acts.map((e) => e.data.agent_id))).toEqual(new Set(['algorithm-designer']));
+    expect(new Set(acts.map((e) => e.data.message_id))).toEqual(
+      new Set([convEvents.find((e) => e.event === 'message.completed')!.data.message_id]),
+    );
+    // tool_call 带工具名；delta 增量非空
+    const tools = acts.filter((e) => e.data.phase === 'tool_call').map((e) => e.data.tool);
+    expect(tools.length).toBeGreaterThanOrEqual(2);
+    for (const tool of tools) expect(tool && tool.length > 0).toBe(true);
+    for (const e of acts) {
+      if (e.data.phase === 'reasoning_delta' || e.data.phase === 'text_delta') {
+        expect(typeof e.data.delta === 'string' && e.data.delta!.length > 0).toBe(true);
+      }
+    }
+    // agent.activity 的 seq 与 delta 同源单调
+    const seqs = acts.map((e) => e.data.seq);
+    for (let i = 1; i < seqs.length; i += 1) expect(seqs[i]).toBeGreaterThan(seqs[i - 1]);
+  });
+
+  it('artifact.created 先于 completed 到达（circuit 骨架 → completed 补全），id 与 completed 一致', () => {
+    const client = createMockClient();
+    const { convEvents } = runScript(client, '请设计 VQE 线路');
+    const created = convEvents.filter(
+      (e): e is Extract<ConversationStreamEvent, { event: 'artifact.created' }> =>
+        e.event === 'artifact.created',
+    );
+    expect(created.map((e) => e.data.artifact.type).sort()).toEqual(['circuit', 'counts']);
+    const completedIdx = convEvents.findIndex((e) => e.event === 'message.completed');
+    for (const e of created) {
+      expect(convEvents.indexOf(e)).toBeLessThan(completedIdx);
+    }
+    const completed = convEvents[completedIdx] as Extract<
+      ConversationStreamEvent,
+      { event: 'message.completed' }
+    >;
+    expect(completed.data.artifacts.map((a) => a.id).sort()).toEqual(
+      created.map((e) => e.data.artifact.id).sort(),
+    );
+  });
+
+  it('quantum 步 queue_position 演进：3 → 2 → 1 → 运行时清空并携带 cloud_job_id/circuit', () => {
+    const client = createMockClient();
+    const { globalEvents } = runScript(client, '请设计 VQE 线路');
+    const vqeEvents = globalEvents
+      .filter(
+        (e): e is Extract<GlobalStreamEvent, { event: 'task.updated' }> =>
+          e.event === 'task.updated',
+      )
+      .filter((e) => e.data.steps.length === 3 && e.data.steps[1].kind === 'quantum');
+    const queueSeq: number[] = [];
+    let ranWithCloud = false;
+    for (const e of vqeEvents) {
+      const q = e.data.steps[1].queue_position;
+      if (typeof q === 'number') queueSeq.push(q);
+      const step = e.data.steps[1];
+      if (step.status === 'running' && step.cloud_job_id && step.circuit) {
+        ranWithCloud = true;
+        expect(step.queue_position == null).toBe(true);
+      }
+    }
+    expect(queueSeq).toEqual([3, 2, 1]);
+    expect(ranWithCloud).toBe(true);
   });
 });

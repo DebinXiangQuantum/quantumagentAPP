@@ -45,6 +45,11 @@ function qpuMetricsOf(node: HardwareNode): QpuMetrics | null {
   const m = node.metrics;
   return m !== null && typeof m === 'object' && 'topology' in m ? (m as QpuMetrics) : null;
 }
+
+/** v1.4：logicalcloud 真机节点判定（id 前缀 lq-；在线/离线为云端真实状态）。 */
+export function isCloudQpu(node: HardwareNode): boolean {
+  return typeof node.id === 'string' && node.id.startsWith('lq-');
+}
 function cpuMetricsOf(node: HardwareNode): CpuMetrics | null {
   const m = node.metrics;
   return m !== null && typeof m === 'object' && 'cpu_usage' in m ? (m as CpuMetrics) : null;
@@ -165,6 +170,11 @@ export function HardwareTopology(props: {
                 const cpuM = cpuMetricsOf(node);
                 const gpuM = gpuMetricsOf(node);
                 const tqMedian = qpuM !== null ? medianTqFidelity(qpuM.topology.couplers) : null;
+                // v1.4 来源标注：云端真机（lq-* 或无保真度）「云端 · N 比特 · 型号」，
+                // simulated「模拟 · N 比特」（保真度中位保留在 Drawer 摘要）
+                const cloud = isCloudQpu(node) || tqMedian === null;
+                // v1.4：云端利用率 0 = 平台无数据 → "—"（不显示 0%）
+                const utilNoData = isCloudQpu(node) && node.utilization === 0;
                 return (
                   <button
                     key={node.id}
@@ -191,12 +201,14 @@ export function HardwareTopology(props: {
                       </span>
                     </span>
                     <span className="hw-card__model mono truncate">{node.model}</span>
-                    {qpuM !== null && qpuM.qubits_count > 0 && tqMedian !== null ? (
+                    {qpuM !== null && qpuM.qubits_count > 0 ? (
                       <span className="hw-card__qpu-subline mono truncate">
-                        {t('hw.qpu.subline', {
-                          count: qpuM.qubits_count,
-                          median: (tqMedian * 100).toFixed(2) + '%',
-                        })}
+                        {cloud
+                          ? t('hw.qpu.sublineCloud', {
+                              count: qpuM.qubits_count,
+                              model: node.model,
+                            })
+                          : t('hw.qpu.sublineSim', { count: qpuM.qubits_count })}
                       </span>
                     ) : null}
                     <span className="hw-card__util">
@@ -206,7 +218,9 @@ export function HardwareTopology(props: {
                           style={{ width: `${util * 100}%` }}
                         />
                       </span>
-                      <span className="hw-card__util-num mono">{formatPercent(node.utilization)}</span>
+                      <span className="hw-card__util-num mono">
+                        {utilNoData ? '—' : formatPercent(node.utilization)}
+                      </span>
                       <UtilSparkline history={props.history[node.id] ?? []} />
                     </span>
                     {cpuM !== null && Number.isFinite(cpuM.cpu_usage) && Number.isFinite(cpuM.memory_used_gb) ? (
@@ -330,16 +344,20 @@ export function HardwareTopology(props: {
             {qpuMetricsOf(selected) !== null ? (
               <div className="hw-detail__topo">
                 <p className="hw-detail__topo-summary mono" data-testid="hw-drawer-topo-summary">
-                  {t('hw.qpu.subline', {
-                    count: qpuMetricsOf(selected)!.qubits_count,
-                    median:
-                      medianTqFidelity(qpuMetricsOf(selected)!.topology.couplers) !== null
-                        ? (
-                            (medianTqFidelity(qpuMetricsOf(selected)!.topology.couplers) as number) *
-                            100
-                          ).toFixed(2) + '%'
-                        : '—',
-                  })}
+                  {(() => {
+                    const m = qpuMetricsOf(selected)!;
+                    const med = medianTqFidelity(m.topology.couplers);
+                    // v1.4：云端（或无保真度）→ 来源行；simulated → 保真度中位摘要
+                    return isCloudQpu(selected) || med === null
+                      ? t('hw.qpu.sublineCloud', {
+                          count: m.qubits_count,
+                          model: selected.model,
+                        })
+                      : t('hw.qpu.subline', {
+                          count: m.qubits_count,
+                          median: (med * 100).toFixed(2) + '%',
+                        });
+                  })()}
                 </p>
                 <QpuTopologyCanvas metrics={qpuMetricsOf(selected)!} />
               </div>

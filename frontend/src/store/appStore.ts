@@ -71,9 +71,9 @@ interface StreamingMessage {
 }
 
 /**
- * v1.4 单个专家（dispatch_agent 子 Agent）在一条消息内的聚合活动。
- * 按事件 message_id → agentId 聚合；reasoning/text 增量追加进 text，
- * tool_call 依序记录工具名；dispatch_completed 收束 phase（保留全文供回看）。
+ * v1.4 单个专家（dispatch_agent 子 Agent）在一条消息内的聚合活动：
+ * message_id → agentId 聚合；reasoning/text 增量追加进 text，tool_call
+ * 依序记录工具名；dispatch_completed 收束 phase（保留全文供回看）。
  */
 export interface SubagentActivity {
   agentId: string;
@@ -104,8 +104,8 @@ export interface AppDataState {
   streamingByCid: Record<string, StreamingMessage | undefined>;
   /**
    * v1.4 专家工作区聚合：message_id → 各 agentId 的 SubagentActivity。
-   * 运行中由 MessageBubble 内嵌渐进块实时外显；dispatch_completed 后折叠
-   * 为摘要行（内存态，刷新后不回放——活动为流式期 affordance）。
+   * 运行中由 MessageBubble 渐进块实时外显；完成后折叠摘要（内存态，
+   * 刷新后不回放——活动为流式期 affordance）。
    */
   subagentActivityByMessage: Record<string, SubagentActivity[]>;
   tasks: Task[];
@@ -172,7 +172,6 @@ export const useAppStore = create<AppDataState>((set, get) => {
   function recomputeConnection(): void {
     set({ connection: combineStatus() });
   }
-
   /**
    * §7 seq 单调门控：携带 seq 的事件（delta/reasoning/agent.activity）
    * 若 seq ≤ 已见最大值（乱序/重复，如断线重放）则丢弃，不污染增量拼接。

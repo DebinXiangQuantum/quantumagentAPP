@@ -509,3 +509,56 @@ describe('v1.4 agent.activity / artifact.created 归并', () => {
     expect(useAppStore.getState().streamingByCid['c-1']?.text).toBe('第一段');
   });
 });
+
+/** v1.4 mock 全链：发送消息 → agent.activity 聚合 + artifact.created 流式插卡 → completed 收束。 */
+describe('v1.4 Mock 引擎全链（专家工作区 + 流式插卡）', () => {
+  let engine: MockClient;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    engine = createMockClient();
+    setApi(engine);
+    useAppStore.getState().resetForTest();
+  });
+  afterEach(() => {
+    engine.dispose();
+    vi.useRealTimers();
+  });
+
+  it('VQE 脚本驱动：工作区聚合 + 流式临时卡 + completed 全量收束', async () => {
+    await useAppStore.getState().bootstrap();
+    const cid = useAppStore.getState().activeConversationId!;
+    void useAppStore.getState().sendMessage('请设计 VQE 线路');
+    // 工作区运行中（约 0.85s）：正文流式 + activity 聚合（phase 未收束）
+    await vi.advanceTimersByTimeAsync(850);
+    let s = useAppStore.getState();
+    let streaming = s.streamingByCid[cid];
+    expect(streaming).toBeDefined();
+    expect((streaming?.text.length ?? 0)).toBeGreaterThan(0);
+    let activities = s.subagentActivityByMessage[streaming!.messageId] ?? [];
+    expect(activities.length).toBe(1);
+    expect(activities[0].agentId).toBe('algorithm-designer');
+    expect(activities[0].phase).not.toBe('dispatch_completed');
+    expect(activities[0].text.length).toBeGreaterThan(0);
+    expect(activities[0].tools.length).toBeGreaterThanOrEqual(1);
+
+    // artifact.created 到达（约 1.4s）：流式消息临时 artifacts 即时插卡（骨架态）
+    await vi.advanceTimersByTimeAsync(550);
+    s = useAppStore.getState();
+    streaming = s.streamingByCid[cid];
+    expect(streaming).toBeDefined();
+    expect((streaming?.artifacts ?? []).map((a) => a.type)).toEqual(['circuit']);
+
+    // 尾段（快进）：completed 收束 + artifacts 落库 + 工作区折叠态数据保留
+    await vi.advanceTimersByTimeAsync(2_000);
+    s = useAppStore.getState();
+    expect(s.streamingByCid[cid]).toBeUndefined();
+    const list = s.messagesByCid[cid];
+    const last = list[list.length - 1];
+    expect(last.role).toBe('assistant');
+    expect(last.artifacts.map((a) => a.type).sort()).toEqual(['circuit', 'counts']);
+    const done = s.subagentActivityByMessage[last.id] ?? [];
+    expect(done[0]?.phase).toBe('dispatch_completed');
+    expect(done[0]?.tools).toContain('emit_artifact');
+  });
+});
