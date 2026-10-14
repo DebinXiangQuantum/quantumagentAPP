@@ -340,3 +340,38 @@
     display: none;
   }
 }
+
+/* ============ 顶栏 v1.2：外观控件与租户角色 ============ */
+/* 主题分段（图标紧凑档）：复用 .segmented/.segmented__btn（settings.css） */
+.segmented--topbar {
+  gap: 0;
+  padding: var(--space-4);
+}
+.segmented--topbar .segmented__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 24px;
+  padding: 0;
+}
+.segmented--topbar .segmented__btn:focus-visible {
+  outline: 2px solid var(--accent-cyan);
+  outline-offset: 1px;
+}
+.select--language {
+  min-width: 96px;
+  max-width: 120px;
+  padding: var(--space-4) var(--space-8);
+  font-size: var(--fs-caption);
+}
+/* 租户徽标内角色徽章：admin 显示（user 不渲染该节点） */
+.tenant-badge__role {
+  margin-left: var(--space-8);
+  padding: 1px var(--space-4);
+  font-size: var(--fs-caption);
+  color: var(--accent-cyan);
+  background: color-mix(in srgb, var(--accent-cyan) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent-cyan) 45%, transparent);
+  border-radius: var(--radius-sm);
+}

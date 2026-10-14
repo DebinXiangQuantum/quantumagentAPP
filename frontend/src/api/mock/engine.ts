@@ -15,6 +15,7 @@
 import { ApiError, type ApiClient } from '../client';
 import type {
   AgentInfo,
+  AttachmentMeta,
   Conversation,
   ConversationDetail,
   HardwareNode,
@@ -63,6 +64,12 @@ interface LoggedEvent {
 
 const EVENT_LOG_CAP = 1024;
 const TICK_MS = 2000;
+/** §5.2 v1.3：单文件上限 8MB（超限 422）。 */
+const ATTACHMENT_MAX_BYTES = 8 * 1024 * 1024;
+/** kind 判定的文本扩展名集合（mime text/* 之外的补充，契约 §5.2）。 */
+const TEXT_EXTENSIONS = new Set([
+  '.md', '.txt', '.py', '.json', '.toml', '.csv', '.yaml', '.ts', '.js',
+]);
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -88,6 +95,10 @@ export function createMockClient(): MockClient {
   const nodes: HardwareNode[] = clone(HARDWARE_NODES);
   const channels: ModelChannel[] = clone(ADMIN_MODELS);
   const plugins: PluginInfo[] = clone(ADMIN_PLUGINS);
+  /** §5.2 v1.3 附件存储：id → 元数据 + data URL（图片缩略图直接可渲染）。 */
+  const attachmentsById = new Map<string, AttachmentMeta & { dataUrl: string }>();
+  /** 会话 → 已上传附件 id 集合（sendMessage 校验"未知/跨会话 id → 422"）。 */
+  const attachmentIdsByCid = new Map<string, Set<string>>();
 
   const convSeq = new Map<string, number>();
   const convLog = new Map<string, LoggedEvent[]>();
@@ -187,6 +198,33 @@ export function createMockClient(): MockClient {
       const base = node.allocations.length > 0 ? 0.75 : 0.15;
       const drift = (Math.random() - 0.5) * 0.12;
       node.utilization = Math.min(0.97, Math.max(0.02, base + drift));
+      // v1.2 metrics 缓慢漂移：QPU 保真度每 tick ≤0.0002（契约 §4）、
+      // CPU/GPU 使用率与显存随机走（始终满足 used ≤ total / usage ∈ [0,1]）
+      const m = node.metrics;
+      if (m !== undefined && m !== null && typeof m === 'object') {
+        if ('topology' in m) {
+          const driftFid = (v: number): number =>
+            Math.min(1, Math.max(0.9, v + (Math.random() - 0.5) * 0.0002));
+          for (const q of m.topology.qubits) {
+            q.readout_fidelity = Number(driftFid(q.readout_fidelity).toFixed(4));
+            q.sq_fidelity = Number(driftFid(q.sq_fidelity).toFixed(4));
+          }
+          for (const c of m.topology.couplers) {
+            c.tq_fidelity = Number(driftFid(c.tq_fidelity).toFixed(4));
+          }
+        } else if ('cpu_usage' in m) {
+          m.cpu_usage = Math.min(1, Math.max(0.02, m.cpu_usage + (Math.random() - 0.5) * 0.08));
+          m.memory_used_gb = Math.min(
+            m.memory_total_gb,
+            Math.max(1, m.memory_used_gb + (Math.random() - 0.5) * 2),
+          );
+        } else if ('vram_total_gb' in m) {
+          m.vram_used_gb = Math.min(
+            m.vram_total_gb,
+            Math.max(0.5, m.vram_used_gb + (Math.random() - 0.5) * 1.5),
+          );
+        }
+      }
     }
     emitHardware();
   }, TICK_MS);
@@ -256,7 +294,16 @@ export function createMockClient(): MockClient {
       return clone(AGENTS);
     },
     async getTenant(): Promise<TenantInfo> {
-      return clone(TENANT);
+      // v1.2 双角色演示：localStorage['qap.mockRole'] = 'user' 后刷新即普通
+      // 用户视角（管理分区隐藏）；缺省 admin（fixtures TENANT.role）
+      let role: TenantInfo['role'] = TENANT.role;
+      try {
+        const override = typeof localStorage !== 'undefined' ? localStorage.getItem('qap.mockRole') : null;
+        if (override === 'user' || override === 'admin') role = override;
+      } catch {
+        /* 隐私模式等：仅默认 */
+      }
+      return { ...clone(TENANT), role };
     },
     async listConversations(): Promise<Conversation[]> {
       return clone(conversations);
@@ -281,9 +328,28 @@ export function createMockClient(): MockClient {
     async sendMessage(
       cid: string,
       content: string,
-      req?: { model_ref?: string; thinking_level?: ThinkingLevel },
+      req?: {
+        model_ref?: string;
+        thinking_level?: ThinkingLevel;
+        attachment_ids?: string[];
+      },
     ): Promise<SendMessageAck> {
       const conv = requireConversation(cid);
+      // §5.2 v1.3：未知/跨会话附件 id → 422（契约语义）
+      const attachmentIds = Array.isArray(req?.attachment_ids) ? req!.attachment_ids! : [];
+      const owned = attachmentIdsByCid.get(cid) ?? new Set<string>();
+      const known = attachmentIds.filter((id) => owned.has(id));
+      if (known.length !== attachmentIds.length) {
+        throw new ApiError(422, '存在未知或不属于该会话的附件 id', null);
+      }
+      const attMeta: AttachmentMeta[] = [];
+      for (const id of known) {
+        const stored = attachmentsById.get(id);
+        if (stored !== undefined) {
+          const { dataUrl: _drop, ...meta } = stored;
+          attMeta.push(meta);
+        }
+      }
       const userId = nextId('m-');
       messagesByCid.set(cid, [
         ...(messagesByCid.get(cid) ?? []),
@@ -295,6 +361,7 @@ export function createMockClient(): MockClient {
           reasoning: '',
           agent_id: conv.agent_id,
           artifacts: [],
+          ...(attMeta.length > 0 ? { attachments: attMeta } : {}),
           created_at: nowIso(),
         },
       ]);
@@ -315,8 +382,65 @@ export function createMockClient(): MockClient {
         : tasks;
       return clone(list);
     },
+    async getTask(tid: string): Promise<Task> {
+      const task = tasks.find((tk) => tk.id === tid);
+      if (!task) throw new ApiError(404, `任务 ${tid} 不存在`, null);
+      return clone(task);
+    },
     async listHardware(): Promise<HardwareResponse> {
       return { nodes: clone(nodes) };
+    },
+    async uploadAttachment(cid: string, file: File): Promise<AttachmentMeta> {
+      requireConversation(cid);
+      if (!(file instanceof File)) {
+        throw new ApiError(422, '请求体缺少 multipart file 字段', null);
+      }
+      if (file.size > ATTACHMENT_MAX_BYTES) {
+        throw new ApiError(422, `单文件不得超过 8MB（当前 ${file.size} 字节）`, null);
+      }
+      if (file.size === 0 && file.name !== '') {
+        throw new ApiError(422, '空文件不可上传', null);
+      }
+      const mime = file.type || 'application/octet-stream';
+      const lower = file.name.toLowerCase();
+      const ext = lower.slice(lower.lastIndexOf('.'));
+      const kind: AttachmentMeta['kind'] =
+        mime.startsWith('image/')
+          ? 'image'
+          : mime.startsWith('text/') || TEXT_EXTENSIONS.has(ext)
+            ? 'text'
+            : 'file';
+      const id = nextId('att-');
+      // 图片构建 data: URL（缩略图可直接渲染）；非图片/超大文件降级空体
+      let dataUrl = `data:${mime};base64,`;
+      if (kind === 'image' && file.size <= 1_048_576) {
+        try {
+          const buf = new Uint8Array(await file.arrayBuffer());
+          let bin = '';
+          for (const byte of buf) bin += String.fromCharCode(byte);
+          dataUrl = `data:${mime};base64,${btoa(bin)}`;
+        } catch {
+          /* 环境限制时保留空 data URL */
+        }
+      }
+      const meta: AttachmentMeta & { dataUrl: string } = {
+        id,
+        name: file.name,
+        mime,
+        size: file.size,
+        kind,
+        dataUrl,
+      };
+      attachmentsById.set(id, meta);
+      const owned = attachmentIdsByCid.get(cid) ?? new Set<string>();
+      owned.add(id);
+      attachmentIdsByCid.set(cid, owned);
+      const { dataUrl: _drop, ...rest } = meta;
+      return { ...rest };
+    },
+    attachmentRawUrl(id: string): string {
+      const att = attachmentsById.get(id);
+      return att?.dataUrl ?? `data:application/octet-stream,`;
     },
     async listAdminModels(): Promise<ModelChannelList> {
       return { models: clone(channels) };

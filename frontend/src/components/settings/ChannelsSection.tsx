@@ -77,7 +77,7 @@ export function validateChannelDraft(
   return errors;
 }
 
-export function ChannelsSection(): JSX.Element {
+export function ChannelsSection(props: { adminBadge?: boolean }): JSX.Element {
   const t = useTranslate();
   const refreshModelChannels = useAppStore((s) => s.refreshModelChannels);
 
@@ -176,7 +176,14 @@ export function ChannelsSection(): JSX.Element {
 
   return (
     <section className="settings-section" data-testid="settings-channels">
-      <h3 className="settings-section__title">{t('settings.channels')}</h3>
+      <h3 className="settings-section__title settings-section__title--row">
+        {t('settings.channels')}
+        {props.adminBadge ? (
+          <span className="settings-admin-badge" data-testid="settings-admin-badge">
+            {t('topbar.role.admin')}
+          </span>
+        ) : null}
+      </h3>
       <p className="settings-section__desc">{t('settings.channels.desc')}</p>
 
       {loadError ? (
@@ -348,6 +355,7 @@ export function ChannelsSection(): JSX.Element {
       ) : channels.length === 0 ? (
         <p className="settings-hint">{t('settings.channels.empty')}</p>
       ) : (
+        <div className="channel-table-scroll">{/* v1.2：长 URL/模型名滚动不撑破布局 */}
         <table className="channel-table" data-testid="channel-table">
           <thead>
             <tr>
@@ -405,6 +413,7 @@ export function ChannelsSection(): JSX.Element {
             ))}
           </tbody>
         </table>
+        </div>
       )}
     </section>
   );

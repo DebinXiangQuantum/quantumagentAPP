@@ -42,3 +42,30 @@ export function formatPercent(util: unknown): string {
   if (Number.isNaN(n)) return '—';
   return `${Math.round(Math.min(1, Math.max(0, n)) * 100)}%`;
 }
+
+/** 人类可读字节数（附件/文件卡）：B → KB → MB → GB，1 位小数；畸形 → "—"。 */
+export function formatBytes(bytes: unknown): string {
+  if (typeof bytes !== 'number' || !Number.isFinite(bytes) || bytes < 0) return '—';
+  if (bytes < 1024) return `${Math.round(bytes)} B`;
+  const kb = bytes / 1024;
+  if (kb < 1024) return `${kb.toFixed(1)} KB`;
+  const mb = kb / 1024;
+  if (mb < 1024) return `${mb.toFixed(1)} MB`;
+  return `${(mb / 1024).toFixed(1)} GB`;
+}
+
+/**
+ * 实测时长（design.md §6.3）：<1000ms → 取整毫秒（412.7 → "413ms"）；
+ * ≥1000ms → 秒 1 位小数（1800 → "1.8s"）；null/负数/NaN → "—"（不可得降级）。
+ */
+export function formatDuration(ms: unknown): string {
+  if (typeof ms !== 'number' || !Number.isFinite(ms) || ms < 0) return '—';
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  return `${(ms / 1000).toFixed(1)}s`;
+}
+
+/** 实测峰值内存（MB，1 位小数：18.3 → "18.3MB"）；畸形 → "—"。 */
+export function formatMb(mb: unknown): string {
+  if (typeof mb !== 'number' || !Number.isFinite(mb) || mb < 0) return '—';
+  return `${mb.toFixed(1)}MB`;
+}

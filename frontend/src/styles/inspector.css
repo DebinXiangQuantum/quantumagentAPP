@@ -390,3 +390,331 @@
   border: 1px solid var(--border-default);
   border-radius: var(--radius-sm);
 }
+
+/* ============ DAG v1.3：实测行 / 下钻角标 / 面包屑 / 时间线 ============ */
+.dag-view__titles {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  min-width: 0; /* 长任务名截断，不压缩二段切换 */
+  flex: 1;
+}
+.dag-node__head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-8);
+  min-width: 0;
+}
+.dag-node__head .dag-node__name {
+  flex: 1;
+}
+/* 实测标注行（measured；--font-data 由 .mono 提供） */
+.dag-node__measured {
+  color: var(--text-secondary);
+  font-size: var(--fs-caption);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dag-node__measured-sep {
+  margin: 0 var(--space-4);
+  color: var(--text-faint);
+}
+/* ⊕ 下钻角标：节点右下角（subtask_id 非空时） */
+.dag-node__drill {
+  position: absolute;
+  right: var(--space-4);
+  bottom: var(--space-4);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  background: var(--bg-inset);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--accent-cyan);
+  font-size: var(--fs-caption);
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    color var(--motion-fast) var(--ease-out),
+    border-color var(--motion-fast) var(--ease-out);
+}
+.dag-node__drill:hover,
+.dag-node__drill:focus-visible {
+  color: var(--accent-violet);
+  border-color: var(--accent-cyan);
+}
+/* 二段切换（复用 .segmented，紧凑档） */
+.segmented--dag {
+  flex-shrink: 0;
+  padding: var(--space-4);
+}
+.segmented--dag .segmented__btn {
+  padding: var(--space-4) var(--space-8);
+  font-size: var(--fs-caption);
+}
+/* 面包屑 */
+.dag-view__crumbs {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  min-width: 0;
+}
+.dag-crumb {
+  max-width: 160px;
+  padding: 2px var(--space-8);
+  background: transparent;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: var(--fs-caption);
+  cursor: pointer;
+  transition: color var(--motion-fast) var(--ease-out);
+}
+.dag-crumb:hover {
+  color: var(--accent-cyan);
+}
+.dag-crumb--root {
+  color: var(--text-primary);
+}
+.dag-crumb[aria-current='page'] {
+  color: var(--accent-cyan);
+  border-color: var(--border-strong);
+}
+.dag-crumb__item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4);
+  min-width: 0;
+}
+.dag-crumb__sep {
+  color: var(--text-faint);
+}
+
+/* 时间线（水平 Gantt）：x=任务起点起算相对时间 */
+.dag-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  padding: var(--space-12) 0 var(--space-4);
+}
+.dag-tl__axis,
+.dag-tl__scale {
+  position: relative;
+  height: 0;
+  margin-left: 128px; /* 与行标签列对齐 */
+}
+.dag-tl__scale {
+  height: 16px;
+  margin-top: calc(-1 * var(--space-4));
+}
+.dag-tl__tick {
+  position: absolute;
+  top: 0;
+  height: 100vh; /* 垂直参考线贯穿全部行（容器裁切） */
+  border-left: 1px dashed var(--border-default);
+  transform: translateX(-0.5px);
+}
+.dag-tl__scale-label {
+  position: absolute;
+  font-size: var(--fs-caption);
+  color: var(--text-faint);
+  transform: translateX(-50%);
+}
+.dag-tl__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  position: relative;
+}
+.dag-tl__row--pending {
+  opacity: 0.7;
+}
+.dag-tl__label {
+  flex-shrink: 0;
+  width: 120px;
+  font-size: var(--fs-caption);
+  color: var(--text-secondary);
+  text-align: right;
+}
+.dag-tl__track {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: 18px;
+}
+.dag-tl__bar {
+  position: absolute;
+  top: 3px;
+  height: 12px;
+  min-width: 2px;
+  border-radius: 2px;
+  /* 运行中实时增长：宽度变化 ≤200ms 平滑过渡（§6.3） */
+  transition: width var(--motion-fast) var(--ease-out);
+}
+.dag-tl__bar--quantum {
+  background: var(--accent-violet);
+}
+.dag-tl__bar--classical {
+  background: var(--info);
+}
+.dag-tl__bar--agent {
+  background: var(--warning);
+}
+.dag-tl__bar--running {
+  /* 呼吸光晕与结构模式运行节点一致 */
+  animation: qap-badge-breathe var(--motion-glow-breath) var(--ease-out) infinite;
+}
+.dag-tl__duration {
+  flex-shrink: 0;
+  width: 56px;
+  font-size: var(--fs-caption);
+  color: var(--text-secondary);
+}
+@media (prefers-reduced-motion: reduce) {
+  .dag-tl__bar {
+    transition: none;
+  }
+  .dag-tl__bar--running {
+    animation: none;
+    outline: 1px solid var(--warning);
+  }
+}
+
+/* ============ 硬件 v1.2：分组在线计数 / 迷你条 / QPU 拓扑图 ============ */
+.hw-group__online {
+  margin-left: var(--space-8);
+  font-weight: 400;
+  color: var(--text-secondary);
+}
+.hw-card__qpu-subline {
+  color: var(--text-secondary);
+  font-size: var(--fs-caption);
+}
+.hw-card__minis {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.hw-card__mini {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  min-width: 0;
+}
+.hw-card__mini-label {
+  flex-shrink: 0;
+  width: 36px;
+  font-size: var(--fs-caption);
+  color: var(--text-secondary);
+}
+.hw-card__mini-bar {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: 6px;
+  background: var(--bg-inset);
+  border: 1px solid var(--border-default);
+  border-radius: 3px;
+  overflow: hidden;
+}
+/* 告警色阶（§6.4）：正常=accent-cyan（CPU 正常档=info）、≤0.9 警告、>0.9 危险 */
+.hw-card__mini-fill {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  transition: width var(--motion-fast) var(--ease-out);
+}
+.hw-mini-fill--normal {
+  background: var(--accent-cyan);
+}
+.hw-mini-fill--cpu.hw-mini-fill--normal {
+  background: var(--info);
+}
+.hw-mini-fill--warning {
+  background: var(--warning);
+}
+.hw-mini-fill--danger {
+  background: var(--danger);
+}
+.hw-card__mini-num {
+  flex-shrink: 0;
+  max-width: 110px;
+  font-size: var(--fs-caption);
+  color: var(--text-secondary);
+}
+.hw-detail__topo {
+  margin: var(--space-12) 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+}
+.hw-detail__topo-summary {
+  font-size: var(--fs-caption);
+  color: var(--text-secondary);
+}
+
+/* QPU 拓扑保真度图（手写 SVG）：>12×12 滚动 */
+.qpu-topo__scroll {
+  overflow: auto;
+  max-width: 100%;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--bg-inset);
+  padding: var(--space-8);
+}
+.qpu-topo__scroll[data-scrollable='false'] {
+  overflow: hidden;
+}
+.qpu-topo--success {
+  color: var(--success);
+}
+.qpu-topo--warning {
+  color: var(--warning);
+}
+.qpu-topo--danger {
+  color: var(--danger);
+}
+.qpu-topo__coupler {
+  stroke: currentColor;
+  opacity: 0.85;
+}
+.qpu-topo__qubit {
+  fill: var(--bg-surface);
+  stroke: currentColor;
+  stroke-width: 1.6;
+}
+.qpu-topo__qid {
+  fill: var(--text-primary);
+  font-size: 10px;
+}
+.qpu-topo__tq {
+  fill: var(--text-secondary);
+  font-size: 9px;
+}
+.qpu-topo__readout {
+  fill: var(--text-secondary);
+  font-size: 9px;
+}
+.qpu-topo__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-12);
+  margin-top: var(--space-8);
+  font-size: var(--fs-caption);
+  color: var(--text-secondary);
+}
+.qpu-topo__legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+.qpu-topo__swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: currentColor;
+}

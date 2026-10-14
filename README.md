@@ -408,6 +408,44 @@ dispatch_agent、插件安装全生命周期；真实 GLM 冒烟走通全链路�
 无 Tailwind、无图表库、无 webfont**（依赖白名单见 docs/DEVELOPMENT.md 与
 frontend/package.json）。
 
+**v3 前端（2026-10-13，feat/frontend-v3，契约 v1.2/v1.3）**：六片 TDD 提交——
+① **类型与硬件纯函数 + 自动建会话（W1）**：`HardwareNode.metrics` 三形状可选
+（QPU 拓扑/CPU/GPU）、`AttachmentMeta`、`Step` 增 `duration_ms/peak_memory_mb/
+subtask_id`、`TenantInfo.role`；`utils/hw.ts` 色阶与格式化（fidelityLevel 阈值表
+2Q 0.992/0.985、1Q 0.999/0.995、readout 0.98/0.95；usageLevel 0.8/0.9；
+medianTqFidelity；formatFidelity/Us/GB）+ `formatBytes/formatDuration`；
+`sendMessage` 无活跃会话自动建会话（标题=前 20 字）、404 自动重建重试一次、
+失败 `sendError`+`failedDraft` 内联重试、`sending` 防重入。
+
+② **composer 工具条与附件（W2，§5/§5.2）**：模型/思考选择器从顶栏迁入
+输入区底部工具条（左 ＋附件 · 中 模型▾ 思考▾ · 右 发送）；顶栏改为常驻
+外观控件（主题三档分段图标 + 语言下拉）+ 租户徽标含角色（admin「管理员」）
++ 连接灯；附件全流程（file input → 无会话自动建会话 → POST attachments →
+预览条缩略图/文件卡 → × 移除 → attachment_ids 随消息发送；用户气泡内嵌
+附件条复用 AttachmentStrip）；发送中态 + 失败内联重试。
+③ **DagView v1.3 时间分析与嵌套下钻（W3，§6.3）**：节点实测标注
+`时长 413ms`/`内存 18.3MB`（measured，等宽，null→"—"；节点 232×92——
+v1.3 增实测行）；「结构/时间线」二段切换——时间线=水平 Gantt（x=任务起点
+相对时间、宽=duration_ms、kind 色、运行中实时增长、0–100% 五档刻度、悬停
+起止+时长）；⊕ 角标下钻子 DAG（getTask 递归 + 面包屑，子图两模式）；
+Drawer 补实测时长/峰值内存/子任务链接。
+④ **硬件面板 v1.2 与 10 QPU 机群（W4，§6.4）**：QPU 分组头
+`QPU · 在线 6/10`；离线卡降饱和+斜纹+离线徽标；QPU 卡副行
+`20Q · 2Q 保真度中位 NN.NN%`；CPU 卡 CPU%+内存双迷你条、GPU 卡 VRAM 迷你条
+（usageLevel 0.8/0.9 告警着色）；QpuTopologyCanvas 手写 SVG 拓扑保真度图
+（qubit 圈内 id+圈下 readout%、coupler 线中 tq%、三档色阶、悬停 T1/T2/1Q/
+readout tooltip、图例置底、>12×12 滚动）挂 QPU Drawer；mock fixtures 10 QPU
+（确定性 LCG 生成，满足 §4 全部不变量与模拟区间）+ admin 租户 +
+`localStorage['qap.mockRole']='user'` 双角色切换 + 步骤实测字段/子任务。
+⑤ **设置页权限/插件状态/文字边界（W5，§5 v1.2/v1.3）**：role=user 隐藏
+渠道/插件分区（强制力在后端 403）；admin 可见且分区标题带「管理员」徽标
+（mock 双角色：`localStorage['qap.mockRole']='user'` 刷新切换）；插件卡
+**状态徽标三态**（启用中 success / 已停用 faint / 加载失败 danger+broken
+原因）+ capabilities 标签 + model_ref + 描述；文字边界修复（容器
+min-width:0、描述 word-break、渠道表 overflow-x 滚动容器）。
+⑥ **i18n 收尾（W6）**：v3 全部新文案（composer/附件/时间线/下钻/实测/
+硬件拓扑/插件状态/权限）三语同步，key 集合一致性 + 三语互异 + 带参插值
+测试锁定；`npm test` 190 passed（基线 137 + 新增 53），build 零错误。
 **集成修订（2026-10-13，main）**：与真实后端联调对齐四处契约——① SSE 流 URL
 携带 `?api_key=`（`buildStreamUrl`/新增 `buildGlobalStreamUrl`）；②
 `TenantInfo` 字段对齐后端 `usage_snapshot`（`active_tasks`/`enabled`）；③

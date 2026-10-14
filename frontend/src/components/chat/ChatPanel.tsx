@@ -159,9 +159,12 @@ export function ChatPanel(): JSX.Element {
         </div>
 
         <MessageInput
-          onSend={(text) => {
+          onSend={(text, attachments) => {
             followRef.current = true;
-            void sendMessage(text);
+            void sendMessage(text, {
+              attachmentIds: attachments.map((a) => a.id),
+              attachments,
+            });
           }}
         />
       </div>

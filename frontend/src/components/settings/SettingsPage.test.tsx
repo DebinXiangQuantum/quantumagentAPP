@@ -19,6 +19,7 @@ import { SettingsPage } from './SettingsPage';
 import { AppShell } from '../layout/AppShell';
 import { useUiStore } from '../../store/uiStore';
 import { useAppStore } from '../../store/appStore';
+import { readFileSync } from 'node:fs';
 import { setApi } from '../../api';
 import { createMockClient, type MockClient } from '../../api/mock/engine';
 
@@ -30,6 +31,17 @@ describe('SettingsPage 四分区', () => {
     setApi(client);
     useUiStore.getState().resetForTest();
     useAppStore.getState().resetForTest();
+    // v1.2：渠道/插件分区仅 admin 可见（本组既有用例默认 admin 视角）
+    useAppStore.setState({
+      tenant: {
+        id: 'demo',
+        name: 'Demo 租户',
+        enabled: true,
+        role: 'admin',
+        usage: { active_tasks: 0, messages_today: 0 },
+        quota: { max_concurrent_tasks: 2, max_messages_per_day: 1000 },
+      },
+    });
   });
   afterEach(() => {
     client.dispose();
@@ -243,5 +255,94 @@ describe('SettingsPage 四分区', () => {
     });
     expect(screen.getByTestId('session-sidebar')).toBeInTheDocument();
     expect(screen.getByTestId('chat-panel')).toBeInTheDocument();
+  });
+});
+
+/** v1.2/v1.3：权限分流 + 插件卡状态徽标与信息补全 + 文字边界。 */
+describe('设置页权限与插件状态（v1.2/v1.3）', () => {
+  let roleClient: MockClient;
+
+  beforeEach(() => {
+    roleClient = createMockClient();
+    setApi(roleClient);
+    useUiStore.getState().resetForTest();
+    useAppStore.getState().resetForTest();
+    useAppStore.setState({
+      tenant: {
+        id: 'demo',
+        name: 'Demo 租户',
+        enabled: true,
+        role: 'admin',
+        usage: { active_tasks: 0, messages_today: 0 },
+        quota: { max_concurrent_tasks: 2, max_messages_per_day: 1000 },
+      },
+    });
+  });
+  afterEach(() => {
+    roleClient.dispose();
+  });
+
+  it('role=user：渠道/插件分区整体隐藏，仅剩外观与模型分区', async () => {
+    useAppStore.setState({
+      tenant: useAppStore.getState().tenant && {
+        ...useAppStore.getState()!.tenant!,
+        role: 'user',
+      },
+    });
+    render(<SettingsPage />);
+    await screen.findByTestId('settings-appearance');
+    expect(screen.getByTestId('settings-model')).toBeInTheDocument();
+    expect(screen.queryByTestId('settings-channels')).toBeNull();
+    expect(screen.queryByTestId('settings-plugins')).toBeNull();
+    // 不出现管理员徽标
+    expect(screen.queryByTestId('settings-admin-badge')).toBeNull();
+  });
+
+  it('role=admin：渠道/插件分区可见，分区标题带「管理员」徽标', async () => {
+    render(<SettingsPage />);
+    await screen.findByTestId('settings-channels');
+    expect(screen.getByTestId('settings-plugins')).toBeInTheDocument();
+    expect(screen.getAllByTestId('settings-admin-badge').length).toBe(2);
+    expect(screen.getAllByText('管理员').length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('插件卡状态徽标三态：启用中(success)/已停用(faint)/加载失败(danger+原因)', async () => {
+    render(<SettingsPage />);
+    // 启用中
+    const on = await screen.findByTestId('plugin-status-echo');
+    expect(on).toHaveTextContent('启用中');
+    expect(on).toHaveClass('plugin-status--success');
+    // 加载失败 + broken 原因内联
+    const broken = screen.getByTestId('plugin-status-legacy-noise-model');
+    expect(broken).toHaveTextContent('加载失败');
+    expect(broken).toHaveClass('plugin-status--danger');
+    expect(screen.getByTestId('plugin-item-legacy-noise-model').textContent).toContain(
+      'plugin.json',
+    );
+    // 关闭 echo → 刷新后「已停用」
+    act(() => {
+      fireEvent.click(screen.getByTestId('plugin-toggle-echo'));
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('plugin-status-echo')).toHaveTextContent('已停用');
+      expect(screen.getByTestId('plugin-status-echo')).toHaveClass('plugin-status--faint');
+    });
+  });
+
+  it('插件卡信息补全：capabilities 标签 + model_ref + 描述可见', async () => {
+    render(<SettingsPage />);
+    const item = await screen.findByTestId('plugin-item-algorithm-designer');
+    expect(item.textContent).toContain('circuit-synthesis'); // capabilities 标签
+    expect(item.textContent).toContain('glm-5.3-flash'); // model_ref
+    expect(item.textContent).toContain('问题建模'); // 描述
+  });
+
+  it('文字边界（v1.2 修复）：容器 min-width:0 / word-break / 表格 overflow-x 规则存在', () => {
+    const css = readFileSync('src/styles/settings.css', 'utf8');
+    expect(css).toContain('min-width: 0');
+    expect(css).toContain('word-break: break-word');
+    expect(css).toContain('.channel-table-scroll');
+    expect(css).toMatch(/\.channel-table-scroll\s*\{[^}]*overflow-x:\s*auto/);
+    expect(css).toMatch(/max-width:\s*100%/);
   });
 });

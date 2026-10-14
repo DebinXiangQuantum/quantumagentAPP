@@ -5,6 +5,176 @@ Validation（本切片测试结论）+ Known defects（已知缺陷，无则写�
 scope 与流程见 docs/DEVELOPMENT.md §2。
 
 
+## 2026-10-13 `frontend: v3 W1——硬件 metrics 类型/色阶纯函数与发送自动建会话（v1.2/v1.3 契约）`
+
+### Added
+- `types/domain.ts` 对齐 v1.2/v1.3 契约：`HardwareNode.metrics` 三形状可选
+  （`QpuMetrics`：qubits_count + topology{rows,cols,qubits[t1_us/t2_us/
+  readout_fidelity/sq_fidelity],couplers[tq_fidelity]}；`CpuMetrics`：
+  cpu_cores/cpu_usage/memory_*_gb；`GpuMetrics`：vram_*_gb）；`AttachmentMeta`
+  （id/name/mime/size/kind）；`Message.attachments?`；
+  `SendMessageRequest.attachment_ids?`；`Step` 增 `duration_ms?/peak_memory_mb?/
+  subtask_id?`（v1.3 实测字段与嵌套下钻入口）；`TenantInfo.role?` +
+  `parseTenantRole`（缺省 user 降级）。
+- `utils/hw.ts` 硬件度量纯函数：`fidelityLevel`（§6.4 阈值表：2Q ≥0.992/≥0.985、
+  1Q ≥0.999/≥0.995、readout ≥0.98/≥0.95 → success/warning/danger；畸形/越界
+  → danger 最保守档）、`usageLevel`（≤0.8/≤0.9/>0.9）、`medianTqFidelity`
+  （奇偶中位数，畸形 → null）、`formatFidelity`（0.9912→"99.12%"）/
+  `formatUs`（47.2→"47.2 µs"）/`formatGB`（98.4→"98.4 GB"）。
+- `utils/format.ts`：`formatBytes`（B/KB/MB/GB 1 位小数）、`formatDuration`
+  （412.7→"413ms"、1800→"1.8s"、不可得 → "—"）。
+- `appStore.sendMessage` 自动建会话三分支（§5 v1.2）：无活跃会话 →
+  createConversation（标题=消息前 20 字，code point 安全）→ 发送；404 →
+  自动新建重试一次；非 404 失败 → `sendError` + `failedDraft`（附件元数据
+  一并保留）供 `retrySend()` 内联重试；`sending` 置位防重入；乐观用户消息
+  携带 `attachments`。
+
+### Validation
+- `npm test` 156 passed（新增 19：hw 色阶/中位数/格式化 11、自动建会话
+  三分支 + 防重入 4、formatBytes/formatDuration 4）；`npm run build` 零错误。
+
+### Known defects
+- 无。
+
+## 2026-10-13 `frontend: v3 W6——i18n 三语收尾（v1.2/v1.3 全部新文案）`
+
+### Added
+- i18n.test 强化：v3 关键 chrome key（composer.model/dag.mode.timeline/
+  settings.plugins.status.on/hw.topo.legend.poor 等）纳入"三语互异"防同文
+  清单；带参文案插值精确断言（dag.measured.duration 三语、hw.qpu.subline
+  zh/en 逐字、hw.group.online、attachment.uploadError）。
+
+### Changed
+- ja `composer.thinking` 由与 zh 同文的「思考」改为更精确的「思考度」。
+
+### Validation
+- `npm test` 190 passed（较 v3 起点基线 137 净增 53：W1 19 / W2 13 /
+  W3 5 净增（重写 12 条） / W4 10 / W5 5 / W6 1，另有既有用例随契约扩容
+  同步更新）；`npm run build` 零错误；三字典 key 集合一致性测试保持绿。
+
+### Known defects
+- 无。
+
+## 2026-10-13 `frontend: v3 W5——设置页权限分流、插件状态徽标与文字边界（v1.2/v1.3）`
+
+### Added
+- **权限分流（§5 v1.2）**：SettingsPage 按 `tenant.role` 分流——user 整体
+  隐藏渠道/插件管理分区（仅剩外观与模型分区，不渲染管理员徽标）；admin
+  可见且两分区标题右侧显示「管理员」徽标（ChannelsSection/PluginsSection
+  新增 adminBadge prop）。可见性仅 UX，强制力在后端 /admin/* 403（契约 §5）。
+- **插件卡状态徽标（§5 v1.3，用户反馈"插件状况没展示"）**：三态——
+  `启用中`（success）/`已停用`（faint）/`加载失败`（danger，broken 原因
+  内联展示）；信息补全：capabilities 标签组、绑定 model_ref（"模型 {ref}"）、
+  插件描述；PluginInfo 类型新增可选 capabilities/model_ref（缺省降级隐藏）。
+
+### Fixed
+- **文字边界（§5 v1.2）**：设置页容器/分区/描述/插件卡 `min-width: 0`；
+  描述段落 `word-break: break-word`；渠道表外包 `.channel-table-scroll`
+  （overflow-x: auto + max-width: 100%）——任何长 URL/模型名不再撑破布局。
+
+### Validation
+- `npm test` 189 passed（新增 5：role 分流 2、插件状态徽标三态 1、
+  capabilities/model_ref 1、文字边界 CSS 规则 1；既有渠道/插件用例固定为
+  admin 视角后全数保持）；`npm run build` 零错误。
+
+### Known defects
+- 无（mock 角色切换为演示便利，localStorage 键 qap.mockRole 仅 Mock 引擎读取）。
+
+## 2026-10-13 `frontend: v3 W4——硬件性能监控、QPU 拓扑保真度图与 10 QPU 机群（v1.2）`
+
+### Added
+- **QpuTopologyCanvas**（手写 SVG）：grid 布局 qubit 圆圈（内标 id，等宽）+
+  coupler 连线；连线中点 2Q 保真度百分数、圈下 readout 百分数（2 位小数）；
+  色阶按 §6.4 阈值表（圈=readout 档、连线=2Q 档）；悬停 <title> 含
+  T1/T2 µs 与 1Q/readout 保真度；图例三档置底；>12×12 网格滚动容器。
+- **HardwareTopology v1.2**：QPU 分组头 `QPU · 在线 6/10`（离线计入总数，
+  离线卡降饱和+斜纹+徽标不可调度）；QPU 卡副行 `20Q · 2Q 保真度中位
+  99.12%`（medianTqFidelity，等宽）；CPU 卡 CPU 使用率（正常档 info 色）+
+  内存 used/total GB 双迷你条；GPU 卡 VRAM 迷你条；usageLevel（≤0.8/≤0.9/
+  >0.9）告警着色通用；QPU Drawer 内嵌拓扑图 + 摘要行；CPU/GPU Drawer 补
+  核数/内存/显存数值；metrics 缺字段逐行降级隐藏（旧后端不崩溃）。
+- **mock fixtures v1.2/v1.3**：10 台 QPU（6 在线/4 离线，4×5/4×4/3×4/5×6/
+  2×4/2×3/14×2 拓扑各异——确定性 LCG 生成，逐条满足 §4 不变量：fidelity
+  区间、t2≤2*t1、coupler 网格相邻、id↔(row,col) 一一对应）+ CPU/GPU metrics；
+  TASKS 实测字段（duration_ms/peak_memory_mb；t-1/s-1 挂子任务 t-3 供下钻）；
+  ADMIN_PLUGINS 补 capabilities/model_ref；TENANT role=admin。
+- **mock 引擎**：getTenant 支持 `localStorage['qap.mockRole']='user'|'admin'`
+  角色切换演示；2s tick 增 metrics 缓慢漂移（QPU 保真度 ≤0.0002/tick、
+  CPU/GPU 使用与显存随机走，恒满足 used≤total / usage∈[0,1]）。
+
+### Validation
+- `npm test` 184 passed（新增 10：fixtures 契约 4 + QpuTopologyCanvas 4 +
+  HardwareTopology v1.2 重写 8 条中新增分组在线计数/QPU 副行/迷你条/Drawer
+  拓扑断言；既有行为回归随 fixtures 扩容同步更新）；`npm run build` 零错误。
+
+### Known defects
+- QPU 拓扑保真度为 mock 模拟数据（文献合理区间的确定性生成 + 漂移），
+  非硬件观测；真实后端接入后经 HardwareNode.metrics 同构展示。
+
+## 2026-10-13 `frontend: v3 W3——DAG 时间分析与嵌套下钻（v1.3）`
+
+### Added
+- **实测标注（§6.3）**：节点新增 `时长 {v}` / `内存 {v}` 行（--font-data
+  等宽；duration_ms/peak_memory_mb 不可得 → "—"）；文案统一"实测"（后端
+  perf_counter/tracemalloc 测量，UI 不称硬件观测）。节点几何 232×76 →
+  **232×92**（§5.1 v1.1 尺寸容纳不下第三行实测信息；属 §6.3 v1.3 增量，
+  依赖边/层布局规则不变）。
+- **时间线（Gantt）模式**：头部「结构 / 时间线」二段切换；`buildTimelineModel`
+  纯函数（utils/dag.ts）——x=任务起点起算相对时间、条宽=duration_ms
+  （finished 用 duration_ms，缺省回退 finished-started；running=now-started
+  实时增长，250ms 重算 tick + ≤200ms CSS 过渡）；kind 色；0/25/50/75/100%
+  五档刻度线；悬停 title 含起止时刻与时长；未开始步骤无条形（降级列出）。
+- **嵌套下钻**：subtask_id 非空节点渲染 ⊕ 角标（键盘可达）；点击经
+  `loadTask`（ApiClient 新增 `getTask`，InspectorPanel 注入，mock 引擎实现
+  404 语义）加载子任务 DAG 递归渲染；面包屑「根任务 / 来源步骤 / …」逐级
+  返回；子图同样支持二段切换；loadTask 缺省/失败静默降级。
+- Drawer 补「实测时长 / 峰值内存 / 子任务链接（查看子任务 →）」三行。
+
+### Validation
+- `npm test` 174 passed（DagView 重写为 12 条：几何 232×92、实测标注与
+  null 降级、时间线几何不变量 left/width≈duration/total、五档刻度、运行中
+  满宽、⊕ 下钻+面包屑+两模式、Drawer 实测与子任务链接、空态降级）；
+  `npm run build` 零错误。
+
+### Known defects
+- 时间线运行中条形的"实时增长"为 250ms 离散步进 + 120ms CSS 过渡的平滑
+  近似（非逐帧连续），符合 §6.3 ≤200ms 过渡约束。
+
+## 2026-10-13 `frontend: v3 W2——composer 工具条、附件全流程与顶栏外观控件（v1.2/v1.3）`
+
+### Added
+- **composer 工具条（§5 v1.3）**：`MessageInput` 重构为完整 composer——多行
+  输入 + 附件预览条 + 底部工具条（左 ＋附件 / 中 模型▾ 思考▾（v1.2 从顶栏
+  迁入，联动逻辑不变）/ 右 发送）；发送中态（store.sending → 按钮禁用 +
+  "发送中…"）；失败内联条（sendError + 重试按钮调 retrySend）。
+- **附件全流程（§5.2 v1.3）**：`ApiClient.uploadAttachment`（multipart，
+  ≤8MB）/ `attachmentRawUrl`（RestClient 沿用 SSE 的 ?api_key= 查询参数兜底；
+  Mock 为 data: URL）；Mock 引擎实现 kind 判定（image/* / text 扩展名集 /
+  file）、超限 422、未知/跨会话 attachment_ids 422、用户消息落库附件；
+  composer ＋ → 无会话先 `ensureConversation` → 上传 → `AttachmentStrip`
+  预览（图片缩略图 objectURL→attachmentRawUrl 双降级；文件卡名称 +
+  formatBytes）→ × 移除（revokeObjectURL）→ 随消息 attachment_ids；
+  用户消息气泡内嵌只读附件条（同一组件复用）。
+- **顶栏 v1.2**：移除模型/思考选择器；新增常驻外观控件（主题三档分段图标
+  aria-pressed 即时切换 + 语言三选下拉 self-name）与租户角色徽标
+  （admin「管理员」，user/缺失不显示，parseTenantRole 降级）；产品名与
+  SSE 连接灯保留。
+
+### Changed
+- `appStore` 新增公开 action `ensureConversation(titleSeed)`（附件上传前
+  保证会话存在）；`ChatPanel` 以 `(text, attachments)` 桥接 composer 与
+  sendMessage（attachment_ids + 元数据）。
+
+### Validation
+- `npm test` 169 passed（新增 13：composer 工具条 4 + 附件全流程 3 +
+  AttachmentStrip 3 + MessageBubble 附件 2 + mock 附件端点 4，重写 TopBar
+  4 条断言迁移位置；appStore attachment_ids 1）；`npm run build` 零错误。
+
+### Known defects
+- RestClient 的附件 raw URL 以 `?api_key=` 查询参数鉴权（<img> 无法携带
+  Authorization 头；与 SSE 同一原型权衡，见 ARCHITECTURE §13），生产部署
+  应换一次性 ticket 或 Cookie。
+
 ## 2026-10-13 `backend: V5 模拟器 metrics 漂移与对外校验函数（v1.2 不变量全覆盖）`
 
 ### Added
@@ -424,7 +594,6 @@ scope 与流程见 docs/DEVELOPMENT.md §2。
 ### Known defects
 - LocalConfigStore 重写整份 config.local.toml 会丢失手写注释与键序
   （值语义保留；原型接受，见模块 docstring）。
-
 
 
 ## 2026-10-13 `frontend: 真实浏览器视觉走查修复（DAG 纵向布局/时间戳/对比度/原生控件）`

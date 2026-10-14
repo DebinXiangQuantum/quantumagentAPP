@@ -95,3 +95,66 @@ export function buildDagModel(steps: unknown): DagModel {
 
   return { nodes, edges, invalid, layers };
 }
+
+/** 时间线行：相对任务起点的时刻（ms）；未开始 → null。 */
+export interface TimelineRow {
+  step: Step;
+  /** 相对任务起点的开始时刻（ms） */
+  startMs: number | null;
+  /** 实测时长（ms）：finished → duration_ms（缺省回退 finished-started）；
+   *  running → now-started（实时增长）；未开始 → null */
+  durationMs: number | null;
+}
+
+export interface TimelineModel {
+  rows: TimelineRow[];
+  /** 总时长（ms）= max(起+时长) - min(起)；无已开始步骤 → 0 */
+  totalMs: number;
+  /** 存在运行中步骤（视图需要定时重渲染使条形实时增长） */
+  hasRunning: boolean;
+}
+
+/** §6.3 v1.3 时间线模型（水平 Gantt 的纯布局函数；nowMs 可注入测试）。 */
+export function buildTimelineModel(steps: unknown, nowMs: number = Date.now()): TimelineModel {
+  if (!Array.isArray(steps)) return { rows: [], totalMs: 0, hasRunning: false };
+
+  interface Abs {
+    step: Step;
+    start: number;
+    duration: number;
+  }
+  const abs: Abs[] = [];
+  let hasRunning = false;
+  for (const s of steps) {
+    if (s === null || typeof s !== 'object' || typeof (s as Step).id !== 'string') continue;
+    const step = s as Step;
+    const start = typeof step.started_at === 'string' ? Date.parse(step.started_at) : NaN;
+    if (!Number.isFinite(start)) continue; // 未开始（或畸形时间）→ 无条形
+    const finished =
+      typeof step.finished_at === 'string' ? Date.parse(step.finished_at) : NaN;
+    let duration: number;
+    if (Number.isFinite(finished)) {
+      duration =
+        typeof step.duration_ms === 'number' && Number.isFinite(step.duration_ms) && step.duration_ms >= 0
+          ? step.duration_ms
+          : Math.max(0, finished - start);
+    } else {
+      hasRunning = true;
+      duration = Math.max(0, nowMs - start);
+    }
+    abs.push({ step, start, duration });
+  }
+
+  if (abs.length === 0) return { rows: [], totalMs: 0, hasRunning: false };
+  const base = Math.min(...abs.map((a) => a.start));
+  const end = Math.max(...abs.map((a) => a.start + a.duration));
+  return {
+    rows: abs.map(({ step, start, duration }) => ({
+      step,
+      startMs: start - base,
+      durationMs: duration,
+    })),
+    totalMs: Math.max(0, end - base),
+    hasRunning,
+  };
+}

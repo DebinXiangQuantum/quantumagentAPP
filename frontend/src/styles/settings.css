@@ -336,3 +336,99 @@
 .switch input:disabled ~ .switch__track {
   opacity: 0.5;
 }
+
+/* ============ v1.2 文字边界修复 + v1.3 插件状态徽标 ============ */
+/* 任何长 URL/模型名不得撑破布局：flex 子项允许收缩 + 描述换行 + 表格滚动 */
+.settings-page__inner,
+.settings-section,
+.settings-field,
+.settings-section__desc,
+.plugin-item__main {
+  min-width: 0;
+}
+.settings-section__desc,
+.plugin-item__desc {
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+.channel-table-scroll {
+  overflow-x: auto;
+  max-width: 100%;
+  -webkit-overflow-scrolling: touch;
+}
+.settings-section__title--row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  flex-wrap: wrap;
+}
+/* 管理分区标题徽标（复用顶栏角色徽标视觉） */
+.settings-admin-badge {
+  padding: 1px var(--space-4);
+  font-size: var(--fs-caption);
+  font-weight: 400;
+  color: var(--accent-cyan);
+  background: color-mix(in srgb, var(--accent-cyan) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent-cyan) 45%, transparent);
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+}
+/* 插件卡状态徽标：启用中 success / 已停用 faint / 加载失败 danger */
+.plugin-item__title-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  min-width: 0;
+}
+.plugin-status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-shrink: 0;
+  padding: 1px var(--space-8);
+  font-size: var(--fs-caption);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-default);
+  white-space: nowrap;
+}
+.plugin-status__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.plugin-status--success {
+  color: var(--success);
+  border-color: color-mix(in srgb, var(--success) 45%, transparent);
+  background: color-mix(in srgb, var(--success) 10%, transparent);
+}
+.plugin-status--faint {
+  color: var(--text-secondary);
+}
+.plugin-status--danger {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 45%, transparent);
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+}
+.plugin-item__desc {
+  font-size: var(--fs-caption);
+  color: var(--text-secondary);
+}
+.plugin-item__caps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  min-width: 0;
+}
+.plugin-cap {
+  padding: 0 var(--space-4);
+  font-size: var(--fs-caption);
+  color: var(--text-secondary);
+  background: var(--bg-inset);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+}
+.plugin-item__model {
+  font-size: var(--fs-caption);
+  color: var(--text-secondary);
+}
