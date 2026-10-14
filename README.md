@@ -413,6 +413,30 @@ dispatch 子任务自动挂接）、租户角色（/admin/* 403 强制）、附�
 无 Tailwind、无图表库、无 webfont**（依赖白名单见 docs/DEVELOPMENT.md 与
 frontend/package.json）。
 
+**v4 前端（2026-10-14，feat/frontend-v4，契约 v1.4，进行中）**：四片 TDD 提交。
+① **类型与事件归并（W1）**：`Step` 增 `circuit/cloud_job_id/queue_position`；
+SSE 新事件归并——`agent.activity` 按 message_id→agentId 聚合进
+`subagentActivityByMessage`（reasoning/text delta 拼接、tool_call 计数、
+dispatch_completed 收束），`artifact.created` 即时插卡（未 completed → 流式
+临时 artifacts 骨架；completed 事件全量覆盖去重）；seq 单调门控（乱序/重复
+丢弃）。
+② **专家工作区（W2，用户核心反馈"dispatch 过程不可见"）**：助手消息内嵌
+「🔧 专家 <id> 工作区」渐进块——运行中展开（专家名+呼吸徽标+流式正文+
+「→ 调用工具」行），完成自动折叠为「专家已完成 · 输出 N 字 · 工具 M 次」
+摘要行，可展开回看；流式气泡与已完成气泡均渲染。
+③ **artifact 流式插卡 + 演示/排队徽标（W3）**：artifact.created 即时插卡
+（半透明骨架态 → completed 转正常）；composer 所选 mock 渠道显示「演示」
+warning 徽标（title 防误用提示）；DagView 节点 queue_position 非空显示
+「排队 #n」warning 呼吸徽标，Step Drawer 补 cloud_job_id/circuit 摘要。
+④ **硬件真机展示与 mock 全链（W4）**：QPU 卡副行来源标注（lq-* 真机/
+无保真度 →「云端 · N 比特 · <model>」，simulated →「模拟 · N 比特」；
+云端利用率无数据显示 "—"）；QpuTopologyCanvas 云端降级——仅比特坐标点
+（qubit_coordinates 摆放）、coupler/readout/图例隐藏、tooltip「平台未提供」；
+mock fixtures 增 5 台 lq-* 真机（4 在线/1 离线，镜像 get_backends() 实拉）
++ 专家工作区剧本 + artifact.created 流 + quantum 步 queue_position 3→2→1
+演进与 cloud_job_id/circuit；全部新文案三语同步。**测试 223 passed**
+（基线 188 + v4 新增 35），build 零错误。
+
 **v3 前端（2026-10-13，feat/frontend-v3，契约 v1.2/v1.3）**：六片 TDD 提交——
 ① **类型与硬件纯函数 + 自动建会话（W1）**：`HardwareNode.metrics` 三形状可选
 （QPU 拓扑/CPU/GPU）、`AttachmentMeta`、`Step` 增 `duration_ms/peak_memory_mb/

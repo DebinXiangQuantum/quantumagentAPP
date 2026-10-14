@@ -6,6 +6,8 @@
  *    组首带头像，角色切换处细分隔线）+ 流式消息（带闪烁光标）；
  *  - 流式期间：思考增量先于正文（契约 §7）——正文未到时显示
  *    「思考中…」微光标态；思考折叠块（ReasoningBlock）实时累加摘要；
+ *    v1.4：专家工作区（SubagentWorkspace）在流式气泡与已完成气泡内嵌
+ *    渐进渲染（agent.activity 聚合数据驱动）；
  *  - 新内容自动滚动到底部（用户主动上滚超过阈值时暂停跟随）；
  *  - 空态：无会话 / 无消息两种插画式文案（i18n）；
  *  - SSE error 事件 → 内联警示条（可清除；流自动重连无需手动重试）。
@@ -16,9 +18,11 @@ import { useEffect, useRef, useState } from 'react';
 import { useAppStore } from '../../store/appStore';
 import type { Message } from '../../types/domain';
 import { MessageBubble } from './MessageBubble';
+import { ArtifactCard } from './ArtifactCard';
 import { MessageInput } from './MessageInput';
 import { StreamingCursor } from './StreamingCursor';
 import { ReasoningBlock } from './ReasoningBlock';
+import { SubagentWorkspace } from './SubagentWorkspace';
 import { MessageListSkeleton } from '../common/Skeletons';
 import { useTranslate } from '../../i18n';
 
@@ -34,6 +38,8 @@ export function ChatPanel(): JSX.Element {
   const conversations = useAppStore((s) => s.conversations);
   const messagesByCid = useAppStore((s) => s.messagesByCid);
   const streamingByCid = useAppStore((s) => s.streamingByCid);
+  const subagentActivityByMessage = useAppStore((s) => s.subagentActivityByMessage);
+  const agents = useAppStore((s) => s.agents);
   const loadedCids = useAppStore((s) => s.loadedCids);
   const streamError = useAppStore((s) => s.streamError);
   const clearStreamError = useAppStore((s) => s.clearStreamError);
@@ -63,14 +69,21 @@ export function ChatPanel(): JSX.Element {
   const messagesLoading =
     activeCid !== null && !loadedCids[activeCid] && !streaming;
 
-  // 自动跟随：新消息/流式增量到达时滚到底（用户上滚则暂停）
+  // v1.4 专家显示名解析（agents 注册表 → 原始 id 回退）
+  const agentNameOf = (agentId: string): string =>
+    agents.find((a) => a.id === agentId)?.name ?? agentId;
+  const activitiesOf = (messageId: string | undefined) =>
+    messageId ? subagentActivityByMessage[messageId] ?? [] : [];
+
+  // 自动跟随：新消息/流式增量/专家工作区增量到达时滚到底（用户上滚则暂停）
   const streamedText = streaming?.text ?? '';
   const streamedReasoning = streaming?.reasoning ?? '';
+  const streamingActivities = activitiesOf(streaming?.messageId);
   useEffect(() => {
     const el = flowRef.current;
     if (!el || !followRef.current) return;
     el.scrollTop = el.scrollHeight;
-  }, [messages.length, streamedText, streamedReasoning, activeCid]);
+  }, [messages.length, streamedText, streamedReasoning, streamingActivities, activeCid]);
 
   const handleScroll = (): void => {
     const el = flowRef.current;
@@ -120,6 +133,8 @@ export function ChatPanel(): JSX.Element {
                 <MessageBubble
                   key={message.id}
                   message={message}
+                  activities={activitiesOf(message.id)}
+                  agentNameOf={agentNameOf}
                   showAvatar={
                     message.role === 'assistant' && messages[i - 1]?.role !== 'assistant'
                   }
@@ -138,6 +153,13 @@ export function ChatPanel(): JSX.Element {
                         active={streaming.text.length === 0}
                       />
                     ) : null}
+                    {activitiesOf(streaming.messageId).map((activity) => (
+                      <SubagentWorkspace
+                        key={activity?.agentId ?? 'unknown'}
+                        activity={activity}
+                        agentName={agentNameOf(activity?.agentId ?? '')}
+                      />
+                    ))}
                     <div className="message__text">
                       {streaming.text.length > 0 ? (
                         streaming.text
@@ -146,6 +168,17 @@ export function ChatPanel(): JSX.Element {
                       )}
                       <StreamingCursor />
                     </div>
+                    {(streaming.artifacts ?? []).length > 0 ? (
+                      <div className="message__artifacts">
+                        {(streaming.artifacts ?? []).map((artifact, i) => (
+                          <ArtifactCard
+                            key={typeof artifact?.id === 'string' ? artifact.id : `stream-artifact-${i}`}
+                            artifact={artifact}
+                            streaming
+                          />
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               ) : null}

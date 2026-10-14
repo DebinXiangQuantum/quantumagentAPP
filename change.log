@@ -5,6 +5,130 @@ Validation（本切片测试结论）+ Known defects（已知缺陷，无则写�
 scope 与流程见 docs/DEVELOPMENT.md §2。
 
 
+## 2026-10-14 `frontend: v4 W4——logicalcloud 真机展示与 mock 全链（硬件降级/剧本/三语）`
+
+### Added
+- **硬件真机展示（design.md §5 v1.4）**：QPU 卡副行来源标注——`lq-*` 真机
+  或无保真度节点显示「云端 · N 比特 · <model>」（在线/离线为云端真实状态），
+  simulated 显示「模拟 · N 比特」（2Q 保真度中位保留在 Drawer 摘要行）；
+  云端利用率 0（平台无数据）→ 数值 "—"。
+- **QpuTopologyCanvas 云端降级**：无 couplers/保真度时只渲染比特**坐标点**
+  （按 topology.qubit_coordinates 摆放，画布尺寸由最大坐标推导；无坐标
+  回退 grid、均无 → 降级提示行）；coupler/readout 标注与三档图例隐藏；
+  tooltip「Q{id} · T1/T2/保真度：平台未提供」；混合数据逐元素降级
+  （有 readout 的照常标注）。`QubitInfo`/`Coupler` 保真度字段改可选、
+  `QpuTopology.qubit_coordinates?`（契约 §3/§4 v1.4 云端形状）。
+- **mock 全链**：fixtures 增 5 台 lq-* 真机（MQ02/AGate-100/
+  QZ01-surface_code/QZ01-repetition_code 在线、QZ02 离线——镜像
+  get_backends() 实拉；拓扑仅坐标点、无保真度、利用率 0）；scripts 增
+  专家工作区剧本（VQE 8 拍/校准 6 拍/回显 3 拍，与正文流交错）、
+  artifact.created 流（circuit → counts → completed 全量）、quantum 步
+  queue_position 3→2→1 → 运行清空并携带 cloud_job_id/circuit；engine 对
+  agent.activity 同源分配 seq。
+- **三语字典**：hw.qpu.sublineCloud/sublineSim、hw.topo.notProvided 三语
+  同步（key 集合一致性测试保持绿）。
+
+### Changed
+- HardwareTopology.test 断言随 fixtures 演进更新：机群 14→19 卡、QPU 分组
+  头 `在线 10/15`、副行新格式（simulated「模拟 · 20 比特」）；fixtures.test
+  不变量作用域化为 simulated 节点 + 新增云端契约 describe；engine.test
+  事件顺序白名单纳入 agent.activity/artifact.created。
+
+### Validation
+- `npm test` 223 passed（+13：fixtures 云端契约 3、HardwareTopology 云端
+  卡/降级 Drawer 2、QpuTopologyCanvas 坐标降级 4、engine v1.4 剧本 3、
+  mock 全链 store 集成 1）；`npm run build` 零错误；`VITE_USE_MOCK=1
+  npm run dev` 启动冒烟通过（专家工作区流式/插卡/徽标/云端拓扑/排队徽标
+  均由 223 条测试与 mock 剧本驱动可演示）。
+
+### Known defects
+- 云端真机不提供利用率/保真度（平台事实）：面板相应降级为 "—"/坐标点，
+  属契约内降级而非缺陷。
+- 专家工作区为内存态（刷新不回放，见 W2）。
+
+## 2026-10-14 `frontend: v4 W3——artifact 流式插卡 + 演示徽标 + 排队徽标`
+
+### Added
+- **artifact 流式插卡**：`ArtifactCard` 新增 `streaming?` prop——
+  `artifact.created` 到达即在消息/流式消息 artifacts 尾部插卡（半透明 +
+  虚线边 + 徽标 shimmer 骨架态、aria-busy、可展开查看载荷），
+  `message.completed` 后转正常卡（store 层全量覆盖去重见 W1）；
+  ChatPanel 流式气泡渲染临时 artifacts。
+- **composer 演示徽标（防误用）**：所选渠道 `provider === 'mock'` 时模型
+  选择器旁显示「演示」warning 小标签，title=「演示脚本渠道，非真实推理」；
+  真实渠道（openai/anthropic）与渠道池加载中不显示。
+- **DagView 排队徽标与云端字段**：`step.queue_position` 非空 → 节点头部
+  「排队 #n」warning 呼吸徽标（title 注明 logicalcloud 实时轮询）；
+  Step Drawer 补 `cloud_job_id` 行、circuit 摘要行（「N 比特 · M 门」）与
+  排队位置行（缺省字段不渲染空行）。
+- i18n：`composer.demo*`/`dag.queue.*`/`dag.detail.cloudJob|circuit|
+  circuitSummary|queue` 三语同步。
+
+### Validation
+- `npm test` 210 passed（+8：ArtifactCard streaming 2、composer 演示徽标 2、
+  DagView 排队/云端 3、ChatPanel 流式插卡 1）；`npm run build` 零错误。
+
+### Known defects
+- 无。
+
+
+## 2026-10-14 `frontend: v4 W2——专家工作区渐进块（agent.activity 实时外显）`
+
+### Added
+- `components/chat/SubagentWorkspace.tsx`：「🔧 专家 <id> 工作区」渐进块
+  （design.md §5 v1.4）——dispatch_started → 头部（专家名 + 运行中呼吸
+  徽标，复用 qap-badge-breathe）；reasoning/text delta 流式追加（caption/
+  secondary/mono、max-height 180px 自动滚底、尾部流式光标）；tool_call →
+  「→ 调用工具 <name>」行（按调用顺序）；dispatch_completed → **自动折叠**
+  为摘要行「专家已完成 · 输出 N 字 · 工具 M 次」，点击可展开回看全程；
+  运行中默认展开（完成迁移经 useEffect 收起）；畸形输入仅渲染头部不崩溃。
+- `MessageBubble` 新增 `activities?/agentNameOf?` props：助手消息思考块之后
+  内嵌工作区（每个 dispatch 过的子 Agent 一块）；`ChatPanel` 从
+  `subagentActivityByMessage` 取数——流式气泡与已完成气泡均渲染，专家
+  显示名经 agents 注册表解析（未注册回退原始 id）；自动跟随滚动纳入
+  工作区增量。
+- i18n：`subagent.*` 5 键三语同步（zh/en/ja，key 集合一致性测试保持绿）。
+- chat.css：`.subagent-ws*` 样式（inset 底、warning 徽标呼吸、180px 限高
+  滚动、chevron 旋转、reduced-motion 全局降级沿用既有规则）。
+
+### Validation
+- `npm test` 202 passed（W1 后 196 + 新增 6：SubagentWorkspace 4——运行中
+  展开/增量追加/完成折叠回看/畸形降级；ChatPanel 集成 2——已完成消息
+  摘要行+显示名解析、流式消息运行中展开）；`npm run build` 零错误。
+
+### Known defects
+- 专家工作区为内存态聚合（刷新后不回放——agent.activity 属流式期
+  affordance，历史回看依赖后端落库，v1.4 契约未定义持久化）。
+
+
+## 2026-10-14 `frontend: v4 W1——Step v1.4 字段与 agent.activity/artifact.created 归并`
+
+### Added
+- `types/domain.ts`：`Step` 增 `circuit?/cloud_job_id?/queue_position?`
+  （§4 v1.4——quantum 步携带线路/云端任务 id/排队位置）；`QubitInfo` 的
+  T1/T2/保真度与 `Coupler.tq_fidelity` 改可选（logicalcloud 真机不提供，
+  前端降级）；`QpuTopology.qubit_coordinates?`（云端坐标点布局）。
+- `types/events.ts`：`agent.activity`（phase ∈ dispatch_started |
+  reasoning_delta | text_delta | tool_call | dispatch_completed；delta?/
+  tool?/seq）与 `artifact.created`（artifact 即时推送）入会话流联合类型。
+- `appStore`：① seq 单调门控 `seqGate`（delta/reasoning/agent.activity
+  共用——乱序/重复 seq 丢弃，不污染增量拼接）；②
+  `subagentActivityByMessage`（message_id → agentId 聚合
+  `SubagentActivity{agentId,phase,text,tools[]}`——delta 追加、tool_call
+  计数、dispatch_completed 收束保留全文）；③ `artifact.created` 即时插卡
+  （消息未 completed → 流式消息临时 `artifacts`；已完成 → 就地追加；均按
+  id 去重；completed 事件携带 artifacts 全量覆盖）；mock 引擎保真度漂移
+  对可选字段守卫。
+
+### Validation
+- `npm test` 196 passed（基线 188 + 新增 8：聚合拼接/phase 转换/工具计数/
+  多专家并存/seq 乱序丢弃×2/临时插卡去重/completed 全量覆盖/完成后追加
+  去重）；`npm run build` 零错误。
+
+### Known defects
+- 无。
+
+
 ## 2026-10-14 `integration: v3 走查修复——用户级模型列表、同源代理、设置页外观迁移收口`
 
 ### Fixed

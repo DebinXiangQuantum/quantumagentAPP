@@ -6,7 +6,9 @@
  *  （含 circuit/counts/waveform/未知类型 artifact + 历史思考过程）、
  *  任务含 v1.3 实测字段与嵌套子任务（t-1/s-1 → t-3 可下钻）、
  *  v1.2 硬件机群：10 台 QPU（6 在线/4 离线，拓扑行列各异；确定性 LCG
- *  生成，含 14×2 长条网格演示滚动）+ 3 GPU + 1 CPU（metrics 齐备）、
+ *  生成，含 14×2 长条网格演示滚动）+ v1.4 logicalcloud 真机 5 台（lq-*
+ *  前缀：4 在线/1 离线，拓扑仅坐标点、无保真度、利用率 0=无数据）
+ *  + 3 GPU + 1 CPU（metrics 齐备）、
  *  管理平台数据：渠道池（glm-5.3/glm-5.3-flash/mock + default_thinking）与
  *  插件注册表（capabilities/model_ref 齐备，含一个 broken 示例）。
  *  租户 role=admin；localStorage['qap.mockRole']='user' 可切普通用户视角。
@@ -448,6 +450,60 @@ const QPU_NODES: HardwareNode[] = [
   qpuNode('qpu-titan-28q', 'Titan 28Q（长条网格）', 14, 2, 101, 'offline', 0),
 ];
 
+/**
+ * v1.4 logicalcloud 真机节点（形状镜像 get_backends() 实拉：MQ02 /
+ * AGate-100 / QZ01-surface_code / QZ01-repetition_code active、QZ02
+ * offline）。云端不提供 T1/T2/保真度与利用率——拓扑仅有坐标点
+ * （qubit_coordinates），utilization 0 表示"无数据"（UI 显示 "—"）。
+ */
+function lqQpuNode(
+  id: string,
+  name: string,
+  model: string,
+  coordinates: Array<[number, number]>,
+  status: 'online' | 'offline',
+): HardwareNode {
+  const metrics: QpuMetrics = {
+    qubits_count: coordinates.length,
+    topology: {
+      layout: 'cloud',
+      rows: 0,
+      cols: 0,
+      qubits: coordinates.map((_, qid) => ({ id: qid })),
+      couplers: [],
+      qubit_coordinates: coordinates,
+    },
+  };
+  return {
+    id,
+    kind: 'qpu',
+    name,
+    model,
+    status,
+    utilization: 0,
+    capacity: 1,
+    metrics,
+    allocations: [],
+  };
+}
+
+const gridCoords = (rows: number, cols: number): Array<[number, number]> =>
+  Array.from({ length: rows * cols }, (_, i) => [i % cols, Math.floor(i / cols)] as [number, number]);
+
+const LQ_QPU_NODES: HardwareNode[] = [
+  lqQpuNode('lq-mq02', 'MQ02', 'MQ02 8Q', gridCoords(2, 4), 'online'),
+  lqQpuNode('lq-agate-100', 'AGate-100', 'AGate-100 12Q', gridCoords(3, 4), 'online'),
+  lqQpuNode('lq-qz01-surface-code', 'QZ01 surface_code', 'QZ01-surface_code 9Q', gridCoords(3, 3), 'online'),
+  lqQpuNode(
+    'lq-qz01-repetition-code',
+    'QZ01 repetition_code',
+    'QZ01-repetition_code 5Q',
+    gridCoords(1, 5),
+    'online',
+  ),
+  lqQpuNode('lq-qz02', 'QZ02', 'QZ02 6Q', gridCoords(2, 3), 'offline'),
+];
+
 const CPU_METRICS: CpuMetrics = {
   cpu_cores: 64,
   cpu_usage: 0.37,
@@ -461,6 +517,7 @@ const GPU_V100_METRICS: GpuMetrics = { vram_total_gb: 32.0, vram_used_gb: 0 };
 
 export const HARDWARE_NODES: HardwareNode[] = [
   ...QPU_NODES,
+  ...LQ_QPU_NODES,
   {
     id: 'gpu-a800-0',
     kind: 'gpu',

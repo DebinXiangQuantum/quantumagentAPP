@@ -254,3 +254,53 @@ describe('DagView 嵌套下钻（v1.3）', () => {
     expect(screen.getByTestId('dag-node-s-0')).toBeInTheDocument();
   });
 });
+
+/** v1.4：queue_position 排队徽标 + Drawer 云端字段（cloud_job_id/circuit）。 */
+describe('DagView v1.4 排队与云端字段', () => {
+  const QUEUED: Task = {
+    ...TASK,
+    id: 't-q',
+    steps: [
+      {
+        ...TASK.steps[1],
+        id: 'sq-0',
+        status: 'running',
+        node_id: 'lq-mq02',
+        queue_position: 3,
+        cloud_job_id: 'lqjob-2049',
+        circuit: {
+          qubits: 2,
+          operations: [
+            { id: 'op-0', gate: 'RY', targets: [0] },
+            { id: 'op-1', gate: 'CNOT', controls: [0], targets: [1] },
+          ],
+        },
+      },
+      { ...TASK.steps[2], id: 'sq-1', depends_on: ['sq-0'], queue_position: null },
+    ],
+  };
+
+  it('queue_position 非空 → 节点「排队 #n」warning 徽标；null 节点无', () => {
+    render(<DagView task={QUEUED} />);
+    const badge = screen.getByTestId('dag-queue-sq-0');
+    expect(badge).toHaveTextContent('排队 #3');
+    expect(badge).toHaveClass('dag-node__queue');
+    expect(screen.queryByTestId('dag-queue-sq-1')).toBeNull();
+  });
+
+  it('Drawer：cloud_job_id 与 circuit 摘要行（qubits/门数）', () => {
+    render(<DagView task={QUEUED} />);
+    fireEvent.click(screen.getByTestId('dag-node-sq-0'));
+    const drawer = screen.getByTestId('drawer');
+    expect(drawer).toHaveTextContent('lqjob-2049');
+    expect(drawer).toHaveTextContent('2 比特 · 2 门');
+  });
+
+  it('无云端字段步骤的 Drawer 不渲染空行', () => {
+    render(<DagView task={TASK} />);
+    fireEvent.click(screen.getByTestId('dag-node-s-0'));
+    const drawer = screen.getByTestId('drawer');
+    expect(drawer.querySelectorAll('[data-testid="dag-detail-cloud-job"]')).toHaveLength(0);
+    expect(drawer.querySelectorAll('[data-testid="dag-detail-circuit"]')).toHaveLength(0);
+  });
+});

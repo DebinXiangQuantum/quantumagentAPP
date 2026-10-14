@@ -19,8 +19,11 @@ import {
   TASKS,
   TENANT,
 } from './fixtures';
+import type { QpuMetrics } from '../../types/domain';
 
-const qpus = HARDWARE_NODES.filter((n) => n.kind === 'qpu');
+const qpus = HARDWARE_NODES.filter((n) => n.kind === 'qpu' && !n.id.startsWith('lq-'));
+// v1.4：logicalcloud 真机节点（id lq-* 前缀，实拉形状镜像）
+const lqQpus = HARDWARE_NODES.filter((n) => n.kind === 'qpu' && n.id.startsWith('lq-'));
 const byId = new Map(HARDWARE_NODES.map((n) => [n.id, n]));
 
 describe('v1.2 mock fixtures 契约（10 QPU 机群）', () => {
@@ -123,5 +126,50 @@ describe('v1.2 mock fixtures 契约（10 QPU 机群）', () => {
     const sub = TASKS.find((tk) => tk.id === 't-3');
     expect(sub).toBeDefined();
     expect(sub?.steps.length).toBeGreaterThan(0);
+  });
+});
+
+
+/** v1.4：logicalcloud 真机节点契约（5 台：4 online / 1 offline，仅坐标点）。 */
+describe('v1.4 logicalcloud 真机 fixtures（lq-* 机群）', () => {
+  it('5 台 lq-* 真机：4 在线 / 1 离线；id 前缀与命名对齐云端实拉', () => {
+    expect(lqQpus.length).toBe(5);
+    expect(lqQpus.filter((n) => n.status === 'online').length).toBe(4);
+    expect(lqQpus.filter((n) => n.status === 'offline').length).toBe(1);
+    expect(lqQpus.map((n) => n.id).sort()).toEqual([
+      'lq-agate-100',
+      'lq-mq02',
+      'lq-qz01-repetition-code',
+      'lq-qz01-surface-code',
+      'lq-qz02',
+    ]);
+    expect(lqQpus.every((n) => n.capacity >= 1)).toBe(true);
+  });
+
+  it('拓扑只有坐标点：qubit_coordinates 与 qubits 一一对应；无 couplers/保真度', () => {
+    for (const node of lqQpus) {
+      const m = node.metrics as QpuMetrics;
+      expect(m.qubits_count).toBeGreaterThan(0);
+      expect(m.topology.couplers).toEqual([]);
+      expect(m.topology.qubit_coordinates).toBeDefined();
+      expect(m.topology.qubit_coordinates!.length).toBe(m.qubits_count);
+      expect(m.topology.qubits.length).toBe(m.qubits_count);
+      for (const q of m.topology.qubits) {
+        // 云端不提供 T1/T2/保真度（平台未提供 → 前端降级）
+        expect(q.t1_us).toBeUndefined();
+        expect(q.readout_fidelity).toBeUndefined();
+      }
+      for (const [x, y] of m.topology.qubit_coordinates!) {
+        expect(Number.isFinite(x)).toBe(true);
+        expect(Number.isFinite(y)).toBe(true);
+        expect(x).toBeGreaterThanOrEqual(0);
+        expect(y).toBeGreaterThanOrEqual(0);
+      }
+    }
+  });
+
+  it('云端利用率无数据（0）；总机群 QPU 15 台（10 模拟 + 5 云端）', () => {
+    expect(lqQpus.every((n) => n.utilization === 0)).toBe(true);
+    expect(HARDWARE_NODES.filter((n) => n.kind === 'qpu').length).toBe(15);
   });
 });

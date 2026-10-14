@@ -80,3 +80,29 @@ describe('ArtifactCard', () => {
     expect(screen.queryByText(/"k"/)).toBeNull();
   });
 });
+
+/** v1.4：streaming 态（artifact.created 即时插卡的骨架/半透明卡）。 */
+describe('ArtifactCard streaming（v1.4）', () => {
+  const art: Artifact = {
+    id: 'a-s1',
+    type: 'circuit',
+    title: '流式线路',
+    payload: { qubits: 2, operations: [] },
+  };
+
+  it('streaming=true → 半透明骨架类 + aria-busy；默认无', () => {
+    const { rerender } = render(<ArtifactCard artifact={art} streaming />);
+    const card = screen.getByTestId('artifact-card');
+    expect(card).toHaveClass('artifact-card--streaming');
+    expect(card.getAttribute('aria-busy')).toBe('true');
+    rerender(<ArtifactCard artifact={art} />);
+    expect(screen.getByTestId('artifact-card')).not.toHaveClass('artifact-card--streaming');
+    expect(screen.getByTestId('artifact-card').getAttribute('aria-busy')).toBeNull();
+  });
+
+  it('streaming 卡仍可展开（载荷可查看，半透明不阻断交互）', () => {
+    render(<ArtifactCard artifact={art} streaming />);
+    fireEvent.click(screen.getByRole('button', { name: /展开或收起/ }));
+    expect(screen.getByText('流式线路')).toBeInTheDocument();
+  });
+});

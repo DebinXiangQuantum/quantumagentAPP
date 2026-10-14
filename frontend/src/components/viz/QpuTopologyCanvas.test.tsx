@@ -99,3 +99,75 @@ describe('QpuTopologyCanvas', () => {
     expect(screen.getByTestId('qpu-topo-scroll').getAttribute('data-scrollable')).toBe('false');
   });
 });
+
+/** v1.4：云端真机降级——无 couplers/保真度时只渲染比特坐标点。 */
+describe('QpuTopologyCanvas 云端坐标点降级（v1.4）', () => {
+  const CLOUD: QpuMetrics = {
+    qubits_count: 5,
+    topology: {
+      layout: 'cloud',
+      rows: 0,
+      cols: 0,
+      qubits: [{ id: 0 }, { id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }],
+      couplers: [],
+      qubit_coordinates: [
+        [0, 0],
+        [1, 0],
+        [2, 0],
+        [3, 0],
+        [4, 0],
+      ],
+    },
+  };
+
+  it('仅比特坐标点：无 coupler/无 readout 标注/图例隐藏；tooltip 平台未提供', () => {
+    render(<QpuTopologyCanvas metrics={CLOUD} />);
+    expect(screen.getAllByTestId(/^qpu-topo-qubit-/).length).toBe(5);
+    expect(screen.queryAllByTestId(/^qpu-topo-coupler-/)).toHaveLength(0);
+    expect(screen.queryAllByTestId(/^qpu-topo-readout-/)).toHaveLength(0);
+    expect(screen.queryAllByTestId('qpu-topo-legend-item')).toHaveLength(0);
+    for (const q of CLOUD.topology.qubits) {
+      const title = screen.getByTestId(`qpu-topo-qubit-${q.id}`).querySelector('title');
+      expect(title?.textContent).toContain('平台未提供');
+      expect(title?.textContent).toContain(String(q.id));
+    }
+  });
+
+  it('坐标摆放：按 qubit_coordinates 计算画布尺寸（5 列单行 → 宽 = 5*CELL+2*PAD）', () => {
+    render(<QpuTopologyCanvas metrics={CLOUD} />);
+    const svg = screen.getByRole('img');
+    expect(Number(svg.getAttribute('width'))).toBe(5 * 62 + 20);
+    expect(Number(svg.getAttribute('height'))).toBe(1 * 62 + 20);
+  });
+
+  it('部分保真度缺失：有 readout 的比特照常标注，缺省比特 tooltip 降级不崩溃', () => {
+    const partial: QpuMetrics = {
+      qubits_count: 2,
+      topology: {
+        layout: 'grid',
+        rows: 1,
+        cols: 2,
+        qubits: [
+          { id: 0, t1_us: 40, t2_us: 25, readout_fidelity: 0.97, sq_fidelity: 0.998 },
+          { id: 1 },
+        ],
+        couplers: [],
+      },
+    };
+    render(<QpuTopologyCanvas metrics={partial} />);
+    expect(screen.getByTestId('qpu-topo-readout-0').textContent).toBe('97.00%');
+    expect(screen.queryByTestId('qpu-topo-readout-1')).toBeNull();
+    expect(
+      screen.getByTestId('qpu-topo-qubit-1').querySelector('title')?.textContent,
+    ).toContain('平台未提供');
+  });
+
+  it('坐标与网格都缺 → 降级提示行（不崩溃）', () => {
+    render(
+      <QpuTopologyCanvas
+        metrics={{ qubits_count: 2, topology: { layout: 'x', rows: 0, cols: 0, qubits: [{ id: 0 }, { id: 1 }], couplers: [] } }}
+      />,
+    );
+    expect(screen.getByText(/拓扑数据不可用/)).toBeInTheDocument();
+  });
+});

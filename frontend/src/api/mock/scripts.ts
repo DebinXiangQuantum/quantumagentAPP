@@ -7,6 +7,11 @@
  *    dispatch_agent 到专家（algorithm-designer / calibration / echo），
  *    专家脚本产出正文 delta、completed（circuit+counts / waveform / 无）与
  *    DAG/hardware 推进；
+ *  - v1.4 实时外显：专家运行期间发 agent.activity（dispatch_started →
+ *    reasoning/text_delta → tool_call → dispatch_completed，与正文流交错）；
+ *    artifacts 先经 artifact.created 即时插卡（骨架态）再 completed 全量；
+ *    VQE 的 quantum 步带 queue_position 3→2→1 演进与 cloud_job_id/circuit
+ *    （logicalcloud 真实提交的镜像）；
  *  - 三个专家脚本：VQE 全链路（三步 DAG，§10 验收基线）、校准（waveform +
  *    GPU/QPU 两步）、回显（最小链路）。
  * 契约：动作只经 MockScriptContext 触碰引擎状态（事件发射/租约/任务表），
@@ -15,13 +20,19 @@
  */
 import type {
   Artifact,
+  CircuitPayload,
   HardwareNode,
   Message,
   Step,
   Task,
   ThinkingLevel,
 } from '../../types/domain';
-import type { ConversationStreamEvent, GlobalStreamEvent } from '../../types/events';
+import type {
+  AgentActivityData,
+  AgentActivityPhase,
+  ConversationStreamEvent,
+  GlobalStreamEvent,
+} from '../../types/events';
 
 export interface TimedAction {
   atMs: number;
@@ -81,9 +92,45 @@ function stepOf(
     depends_on: dependsOn,
     started_at: null,
     finished_at: null,
+    circuit: null,
+    cloud_job_id: null,
+    queue_position: null,
     detail: '',
     error: null,
   };
+}
+
+/** v1.4 专家工作区剧本条目（agent.activity 单事件；atMs 为绝对时刻）。 */
+interface ActivityBeat {
+  atMs: number;
+  phase: AgentActivityPhase;
+  delta?: string;
+  tool?: string;
+}
+
+/** 构造 agent.activity 发射动作（seq 由引擎 logSeq 同源分配，此处占位 0）。 */
+function activityActions(
+  cid: string,
+  msgId: string,
+  agentId: string,
+  beats: ActivityBeat[],
+  ctx: MockScriptContext,
+): TimedAction[] {
+  return beats.map((beat) => ({
+    atMs: beat.atMs,
+    run: () => {
+      const data: AgentActivityData = {
+        conversation_id: cid,
+        message_id: msgId,
+        agent_id: agentId,
+        phase: beat.phase,
+        seq: 0,
+        ...(beat.delta !== undefined ? { delta: beat.delta } : {}),
+        ...(beat.tool !== undefined ? { tool: beat.tool } : {}),
+      };
+      ctx.emitConv(cid, { event: 'agent.activity', data });
+    },
+  }));
 }
 
 /** 编排思考文本（v1.1：reasoning 全文，先于正文流式输出）。 */
@@ -160,7 +207,7 @@ export function buildOrchestratorScript(
   return absoluteToDelta(actions);
 }
 
-/** 生成 VQE 演示脚本（ARCHITECTURE §10 完整链路）。返回相对动作序列。 */
+/** 生成 VQE 演示脚本（ARCHITECTURE §10 完整链路 + v1.4 实时外显）。返回相对动作序列。 */
 export function vqeScript(
   cid: string,
   msgId: string,
@@ -189,6 +236,43 @@ export function vqeScript(
     });
   }
 
+  // —— v1.4 专家工作区剧本：dispatch_started → reasoning/text → tool → 收束
+  //（与正文流交错：首条正文 300ms 后紧跟 dispatch，全程可见于工作区渐进块）——
+  actions.push(
+    ...activityActions(
+      cid,
+      msgId,
+      agentId,
+      [
+        { atMs: 340, phase: 'dispatch_started' },
+        {
+          atMs: 390,
+          phase: 'reasoning_delta',
+          delta: '问题拆解：二阶量子化 → 哈密顿量映射 → ansatz 选择。',
+        },
+        {
+          atMs: 440,
+          phase: 'reasoning_delta',
+          delta: '选定硬件高效形式（RY/RZ + CNOT）以压低 CNOT 深度。',
+        },
+        { atMs: 490, phase: 'tool_call', tool: 'query_hardware' },
+        {
+          atMs: 540,
+          phase: 'text_delta',
+          delta: '已获取在线 QPU 清单，按线路宽度选定目标机并合成 ansatz。',
+        },
+        { atMs: 590, phase: 'tool_call', tool: 'emit_artifact' },
+        {
+          atMs: 640,
+          phase: 'text_delta',
+          delta: '线路产物已附加到消息，等待测量计数返回。',
+        },
+        { atMs: 690, phase: 'dispatch_completed' },
+      ],
+      ctx,
+    ),
+  );
+
   const artCircuit: Artifact = {
     id: ctx.nextId('a-'),
     type: 'circuit',
@@ -215,6 +299,24 @@ export function vqeScript(
       counts: { '00': 486, '11': 508, '01': 18, '10': 12 },
     },
   };
+  // —— v1.4 artifact.created 流式插卡：正文完成后、message.completed 前先推
+  //    circuit（前端骨架态插卡），随后 counts；completed 仍全量携带两者 ——
+  actions.push({
+    atMs: at + 40,
+    run: () =>
+      ctx.emitConv(cid, {
+        event: 'artifact.created',
+        data: { conversation_id: cid, message_id: msgId, artifact: artCircuit },
+      }),
+  });
+  actions.push({
+    atMs: at + 170,
+    run: () =>
+      ctx.emitConv(cid, {
+        event: 'artifact.created',
+        data: { conversation_id: cid, message_id: msgId, artifact: artCounts },
+      }),
+  });
   at += 300;
   actions.push({
     atMs: at,
@@ -250,6 +352,8 @@ export function vqeScript(
   ];
   steps[1].depends_on = [steps[0].id];
   steps[2].depends_on = [steps[1].id];
+  // v1.4：quantum 步携带线路载荷（logicalcloud 模式真实提交执行的镜像）
+  steps[1].circuit = artCircuit.payload as CircuitPayload;
   const task: Task = {
     id: taskId,
     conversation_id: cid,
@@ -292,6 +396,26 @@ export function vqeScript(
     });
   };
   stepRun(0, 1200, 'cpu-node-0');
+  // —— v1.4 排队演进：quantum 步运行前 queue_position 3 → 2 → 1（每帧 task.updated）——
+  for (const pos of [3, 2, 1]) {
+    at += 200;
+    actions.push({
+      atMs: at,
+      run: () => {
+        steps[1].queue_position = pos;
+        ctx.emitTask(task);
+      },
+    });
+  }
+  // 运行前 1ms 清空排队位并记录云端任务 id（logicalcloud 提交回执镜像）——
+  // 使 running 帧本身即携带 cloud_job_id 且 queue_position 为 null
+  actions.push({
+    atMs: at + 299,
+    run: () => {
+      steps[1].queue_position = null;
+      steps[1].cloud_job_id = ctx.nextId('lqjob-');
+    },
+  });
   stepRun(1, 1200, 'qpu-quanta-20q');
   stepRun(2, 1200, 'cpu-node-0');
 
@@ -348,6 +472,31 @@ export function calibrationScript(
         }),
     });
   }
+  // v1.4 专家工作区剧本（校准专家：思考 → 查硬件 → 合成波形 → 收束）
+  actions.push(
+    ...activityActions(
+      cid,
+      msgId,
+      'calibration',
+      [
+        { atMs: 340, phase: 'dispatch_started' },
+        {
+          atMs: 400,
+          phase: 'reasoning_delta',
+          delta: '确定 Q0 X π 脉冲参数：DRAG 修正 + 高斯包络。',
+        },
+        { atMs: 460, phase: 'tool_call', tool: 'query_hardware' },
+        {
+          atMs: 520,
+          phase: 'text_delta',
+          delta: '按通道时延表合成 I/Q 波形并附加到消息。',
+        },
+        { atMs: 580, phase: 'tool_call', tool: 'emit_artifact' },
+        { atMs: 640, phase: 'dispatch_completed' },
+      ],
+      ctx,
+    ),
+  );
   const artWave: Artifact = {
     id: ctx.nextId('a-'),
     type: 'waveform',
@@ -378,6 +527,15 @@ export function calibrationScript(
       ],
     },
   };
+  // v1.4：波形 artifact 即时插卡（completed 前骨架态）
+  actions.push({
+    atMs: at + 40,
+    run: () =>
+      ctx.emitConv(cid, {
+        event: 'artifact.created',
+        data: { conversation_id: cid, message_id: msgId, artifact: artWave },
+      }),
+  });
   at += 300;
   actions.push({
     atMs: at,
@@ -466,6 +624,20 @@ export function echoScript(
         }),
     });
   }
+  // v1.4 最小工作区剧本（回显专家：一进一出）
+  actions.push(
+    ...activityActions(
+      cid,
+      msgId,
+      'echo',
+      [
+        { atMs: 230, phase: 'dispatch_started' },
+        { atMs: 300, phase: 'text_delta', delta: '回显链路连通，无产物。' },
+        { atMs: 380, phase: 'dispatch_completed' },
+      ],
+      ctx,
+    ),
+  );
   at += 250;
   actions.push({
     atMs: at,

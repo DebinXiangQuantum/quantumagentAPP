@@ -194,6 +194,12 @@ export interface Step {
   peak_memory_mb?: number | null;
   /** §4 v1.3：该步展开的子任务 id（嵌套 DAG 下钻入口）；无则 null */
   subtask_id?: string | null;
+  /** §4 v1.4：quantum 步可携带线路（§6 CircuitPayload 同构）；无则 null */
+  circuit?: CircuitPayload | null;
+  /** §4 v1.4：云端任务 id（logicalcloud 模式）；无则 null */
+  cloud_job_id?: string | null;
+  /** §4 v1.4：排队位置（int|null；排队期间经 task.updated 持续更新） */
+  queue_position?: number | null;
   detail: string;
   error: string | null;
 }
@@ -219,26 +225,28 @@ export interface Allocation {
   leased_at: string;
 }
 
-/** §4 v1.2 QPU metrics：拓扑结构 + 逐比特/逐耦合器保真度。 */
+/** §4 v1.2 QPU metrics：拓扑结构 + 逐比特/逐耦合器保真度。
+ * v1.4：logicalcloud 真机**不提供** T1/T2/保真度——字段改为可选，
+ * 前端按"平台未提供"降级（坐标点渲染，见 QpuTopologyCanvas）。 */
 export interface QubitInfo {
   /** id = row*cols + col（grid 布局一一对应） */
   id: number;
-  /** 相干时间 T1（µs，> 0） */
-  t1_us: number;
-  /** 相干时间 T2（µs，> 0 且 ≤ 2*t1_us） */
-  t2_us: number;
-  /** 读出保真度 ∈ (0,1] */
-  readout_fidelity: number;
-  /** 单比特门保真度 ∈ (0,1] */
-  sq_fidelity: number;
+  /** 相干时间 T1（µs，> 0）；云端真机缺省 */
+  t1_us?: number;
+  /** 相干时间 T2（µs，> 0 且 ≤ 2*t1_us）；云端真机缺省 */
+  t2_us?: number;
+  /** 读出保真度 ∈ (0,1]；云端真机缺省 */
+  readout_fidelity?: number;
+  /** 单比特门保真度 ∈ (0,1]；云端真机缺省 */
+  sq_fidelity?: number;
 }
 
 export interface Coupler {
   /** 网格相邻 qubit 对端点 ∈ [0, qubits_count) */
   a: number;
   b: number;
-  /** 双比特门保真度 ∈ (0,1] */
-  tq_fidelity: number;
+  /** 双比特门保真度 ∈ (0,1]；云端真机缺省 */
+  tq_fidelity?: number;
 }
 
 export interface QpuTopology {
@@ -247,6 +255,9 @@ export interface QpuTopology {
   cols: number;
   qubits: QubitInfo[];
   couplers: Coupler[];
+  /** v1.4：云端拓扑的比特坐标（无 couplers/保真度时按此摆放坐标点）。
+   * 索引对应 qubit id（logicalcloud topology.qubit_coordinates 镜像）。 */
+  qubit_coordinates?: Array<[number, number]>;
 }
 
 export interface QpuMetrics {

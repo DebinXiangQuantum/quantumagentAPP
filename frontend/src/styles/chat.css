@@ -396,3 +396,135 @@
 .message--user .attachment-strip {
   margin-bottom: var(--space-8);
 }
+
+/* ============ v1.4 专家工作区渐进块（agent.activity 实时外显） ============ */
+.subagent-ws {
+  align-self: stretch;
+  margin-bottom: var(--space-8);
+  background: var(--bg-inset);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.subagent-ws__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  width: 100%;
+  min-width: 0;
+  padding: var(--space-4) var(--space-12);
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-size: var(--fs-caption);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--motion-fast) var(--ease-out);
+}
+.subagent-ws__header:hover {
+  background: var(--bg-surface);
+}
+.subagent-ws__header:active {
+  background: var(--bg-inset);
+}
+.subagent-ws__header:focus-visible {
+  outline: 2px solid var(--accent-cyan);
+  outline-offset: -2px;
+}
+.subagent-ws__icon {
+  flex-shrink: 0;
+}
+.subagent-ws__title {
+  min-width: 0;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.subagent-ws__badge {
+  flex-shrink: 0;
+  padding: 0 var(--space-8);
+  border: 1px solid var(--warning);
+  border-radius: var(--radius-sm);
+  color: var(--warning);
+  font-size: var(--fs-caption);
+  line-height: 1.45;
+}
+.subagent-ws--running .subagent-ws__badge {
+  animation: qap-badge-breathe var(--motion-glow-breath) var(--ease-out) infinite;
+}
+.subagent-ws__summary {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.subagent-ws__chevron {
+  flex-shrink: 0;
+  color: var(--text-faint);
+  transition: transform var(--motion-fast) var(--ease-out);
+}
+.subagent-ws__chevron--open {
+  transform: rotate(90deg);
+}
+.subagent-ws__body {
+  max-height: 180px;
+  padding: var(--space-4) var(--space-12) var(--space-8);
+  overflow-y: auto;
+  border-top: 1px solid var(--border-default);
+}
+.subagent-ws__text {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--fs-caption);
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.subagent-ws__tools {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: var(--space-4);
+}
+.subagent-ws__tool {
+  color: var(--text-secondary);
+  font-size: var(--fs-caption);
+  line-height: 1.45;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---- v1.4 artifact 流式插卡（骨架/半透明态；completed 后撤销） ---- */
+.artifact-card--streaming {
+  opacity: 0.72;
+  border-style: dashed;
+}
+.artifact-card--streaming .artifact-card__badge {
+  position: relative;
+  overflow: hidden;
+}
+.artifact-card--streaming .artifact-card__badge::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    100deg,
+    transparent 20%,
+    var(--bg-elevated) 50%,
+    transparent 80%
+  );
+  animation: qap-shimmer 1.2s var(--ease-out) infinite;
+}
+
+/* ---- v1.4 composer 演示徽标（mock 渠道防误用，warning 小标签） ---- */
+.composer-demo-badge {
+  flex-shrink: 0;
+  padding: 0 var(--space-8);
+  border: 1px solid var(--warning);
+  border-radius: var(--radius-sm);
+  color: var(--warning);
+  font-size: var(--fs-caption);
+  line-height: 1.45;
+  white-space: nowrap;
+}

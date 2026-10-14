@@ -669,6 +669,9 @@
 .qpu-topo__scroll[data-scrollable='false'] {
   overflow: hidden;
 }
+.qpu-topo--bare .qpu-topo__qubit {
+  stroke: var(--text-secondary);
+}
 .qpu-topo--success {
   color: var(--success);
 }
@@ -717,4 +720,17 @@
   height: 10px;
   border-radius: 2px;
   background: currentColor;
+}
+
+/* ---- v1.4 云端排队徽标（quantum 步 queue_position，warning 呼吸） ---- */
+.dag-node__queue {
+  flex-shrink: 0;
+  padding: 0 var(--space-8);
+  border: 1px solid var(--warning);
+  border-radius: var(--radius-sm);
+  color: var(--warning);
+  font-size: var(--fs-caption);
+  line-height: 1.45;
+  white-space: nowrap;
+  animation: qap-badge-breathe var(--motion-glow-breath) var(--ease-out) infinite;
 }
