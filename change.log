@@ -36,6 +36,37 @@ scope 与流程见 docs/DEVELOPMENT.md §2。
 ### Known defects
 - 无。
 
+## 2026-10-13 `frontend: v3 W4——硬件性能监控、QPU 拓扑保真度图与 10 QPU 机群（v1.2）`
+
+### Added
+- **QpuTopologyCanvas**（手写 SVG）：grid 布局 qubit 圆圈（内标 id，等宽）+
+  coupler 连线；连线中点 2Q 保真度百分数、圈下 readout 百分数（2 位小数）；
+  色阶按 §6.4 阈值表（圈=readout 档、连线=2Q 档）；悬停 <title> 含
+  T1/T2 µs 与 1Q/readout 保真度；图例三档置底；>12×12 网格滚动容器。
+- **HardwareTopology v1.2**：QPU 分组头 `QPU · 在线 6/10`（离线计入总数，
+  离线卡降饱和+斜纹+徽标不可调度）；QPU 卡副行 `20Q · 2Q 保真度中位
+  99.12%`（medianTqFidelity，等宽）；CPU 卡 CPU 使用率（正常档 info 色）+
+  内存 used/total GB 双迷你条；GPU 卡 VRAM 迷你条；usageLevel（≤0.8/≤0.9/
+  >0.9）告警着色通用；QPU Drawer 内嵌拓扑图 + 摘要行；CPU/GPU Drawer 补
+  核数/内存/显存数值；metrics 缺字段逐行降级隐藏（旧后端不崩溃）。
+- **mock fixtures v1.2/v1.3**：10 台 QPU（6 在线/4 离线，4×5/4×4/3×4/5×6/
+  2×4/2×3/14×2 拓扑各异——确定性 LCG 生成，逐条满足 §4 不变量：fidelity
+  区间、t2≤2*t1、coupler 网格相邻、id↔(row,col) 一一对应）+ CPU/GPU metrics；
+  TASKS 实测字段（duration_ms/peak_memory_mb；t-1/s-1 挂子任务 t-3 供下钻）；
+  ADMIN_PLUGINS 补 capabilities/model_ref；TENANT role=admin。
+- **mock 引擎**：getTenant 支持 `localStorage['qap.mockRole']='user'|'admin'`
+  角色切换演示；2s tick 增 metrics 缓慢漂移（QPU 保真度 ≤0.0002/tick、
+  CPU/GPU 使用与显存随机走，恒满足 used≤total / usage∈[0,1]）。
+
+### Validation
+- `npm test` 184 passed（新增 10：fixtures 契约 4 + QpuTopologyCanvas 4 +
+  HardwareTopology v1.2 重写 8 条中新增分组在线计数/QPU 副行/迷你条/Drawer
+  拓扑断言；既有行为回归随 fixtures 扩容同步更新）；`npm run build` 零错误。
+
+### Known defects
+- QPU 拓扑保真度为 mock 模拟数据（文献合理区间的确定性生成 + 漂移），
+  非硬件观测；真实后端接入后经 HardwareNode.metrics 同构展示。
+
 ## 2026-10-13 `frontend: v3 W3——DAG 时间分析与嵌套下钻（v1.3）`
 
 ### Added

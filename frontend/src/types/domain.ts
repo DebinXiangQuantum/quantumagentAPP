@@ -113,6 +113,10 @@ export interface PluginInfo {
   source: 'builtin' | 'installed';
   /** 非空 = 插件加载失败被注册为 broken（不拖垮平台） */
   broken_reason: string | null;
+  /** §8 v1.3：插件能力标签（设置页插件卡展示；缺省降级隐藏） */
+  capabilities?: string[];
+  /** §8 v1.3：绑定的模型渠道 ref（缺省降级隐藏） */
+  model_ref?: string;
 }
 
 /** GET /admin/plugins 响应信封。 */

@@ -1,12 +1,16 @@
 /**
- * HardwareTopology.tsx —— 异构硬件拓扑视图（design.md §6.4）。
+ * HardwareTopology.tsx —— 异构硬件拓扑视图（design.md §6.4，v1.2 升级）。
  *
  * 职责：
- *  - 按 kind 分组（QPU/GPU/CPU）的卡片网格；
- *  - 卡片：型号（等宽）、容量点（活动租约实心）、利用率迷你条（60s 滚动历史
- *    sparkline + 当前值）、活动 allocation 徽标（"agent · task/step"）；
- *  - 点击卡片 → Drawer：节点全量信息 + 该节点历史任务；
- *  - offline 节点：降饱和 + 斜纹（CSS）。
+ *  - 按 kind 分组（QPU/GPU/CPU）的卡片网格；**QPU 分组头 `QPU · 在线 6/10`**
+ *    （离线计入总数）；离线卡降饱和 + 斜纹 + 离线徽标（不可调度）；
+ *  - QPU 卡副行 `20Q · 2Q 保真度中位 99.1%`（等宽，metrics 缺省降级隐藏）；
+ *  - CPU 卡：CPU 使用率 + 内存双迷你条；GPU 卡：VRAM 迷你条 + 既有利用率条
+ *    （usageLevel 告警色阶 ≤0.8/≤0.9/>0.9 通用；正常档 CPU=info、内存/VRAM
+ *    =accent-cyan，越限升 warning/danger）；
+ *  - 点击 QPU 卡 → Drawer 内嵌 QpuTopologyCanvas（拓扑保真度图）+ 摘要行；
+ *    CPU/GPU Drawer 补 metrics 数值；全部 metrics 缺字段逐行降级隐藏；
+ *  - 活动分配徽标 / 容量点 / 利用率 sparkline（既有行为不变）。
  * Props 契约：
  *  - nodes: HardwareNode[]（畸形元素丢弃）；
  *  - tasks: Task[]（用于历史任务回溯）；
@@ -18,13 +22,58 @@ import { useTranslate } from '../../i18n';
 import { Drawer } from '../common/Drawer';
 import { StatusBadge } from '../common/StatusBadge';
 import { formatPercent } from '../../utils/format';
-import type { HardwareNode, NodeKind, Task } from '../../types/domain';
+import { formatGB, medianTqFidelity, usageLevel } from '../../utils/hw';
+import type {
+  CpuMetrics,
+  GpuMetrics,
+  HardwareNode,
+  NodeKind,
+  QpuMetrics,
+  Task,
+} from '../../types/domain';
+import { QpuTopologyCanvas } from './QpuTopologyCanvas';
 
 const KIND_ORDER: NodeKind[] = ['qpu', 'gpu', 'cpu'];
 const KIND_LABELS: Record<NodeKind, string> = { qpu: 'QPU', gpu: 'GPU', cpu: 'CPU' };
 
 function isNode(v: unknown): v is HardwareNode {
   return v !== null && typeof v === 'object' && typeof (v as HardwareNode).id === 'string';
+}
+
+/** metrics 形状守卫（§4：按 kind 不同；缺省/畸形 → null 逐行降级）。 */
+function qpuMetricsOf(node: HardwareNode): QpuMetrics | null {
+  const m = node.metrics;
+  return m !== null && typeof m === 'object' && 'topology' in m ? (m as QpuMetrics) : null;
+}
+function cpuMetricsOf(node: HardwareNode): CpuMetrics | null {
+  const m = node.metrics;
+  return m !== null && typeof m === 'object' && 'cpu_usage' in m ? (m as CpuMetrics) : null;
+}
+function gpuMetricsOf(node: HardwareNode): GpuMetrics | null {
+  const m = node.metrics;
+  return m !== null && typeof m === 'object' && 'vram_total_gb' in m ? (m as GpuMetrics) : null;
+}
+
+/** 迷你条（CPU/内存/VRAM 共用）：label + 条 + 数值；usageLevel 告警着色。 */
+function MiniBar(props: {
+  label: string;
+  pct: number;
+  value: string;
+  variant?: 'cpu' | 'vram';
+}): JSX.Element {
+  const level = usageLevel(props.pct);
+  return (
+    <span className={`hw-card__mini${props.variant ? ` hw-card__mini--${props.variant}` : ''}`}>
+      <span className="hw-card__mini-label">{props.label}</span>
+      <span className="hw-card__mini-bar" aria-hidden="true">
+        <span
+          className={`hw-card__mini-fill hw-mini-fill--${level}${props.variant === 'cpu' ? ' hw-mini-fill--cpu' : ''}`}
+          style={{ width: `${Math.min(100, Math.max(0, props.pct * 100)).toFixed(1)}%` }}
+        />
+      </span>
+      <span className="hw-card__mini-num mono truncate">{props.value}</span>
+    </span>
+  );
 }
 
 /** 利用率 sparkline（SVG polyline，高度 14px）。 */
@@ -89,11 +138,17 @@ export function HardwareTopology(props: {
       {KIND_ORDER.map((kind) => {
         const group = nodes.filter((n) => n.kind === kind);
         if (group.length === 0) return null;
+        const online = group.filter((n) => n.status === 'online').length;
         return (
           <section key={kind} className="hw-group" data-kind={kind}>
-            <header className="hw-group__header">
+            <header className="hw-group__header" data-testid={`hw-group-header-${kind}`}>
               <span className={`hw-group__kind hw-group__kind--${kind}`}>
                 {KIND_LABELS[kind]}
+                {kind === 'qpu' ? (
+                  <span className="hw-group__online mono">
+                    {t('hw.group.online', { online, total: group.length })}
+                  </span>
+                ) : null}
               </span>
               <span className="hw-group__count mono">{group.length}</span>
             </header>
@@ -106,6 +161,10 @@ export function HardwareTopology(props: {
                 const util = Number.isFinite(node.utilization)
                   ? Math.min(1, Math.max(0, node.utilization))
                   : 0;
+                const qpuM = qpuMetricsOf(node);
+                const cpuM = cpuMetricsOf(node);
+                const gpuM = gpuMetricsOf(node);
+                const tqMedian = qpuM !== null ? medianTqFidelity(qpuM.topology.couplers) : null;
                 return (
                   <button
                     key={node.id}
@@ -132,6 +191,14 @@ export function HardwareTopology(props: {
                       </span>
                     </span>
                     <span className="hw-card__model mono truncate">{node.model}</span>
+                    {qpuM !== null && qpuM.qubits_count > 0 && tqMedian !== null ? (
+                      <span className="hw-card__qpu-subline mono truncate">
+                        {t('hw.qpu.subline', {
+                          count: qpuM.qubits_count,
+                          median: (tqMedian * 100).toFixed(2) + '%',
+                        })}
+                      </span>
+                    ) : null}
                     <span className="hw-card__util">
                       <span className="hw-card__util-bar" aria-hidden="true">
                         <span
@@ -142,6 +209,31 @@ export function HardwareTopology(props: {
                       <span className="hw-card__util-num mono">{formatPercent(node.utilization)}</span>
                       <UtilSparkline history={props.history[node.id] ?? []} />
                     </span>
+                    {cpuM !== null && Number.isFinite(cpuM.cpu_usage) && Number.isFinite(cpuM.memory_used_gb) ? (
+                      <span className="hw-card__minis">
+                        <MiniBar
+                          label={t('hw.mini.cpu')}
+                          pct={cpuM.cpu_usage}
+                          value={formatPercent(cpuM.cpu_usage)}
+                          variant="cpu"
+                        />
+                        <MiniBar
+                          label={t('hw.mini.mem')}
+                          pct={cpuM.memory_used_gb / Math.max(1e-9, cpuM.memory_total_gb)}
+                          value={`${cpuM.memory_used_gb.toFixed(1)}/${formatGB(cpuM.memory_total_gb)}`}
+                        />
+                      </span>
+                    ) : null}
+                    {gpuM !== null && Number.isFinite(gpuM.vram_used_gb) ? (
+                      <span className="hw-card__minis">
+                        <MiniBar
+                          label={t('hw.mini.vram')}
+                          pct={gpuM.vram_used_gb / Math.max(1e-9, gpuM.vram_total_gb)}
+                          value={`${gpuM.vram_used_gb.toFixed(1)}/${formatGB(gpuM.vram_total_gb)}`}
+                          variant="vram"
+                        />
+                      </span>
+                    ) : null}
                     <span
                       className="hw-card__dots"
                       aria-label={t('hw.capacity', { capacity, leased })}
@@ -205,7 +297,54 @@ export function HardwareTopology(props: {
                 <dt>{t('hw.detail.util')}</dt>
                 <dd className="mono">{formatPercent(selected.utilization)}</dd>
               </div>
+              {cpuMetricsOf(selected) !== null ? (
+                <>
+                  <div className="detail-list__row">
+                    <dt>{t('hw.detail.cpuCores')}</dt>
+                    <dd className="mono">{cpuMetricsOf(selected)!.cpu_cores}</dd>
+                  </div>
+                  <div className="detail-list__row">
+                    <dt>{t('hw.detail.cpuUsage')}</dt>
+                    <dd className="mono">{formatPercent(cpuMetricsOf(selected)!.cpu_usage)}</dd>
+                  </div>
+                  <div className="detail-list__row">
+                    <dt>{t('hw.detail.memory')}</dt>
+                    <dd className="mono">
+                      {cpuMetricsOf(selected)!.memory_used_gb.toFixed(1)} /{' '}
+                      {formatGB(cpuMetricsOf(selected)!.memory_total_gb)}
+                    </dd>
+                  </div>
+                </>
+              ) : null}
+              {gpuMetricsOf(selected) !== null ? (
+                <div className="detail-list__row">
+                  <dt>{t('hw.detail.vram')}</dt>
+                  <dd className="mono">
+                    {gpuMetricsOf(selected)!.vram_used_gb.toFixed(1)} /{' '}
+                    {formatGB(gpuMetricsOf(selected)!.vram_total_gb)}
+                  </dd>
+                </div>
+              ) : null}
             </dl>
+
+            {qpuMetricsOf(selected) !== null ? (
+              <div className="hw-detail__topo">
+                <p className="hw-detail__topo-summary mono" data-testid="hw-drawer-topo-summary">
+                  {t('hw.qpu.subline', {
+                    count: qpuMetricsOf(selected)!.qubits_count,
+                    median:
+                      medianTqFidelity(qpuMetricsOf(selected)!.topology.couplers) !== null
+                        ? (
+                            (medianTqFidelity(qpuMetricsOf(selected)!.topology.couplers) as number) *
+                            100
+                          ).toFixed(2) + '%'
+                        : '—',
+                  })}
+                </p>
+                <QpuTopologyCanvas metrics={qpuMetricsOf(selected)!} />
+              </div>
+            ) : null}
+
             <h4 className="hw-detail__section">{t('hw.detail.allocs')}</h4>
             {selected.allocations.length === 0 ? (
               <p className="text-faint hw-detail__empty">{t('hw.detail.allocsEmpty')}</p>

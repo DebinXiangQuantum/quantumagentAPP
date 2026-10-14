@@ -318,6 +318,14 @@ v1.3 增实测行）；「结构/时间线」二段切换——时间线=水平 
 相对时间、宽=duration_ms、kind 色、运行中实时增长、0–100% 五档刻度、悬停
 起止+时长）；⊕ 角标下钻子 DAG（getTask 递归 + 面包屑，子图两模式）；
 Drawer 补实测时长/峰值内存/子任务链接。
+④ **硬件面板 v1.2 与 10 QPU 机群（W4，§6.4）**：QPU 分组头
+`QPU · 在线 6/10`；离线卡降饱和+斜纹+离线徽标；QPU 卡副行
+`20Q · 2Q 保真度中位 NN.NN%`；CPU 卡 CPU%+内存双迷你条、GPU 卡 VRAM 迷你条
+（usageLevel 0.8/0.9 告警着色）；QpuTopologyCanvas 手写 SVG 拓扑保真度图
+（qubit 圈内 id+圈下 readout%、coupler 线中 tq%、三档色阶、悬停 T1/T2/1Q/
+readout tooltip、图例置底、>12×12 滚动）挂 QPU Drawer；mock fixtures 10 QPU
+（确定性 LCG 生成，满足 §4 全部不变量与模拟区间）+ admin 租户 +
+`localStorage['qap.mockRole']='user'` 双角色切换 + 步骤实测字段/子任务。
 **集成修订（2026-10-13，main）**：与真实后端联调对齐四处契约——① SSE 流 URL
 携带 `?api_key=`（`buildStreamUrl`/新增 `buildGlobalStreamUrl`）；②
 `TenantInfo` 字段对齐后端 `usage_snapshot`（`active_tasks`/`enabled`）；③
