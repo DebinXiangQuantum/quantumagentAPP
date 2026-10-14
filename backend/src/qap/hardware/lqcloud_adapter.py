@@ -205,7 +205,13 @@ class LqCloudAdapter:
 
 
 def _normalize_backend(raw: Any) -> dict[str, Any]:
-    """云端原始记录 → 规范 dict（缺字段降级，不猜测）。"""
+    """云端原始记录 → 规范 dict（缺字段降级，不猜测）。
+
+    实测（2026-10-14 冒烟）：``topology`` 含 ``rows``/``cols`` 与
+    ``qubit_coordinates``（**dict**，键为比特下标字符串、值为 [x,y]）及
+    ``coupling_map``（[a,b] 对列表，无保真度值）——均原样透传（cloud-
+    observed），由注册表侧构建节点拓扑。
+    """
     if not isinstance(raw, dict):
         raise ValueError(f"backend record must be an object, got {type(raw).__name__}")
     topology = raw.get("topology")
@@ -217,7 +223,10 @@ def _normalize_backend(raw: Any) -> dict[str, Any]:
         "status": raw.get("status"),
         "qubits": raw.get("qubits"),
         "topology": {
-            "qubit_coordinates": topology.get("qubit_coordinates") or [],
+            "rows": topology.get("rows"),
+            "cols": topology.get("cols"),
+            "qubit_coordinates": topology.get("qubit_coordinates") or {},
+            "coupling_map": topology.get("coupling_map") or [],
         },
     }
 

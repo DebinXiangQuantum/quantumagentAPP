@@ -106,7 +106,7 @@ class TestCloudNodeConstruction:
         )
         mq02 = registry.get("lq-MQ02")
         assert mq02.kind == "qpu"
-        assert mq02.model == "superconducting-transmon"
+        assert mq02.model == "AGate 100"  # 云端 chip_architecture 原样（实测值）
         assert mq02.status == "online"
         assert mq02.capacity == 1
         assert mq02.utilization == 0.0
@@ -118,13 +118,17 @@ class TestCloudNodeConstruction:
         metrics = nodes["lq-QZ01-repetition_code"].metrics
         assert metrics["source"] == "cloud-observed"
         topology = metrics["topology"]
-        # 坐标 [[0,0]..[0,11]] → cols=12, rows=1（极值+1）
+        # 显式 rows=1/cols=12（云端拓扑事实，实测形状）
         assert topology["rows"] == 1 and topology["cols"] == 12
         assert metrics["qubits_count"] == 12 == len(topology["qubits"])
-        assert topology["couplers"] == []  # 平台未提供耦合器信息
+        # 连接拓扑照录（coupling_map 是云端事实）；保真度未提供 → null
+        assert topology["couplers"] == [
+            {"a": i, "b": i + 1, "tq_fidelity": None} for i in range(11)
+        ]
         qubit = topology["qubits"][0]
         assert qubit["t1_us"] is None and qubit["t2_us"] is None
         assert qubit["readout_fidelity"] is None and qubit["sq_fidelity"] is None
+        assert (qubit["x"], qubit["y"]) == (0, 0)
 
     def test_cloud_metrics_pass_invariants_cloud_branch(self) -> None:
         for node in build_cloud_nodes(DEFAULT_FAKE_BACKENDS):
@@ -148,8 +152,8 @@ class TestCloudNodeConstruction:
         with pytest.raises(Exception):
             validate_node_metrics("qpu", bad)
 
-    def test_invariants_reject_cloud_branch_with_fake_couplers(self) -> None:
-        """cloud-observed 分支不得伪造耦合器保真度（诚实为空）。"""
+    def test_invariants_reject_cloud_branch_with_fake_coupler_fidelity(self) -> None:
+        """cloud-observed 分支连接对照录，但伪造 tq_fidelity 数值 → 拒绝。"""
         nodes = build_cloud_nodes(DEFAULT_FAKE_BACKENDS)
         metrics = dict(nodes[0].metrics)
         metrics["topology"] = {
@@ -158,6 +162,29 @@ class TestCloudNodeConstruction:
         }
         with pytest.raises(Exception):
             validate_node_metrics("qpu", metrics)
+
+    def test_cloud_topology_accepts_recorded_coupling_pairs(self) -> None:
+        """实测形状：coupling_map 连接对（无保真度）→ 全部通过校验。"""
+        for node in build_cloud_nodes(DEFAULT_FAKE_BACKENDS):
+            validate_node_metrics(node.kind, node.metrics)  # 已在上方亦覆盖；
+            assert isinstance(node.metrics["topology"]["couplers"], list)
+
+    def test_dict_and_list_coordinate_shapes_both_supported(self) -> None:
+        """dict（实测）与 list（兼容）坐标形状都能摆点（不崩溃不伪造）。"""
+        list_shaped = [
+            {
+                "name": "Legacy-Shape",
+                "chip_architecture": "X",
+                "status": "active",
+                "qubits": 2,
+                "topology": {"qubit_coordinates": [[0, 0], [1, 0]]},
+            }
+        ]
+        node = build_cloud_nodes(list_shaped)[0]
+        topology = node.metrics["topology"]
+        assert node.id == "lq-Legacy-Shape"
+        assert [q["id"] for q in topology["qubits"]] == [0, 1]
+        assert topology["rows"] == 1 and topology["cols"] == 2  # 极值+1 兜底
 
 
 class TestFailFast:

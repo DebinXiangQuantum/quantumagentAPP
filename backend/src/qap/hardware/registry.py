@@ -71,18 +71,37 @@ def build_cloud_nodes(backends: Sequence[dict[str, Any]]) -> list[HardwareNode]:
 
 def _cloud_qpu_metrics(raw: dict[str, Any]) -> dict[str, Any]:
     """云端记录 → QPU metrics（cloud-observed 拓扑；fidelity 全 null）。"""
-    coordinates = raw.get("topology", {}).get("qubit_coordinates") or []
+    topology = raw.get("topology") or {}
+    raw_coordinates = topology.get("qubit_coordinates") or {}
+    # dict（实测形状：键=比特下标字符串 → [x,y]）与 list（兼容形状）统一
+    # 为 (id, coordinate) 流，按 id 排序保序
+    items: list[tuple[int, Any]]
+    if isinstance(raw_coordinates, dict):
+        items = []
+        for key, value in raw_coordinates.items():
+            try:
+                items.append((int(key), value))
+            except (TypeError, ValueError):
+                continue  # 畸形键跳过（不崩溃、不伪造）
+        items.sort(key=lambda pair: pair[0])
+    elif isinstance(raw_coordinates, list):
+        items = list(enumerate(raw_coordinates))
+    else:
+        items = []
     qubits: list[dict[str, Any]] = []
     rows = cols = 1
-    for index, coordinate in enumerate(coordinates):
+    for qubit_id, coordinate in items:
         if not isinstance(coordinate, (list, tuple)) or len(coordinate) < 2:
             continue  # 畸形坐标点跳过（不崩溃、不伪造位置）
-        x, y = int(coordinate[0]), int(coordinate[1])
+        try:
+            x, y = int(coordinate[0]), int(coordinate[1])
+        except (TypeError, ValueError):
+            continue
         rows = max(rows, y + 1)
         cols = max(cols, x + 1)
         qubits.append(
             {
-                "id": index,
+                "id": qubit_id,
                 "x": x,
                 "y": y,
                 # 平台未提供保真度/相干时间 → null（诚实降级，绝不伪造）
@@ -92,6 +111,23 @@ def _cloud_qpu_metrics(raw: dict[str, Any]) -> dict[str, Any]:
                 "sq_fidelity": None,
             }
         )
+    # 云端显式 rows/cols 优先（cloud-observed 事实；缺省退回坐标极值+1）
+    explicit_rows, explicit_cols = topology.get("rows"), topology.get("cols")
+    if isinstance(explicit_rows, int) and explicit_rows >= 1:
+        rows = explicit_rows
+    if isinstance(explicit_cols, int) and explicit_cols >= 1:
+        cols = explicit_cols
+    couplers: list[dict[str, Any]] = []
+    # 实测（2026-10-14）：coupling_map 连接对是云端事实（照录）；
+    # 两比特门保真度云端未提供 → null（绝不编造数值）
+    for pair in topology.get("coupling_map") or []:
+        if isinstance(pair, (list, tuple)) and len(pair) == 2:
+            try:
+                couplers.append(
+                    {"a": int(pair[0]), "b": int(pair[1]), "tq_fidelity": None}
+                )
+            except (TypeError, ValueError):
+                continue  # 畸形耦合对跳过
     return {
         "qubits_count": len(qubits),
         "source": "cloud-observed",
@@ -100,7 +136,7 @@ def _cloud_qpu_metrics(raw: dict[str, Any]) -> dict[str, Any]:
             "rows": rows,
             "cols": cols,
             "qubits": qubits,
-            "couplers": [],  # 平台未提供耦合器信息
+            "couplers": couplers,
         },
     }
 

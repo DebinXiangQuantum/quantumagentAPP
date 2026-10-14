@@ -5,6 +5,36 @@ Validation（本切片测试结论）+ Known defects（已知缺陷，无则写�
 scope 与流程见 docs/DEVELOPMENT.md §2。
 
 
+## 2026-10-14 `backend: 冒烟修正——云端拓扑真实形状（dict 坐标 + 显式 rows/cols + coupling_map 照录）`
+
+### Fixed
+- **真实回包与契约注释的差异**（2026-10-14 冒烟实测 logicalcloud
+  /api/v1/qpus）：`topology.qubit_coordinates` 实为 **dict**（键=比特
+  下标字符串 → [x,y]，非列表）；`rows`/`cols` 云端显式给出；
+  `coupling_map` 为 [a,b] 连接对列表（**连接拓扑是云端事实**——原按
+  "平台未提供→空列表"处理会丢真实耦合关系）。修正：
+  - `lqcloud_adapter._normalize_backend`：topology 透传 rows/cols/
+    qubit_coordinates/coupling_map（原样 cloud-observed）；
+  - `registry._cloud_qpu_metrics`：dict/list 双形状坐标统一摆点（按
+    id 排序、含 x/y）；rows/cols 云端显式值优先、缺省坐标极值+1 兜底；
+    couplers 照录 coupling_map 连接对，**tq_fidelity=null**（保真度
+    云端未提供，绝不编造）；
+  - `invariants` cloud 分支：couplers 允许 {a,b,tq_fidelity:null}
+    连接对（端点界内）；tq_fidelity 出现数值 → 拒绝（反伪造语义保留）；
+  - `tests/fake_cloud.py` 五台真机样例改为实测形状（dict 坐标 +
+    coupling_map；chip_architecture 用实测值 AGate 100/165/30）。
+
+### Validation
+- 全量 **478 passed**（476 + 新增 2：cloud 连接对照录校验、dict/list
+  双坐标形状兼容）。真实冒烟：`/hardware` 5 台 lq-* 节点（4 online/
+  1 offline）带真实 rows/cols/坐标/耦合对（见 README 冒烟记录）。
+
+### Known defects
+- 云端 `properties.qubit_metrics`（df_10/df_21 等校准参数）尚未采入
+  metrics——属校准参数而非保真度观测，采入策略留待与校准专家链路
+  一并设计。
+
+
 ## 2026-10-14 `backend: V5（v4 轮）——dispatch 实时外显（agent.activity）+ artifact.created 即时事件`
 
 ### Added

@@ -105,10 +105,13 @@ class TestAdapterListBackends:
         backends = adapter.list_backends()
         assert len(backends) == 5
         by_name = {b["name"]: b for b in backends}
-        assert by_name["MQ02"]["chip_architecture"] == "superconducting-transmon"
+        assert by_name["MQ02"]["chip_architecture"] == "AGate 100"  # 实测值
         assert by_name["QZ02"]["status"] == "offline"
         assert sum(1 for b in backends if b["status"] == "active") == 4
-        assert by_name["MQ02"]["topology"]["qubit_coordinates"]
+        # 实测形状：坐标 dict + 显式 rows/cols + coupling_map（冒烟修正）
+        assert by_name["MQ02"]["topology"]["qubit_coordinates"]["0"] == [0, 0]
+        assert by_name["MQ02"]["topology"]["rows"] == 2
+        assert by_name["MQ02"]["topology"]["coupling_map"][0] == [0, 1]
 
     def test_list_backends_propagates_fetch_failure(self) -> None:
         """云端不可达 → 异常上抛（V2 组装层转启动 fail-fast）。"""

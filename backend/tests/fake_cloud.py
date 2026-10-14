@@ -28,43 +28,80 @@ from lqcloud.job.result import Result
 from lqcloud.job.status import JobStatus
 
 
-#: 现网同构的 5 台真机样例（实测 2026-10-14：4 active + 1 offline）
+#: 现网同构的 5 台真机样例（实测 2026-10-14：4 active + 1 offline）。
+#: 拓扑形状对齐真实回包：qubit_coordinates 为 **dict**（键=比特下标字符串
+#: → [x,y]）、rows/cols 显式、coupling_map 为 [a,b] 对列表（无保真度）。
 DEFAULT_FAKE_BACKENDS: list[dict[str, Any]] = [
     {
         "name": "MQ02",
-        "chip_architecture": "superconducting-transmon",
+        "chip_architecture": "AGate 100",
         "status": "active",
-        "qubits": 20,
-        "topology": {"qubit_coordinates": [[0, 0], [0, 1], [1, 0], [1, 1]] * 5},
+        "qubits": 4,
+        "topology": {
+            "type": "grid",
+            "rows": 2,
+            "cols": 2,
+            "qubit_coordinates": {"0": [0, 0], "1": [1, 0], "2": [1, 1], "3": [0, 1]},
+            "coupling_map": [[0, 1], [1, 2], [2, 3], [3, 0]],
+        },
     },
     {
         "name": "AGate-100",
-        "chip_architecture": "ion-trap",
+        "chip_architecture": "AGate 100",
         "status": "active",
-        "qubits": 16,
-        "topology": {"qubit_coordinates": [[0, i % 4] for i in range(16)]},
+        "qubits": 4,
+        "topology": {
+            "rows": 1,
+            "cols": 4,
+            "qubit_coordinates": {"0": [0, 0], "1": [1, 0], "2": [2, 0], "3": [3, 0]},
+            "coupling_map": [[0, 1], [1, 2], [2, 3]],
+        },
     },
     {
         "name": "QZ01-surface_code",
-        "chip_architecture": "superconducting-surface-code",
+        "chip_architecture": "AGate 165",
         "status": "active",
-        "qubits": 24,
-        "topology": {"qubit_coordinates": [[i % 6, i // 6] for i in range(24)]},
+        "qubits": 6,
+        "topology": {
+            "rows": 2,
+            "cols": 3,
+            "qubit_coordinates": {
+                "0": [0, 0], "1": [1, 0], "2": [2, 0],
+                "3": [0, 1], "4": [1, 1], "5": [2, 1],
+            },
+            "coupling_map": [[0, 1], [1, 2], [3, 4], [4, 5], [0, 3], [1, 4], [2, 5]],
+        },
     },
     {
         "name": "QZ01-repetition_code",
-        "chip_architecture": "superconducting-repetition",
+        "chip_architecture": "AGate 165",
         "status": "active",
         "qubits": 12,
-        # 一维链水平摆放：坐标 [x, y] → rows=1、cols=12（极值+1）
-        "topology": {"qubit_coordinates": [[i, 0] for i in range(12)]},
+        "topology": {
+            # 一维链水平摆放：显式 rows=1、cols=12
+            "rows": 1,
+            "cols": 12,
+            "qubit_coordinates": {str(i): [i, 0] for i in range(12)},
+            "coupling_map": [[i, i + 1] for i in range(11)],
+        },
     },
     {
         "name": "QZ02",
-        "chip_architecture": "superconducting-transmon",
+        "chip_architecture": "AGate 30",
         "status": "offline",
-        "qubits": 8,
-        "topology": {"qubit_coordinates": [[0, i] for i in range(8)]},
+        "qubits": 20,
+        "topology": {
+            # 环形链（对齐实测 QZ02 形状的缩小版）：坐标绕 4x4 网格一周
+            "type": "grid",
+            "rows": 4,
+            "cols": 4,
+            "qubit_coordinates": {
+                "0": [0, 0], "1": [1, 0], "2": [2, 0], "3": [3, 0],
+                "4": [3, 1], "5": [3, 2], "6": [3, 3], "7": [2, 3],
+                "8": [1, 3], "9": [0, 3],
+            },
+            "coupling_map": [[i, i + 1] for i in range(9)],
+        },
     },
 ]
 

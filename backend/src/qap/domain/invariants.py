@@ -117,10 +117,12 @@ def _validate_cloud_qpu_metrics(metrics: dict[str, Any]) -> None:
 
     与 simulated 形状的差异（诚实性约束）：
     - ``qubits_count == len(qubits)``（云拓扑非满网格，**不要求**
-      rows*cols——rows/cols 仅为坐标极值 + 1 的画布尺寸）；
+      rows*cols——rows/cols 为云端画布尺寸或坐标极值 + 1）；
     - 每比特 t1/t2/readout/sq 必须**全为 None**（平台未提供保真度，
       出现数值即疑似伪造 → 拒绝）；
-    - ``couplers`` 必须为空列表（平台未提供耦合器数据，同理）；
+    - ``couplers`` 允许携带云端 coupling_map 的连接对（a/b 为 int），
+      但 ``tq_fidelity`` 必须 None（**连接拓扑是云端事实照录；保真度
+      云端未提供，出现数值即伪造 → 拒绝**）；
     - qubit id 仍要求 ∈ [0, count) 且唯一。
     """
     topology = metrics.get("topology")
@@ -130,11 +132,8 @@ def _validate_cloud_qpu_metrics(metrics: dict[str, Any]) -> None:
     if not isinstance(rows, int) or not isinstance(cols, int) or rows < 1 or cols < 1:
         _fail(f"cloud topology rows/cols must be positive ints, got {rows}x{cols}")
     qubits, couplers = topology.get("qubits") or [], topology.get("couplers")
-    if couplers != []:
-        _fail(
-            "cloud-observed topology must have empty couplers "
-            "(platform does not provide coupler data; fabricating it is forbidden)"
-        )
+    if not isinstance(couplers, list):
+        _fail("cloud topology couplers must be a list")
     count = metrics.get("qubits_count")
     if not isinstance(count, int) or count != len(qubits):
         _fail(f"qubits_count must equal len(qubits) (count={count}, len={len(qubits)})")
@@ -152,6 +151,17 @@ def _validate_cloud_qpu_metrics(metrics: dict[str, Any]) -> None:
                     f"qubit {qubit_id} {field} must be null in cloud-observed "
                     "topology (platform does not provide it)"
                 )
+    for coupler in couplers:
+        a, b = coupler.get("a"), coupler.get("b")
+        if not isinstance(a, int) or not isinstance(b, int):
+            _fail(f"cloud coupler endpoints must be ints, got {a!r},{b!r}")
+        if not 0 <= a < count or not 0 <= b < count:
+            _fail(f"cloud coupler endpoints out of range [0,{count}): {a},{b}")
+        if coupler.get("tq_fidelity") is not None:
+            _fail(
+                f"coupler ({a},{b}) tq_fidelity must be null in cloud-observed "
+                "topology (platform does not provide it; fabricating is forbidden)"
+            )
 
 
 def _validate_cpu_metrics(metrics: dict[str, Any]) -> None:
