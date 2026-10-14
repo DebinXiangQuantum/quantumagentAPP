@@ -332,6 +332,9 @@ readout tooltip、图例置底、>12×12 滚动）挂 QPU Drawer；mock fixtures
 **状态徽标三态**（启用中 success / 已停用 faint / 加载失败 danger+broken
 原因）+ capabilities 标签 + model_ref + 描述；文字边界修复（容器
 min-width:0、描述 word-break、渠道表 overflow-x 滚动容器）。
+⑥ **i18n 收尾（W6）**：v3 全部新文案（composer/附件/时间线/下钻/实测/
+硬件拓扑/插件状态/权限）三语同步，key 集合一致性 + 三语互异 + 带参插值
+测试锁定；`npm test` 190 passed（基线 137 + 新增 53），build 零错误。
 **集成修订（2026-10-13，main）**：与真实后端联调对齐四处契约——① SSE 流 URL
 携带 `?api_key=`（`buildStreamUrl`/新增 `buildGlobalStreamUrl`）；②
 `TenantInfo` 字段对齐后端 `usage_snapshot`（`active_tasks`/`enabled`）；③

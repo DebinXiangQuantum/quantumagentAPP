@@ -50,6 +50,12 @@ describe('i18n 字典契约', () => {
       'settings.appearance',
       'reasoning.title',
       'status.running',
+      // v3 新增 chrome（composer/硬件/DAG/插件状态）
+      'composer.model',
+      'composer.thinking',
+      'dag.mode.timeline',
+      'settings.plugins.status.on',
+      'hw.topo.legend.poor',
     ]) {
       const values = new Set([
         translate('zh', key),
@@ -58,6 +64,28 @@ describe('i18n 字典契约', () => {
       ]);
       expect(values.size, `key=${key}`).toBe(3);
     }
+  });
+
+  it('v3 带参文案三语插值一致（值注入不破坏各语言措辞）', () => {
+    expect(translate('zh', 'dag.measured.duration', { v: '413ms' })).toBe('时长 413ms');
+    expect(translate('en', 'dag.measured.duration', { v: '413ms' })).toBe('Time 413ms');
+    expect(translate('ja', 'dag.measured.duration', { v: '413ms' })).toBe('時間 413ms');
+    expect(translate('zh', 'hw.qpu.subline', { count: 20, median: '99.12%' })).toBe(
+      '20Q · 2Q 保真度中位 99.12%',
+    );
+    expect(translate('en', 'hw.qpu.subline', { count: 20, median: '99.12%' })).toBe(
+      '20Q · 2Q fidelity median 99.12%',
+    );
+    expect(translate('ja', 'hw.qpu.subline', { count: 20, median: '99.12%' })).toBe(
+      '20Q · 2Q 忠実度中央値 99.12%',
+    );
+    expect(translate('zh', 'hw.group.online', { online: 6, total: 10 })).toBe(
+      ' · 在线 6/10',
+    );
+    expect(translate('en', 'hw.group.online', { online: 6, total: 10 })).toBe(
+      ' · Online 6/10',
+    );
+    expect(translate('ja', 'attachment.uploadError', { message: '8MB' })).toContain('8MB');
   });
 });
 

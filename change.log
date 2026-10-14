@@ -36,6 +36,25 @@ scope 与流程见 docs/DEVELOPMENT.md §2。
 ### Known defects
 - 无。
 
+## 2026-10-13 `frontend: v3 W6——i18n 三语收尾（v1.2/v1.3 全部新文案）`
+
+### Added
+- i18n.test 强化：v3 关键 chrome key（composer.model/dag.mode.timeline/
+  settings.plugins.status.on/hw.topo.legend.poor 等）纳入"三语互异"防同文
+  清单；带参文案插值精确断言（dag.measured.duration 三语、hw.qpu.subline
+  zh/en 逐字、hw.group.online、attachment.uploadError）。
+
+### Changed
+- ja `composer.thinking` 由与 zh 同文的「思考」改为更精确的「思考度」。
+
+### Validation
+- `npm test` 190 passed（较 v3 起点基线 137 净增 53：W1 19 / W2 13 /
+  W3 5 净增（重写 12 条） / W4 10 / W5 5 / W6 1，另有既有用例随契约扩容
+  同步更新）；`npm run build` 零错误；三字典 key 集合一致性测试保持绿。
+
+### Known defects
+- 无。
+
 ## 2026-10-13 `frontend: v3 W5——设置页权限分流、插件状态徽标与文字边界（v1.2/v1.3）`
 
 ### Added
