@@ -20,6 +20,10 @@ from qap.core.config import AppConfig, LoadedConfig
 from qap.core.errors import NotFoundError, SchedulingError
 from qap.core.ids import IdGenerator
 from qap.core.local_store import LOCAL_CONFIG_FILENAME, LocalConfigStore
+from qap.domain.attachments import (
+    TEXT_INJECTION_CHAR_LIMIT,
+    AttachmentStore,
+)
 from qap.domain.store import ConversationStore, MessageStore, TaskStore
 from qap.events.bus import EventBus
 from qap.hardware.allocator import Allocator
@@ -39,6 +43,8 @@ class AppState:
     conversations: ConversationStore
     messages: MessageStore
     tasks: TaskStore
+    #: 附件表（v1.3：内存字节存储；上传/raw/发消息引用三处共用）
+    attachments: AttachmentStore
     tenants: TenantService
     plugins: PluginRegistry
     nodes: NodeRegistry
@@ -139,6 +145,7 @@ def build_app_state(config: AppConfig | LoadedConfig) -> AppState:
     conversations = ConversationStore()
     messages = MessageStore()
     tasks = TaskStore()
+    attachments = AttachmentStore()
     tenants = TenantService(app_config.tenancy)
     plugins = PluginRegistry(app_config.agents, base_dir=base_dir)
     nodes = NodeRegistry(app_config.hardware)
@@ -159,6 +166,43 @@ def build_app_state(config: AppConfig | LoadedConfig) -> AppState:
     providers: dict[str, LLMProvider] = {
         ref: create_provider(entry) for ref, entry in app_config.models.items()
     }
+    def attachment_parts(message) -> list:
+        """带附件的 user 消息 → AttachmentPart 序列（v1.3 §5/§9）。
+
+        text：UTF-8 解码并截断 200k 字符（替换非法字节）；image：base64；
+        file：仅元数据（provider 侧只标注不注入）。附件记录丢失（重启后
+        内存态清空等）时跳过该附件——消息里的 meta 仍保留展示。
+        """
+        import base64 as _base64
+
+        from qap.agents.providers.base import AttachmentPart
+
+        parts = []
+        for meta in message.attachments:
+            record = attachments._items.get(meta.id)  # noqa: SLF001 - 同组装根
+            if record is None or record.conversation_id != message.conversation_id:
+                continue
+            if meta.kind == "text":
+                text = record.data.decode("utf-8", errors="replace")
+                parts.append(
+                    AttachmentPart(
+                        id=meta.id, name=meta.name, mime=meta.mime, kind="text",
+                        text=text[:TEXT_INJECTION_CHAR_LIMIT],
+                    )
+                )
+            elif meta.kind == "image":
+                parts.append(
+                    AttachmentPart(
+                        id=meta.id, name=meta.name, mime=meta.mime, kind="image",
+                        data_base64=_base64.b64encode(record.data).decode("ascii"),
+                    )
+                )
+            else:
+                parts.append(
+                    AttachmentPart(id=meta.id, name=meta.name, mime=meta.mime, kind="file")
+                )
+        return parts
+
     runtime = AgentRuntime(
         plugins,
         # 闭包与 state.providers 共享同一 dict：admin 渠道增删改即时生效
@@ -168,6 +212,7 @@ def build_app_state(config: AppConfig | LoadedConfig) -> AppState:
         default_thinking_for=lambda ref: app_config.models[ref].default_thinking
         if ref in app_config.models
         else "high",
+        attachment_resolver=attachment_parts,
     )
     tools.bind_dispatcher(runtime.run_subagent)  # dispatch_agent 执行器（§8）
 
@@ -233,6 +278,7 @@ def build_app_state(config: AppConfig | LoadedConfig) -> AppState:
         conversations=conversations,
         messages=messages,
         tasks=tasks,
+        attachments=attachments,
         tenants=tenants,
         plugins=plugins,
         nodes=nodes,

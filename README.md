@@ -355,6 +355,30 @@ dispatch_agent、插件安装全生命周期；真实 GLM 冒烟走通全链路�
   禁用 admin → tenant_disabled；7 端点 × admin 过守卫；demo 403/admin
   200 CRUD 端到端），全量 **366 passed**。
 
+**V4（v1.3 附件，`feat/backend-v3`）**：
+- 新 `qap/domain/attachments.py`：kind 判定（`image/*`→image；`text/*` 或
+  {.md,.txt,.py,.json,.toml,.csv,.yaml,.ts,.js}→text；其余 file）、
+  上传校验（空文件/超 8MB→422）、`AttachmentStore`（内存字节存储，
+  跨租户 404 语义；`get_for_conversation` 供发消息校验→422）。
+- 新 `qap/api/routers/attachments.py`：`POST /conversations/{cid}/attachments`
+  （multipart file → 201 `AttachmentMeta{id,name,mime,size,kind}`，id 前缀
+  `att-`；非 multipart 由 FastAPI 表单解析 422）、`GET /attachments/{id}/raw`
+  （原字节 + 存储 mime + 同租户隔离）。依赖新增 `python-multipart`。
+- `Message.attachments: AttachmentMeta[]`（缺省 []）；`POST …/messages`
+  增 `attachment_ids[]`（未知/跨会话/跨租户 → 422，元数据落 user 消息）。
+- Provider 注入（§9 v1.3）：`AttachmentPart`（text 已截断 200k / image
+  base64 / file 仅元数据）经 Runtime resolver 进入中间表示；
+  openai 适配器——text 追加进正文（字符串 content 保持兼容），有图时
+  content 升级 parts（`text` + `image_url` data URL）；anthropic——
+  text/image 各成 content block（`source.type=base64`）；两适配器各
+  **强制 200k 截断**；文本模型拒图的服务端错误经 ProviderErrorEvent →
+  SSE `error` 透传（既有路径）；mock 仅记录摘要（`request_log[].attachments`）。
+- 测试：`tests/test_attachments.py` 25 用例（上传 201 与 kind 判定 5 参数
+  化/空与超限与非 multipart 422/未知会话 404/raw 回环与跨租户 404/
+  attachments 缺省/attachment_ids 正常+未知+跨会话/openai text+image_url
+  data URL/anthropic 双块/200k 截断/file 不注入/mock 仅记录/SSE error
+  透传端到端），全量 **391 passed**。
+
 ## 前端 (Frontend)
 
 *本节由 `feat/frontend` 分支的开发切片维护更新：组件清单、页面说明、测试结果。*

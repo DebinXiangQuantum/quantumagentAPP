@@ -30,6 +30,31 @@ from qap.core.config import ThinkingLevel
 
 
 @dataclass(frozen=True)
+class AttachmentPart:
+    """消息附件的 provider 侧形态（v1.3 §5/§9 注入语义）。
+
+    由组装根的 resolver 从 AttachmentRecord 构造：
+    - kind=text：``text`` 为解码并截断（200k 字符）后的全文，
+      provider 以文本形式注入 user 上下文；
+    - kind=image：``data_base64`` 为图片字节，openai → ``image_url``
+      （data URL）、anthropic → image block（**需视觉模型**——文本模型
+      的服务端错误经 ProviderErrorEvent → SSE error 透传）；
+    - kind=file：仅元数据（不注入内容）。
+    """
+
+    id: str
+    name: str
+    mime: str
+    kind: str  # "image" | "text" | "file"
+    text: str | None = None
+    data_base64: str | None = None
+
+    def summary(self) -> dict[str, str]:
+        """日志/mock 记录用的元数据摘要（无内容体）。"""
+        return {"id": self.id, "name": self.name, "mime": self.mime, "kind": self.kind}
+
+
+@dataclass(frozen=True)
 class CompletionRequest:
     """一次补全请求（provider 无关）。
 
@@ -38,6 +63,11 @@ class CompletionRequest:
     ``thinking_level``（v1.1 §9）：归一化思考程度，由 Runtime 按优先级
     解析（消息级 > 渠道 default_thinking）；None 表示"未指定"——provider
     不发送任何思考参数（向后兼容，仅单元测试/子运行直达路径会出现）。
+
+    消息 dict 可携带 ``"attachments": [AttachmentPart]``（v1.3）——
+    Runtime 从带附件的 user 消息构造，provider 负责翻译为自家 wire
+    format（openai：text 追加 / image_url data URL；anthropic：文本块 /
+    image block；mock 仅记录摘要）。
     """
 
     model: str

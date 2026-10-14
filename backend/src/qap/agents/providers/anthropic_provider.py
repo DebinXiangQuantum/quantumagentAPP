@@ -39,6 +39,7 @@ from qap.agents.providers.base import (
 )
 from qap.agents.providers.sse import iter_sse_events
 from qap.core.config import ModelConfig, ThinkingLevel
+from qap.domain.attachments import TEXT_INJECTION_CHAR_LIMIT
 
 #: anthropic-version 头的固定值（契约 §9）
 ANTHROPIC_VERSION = "2023-06-01"
@@ -88,7 +89,8 @@ class AnthropicProvider:
     # ---------- 请求构造 ----------
 
     def _build_payload(self, request: CompletionRequest) -> dict[str, Any]:
-        """中间表示 → anthropic 请求体（system 独立字段；工具结果转块）。"""
+        """中间表示 → anthropic 请求体（system 独立字段；工具结果转块；
+        附件注入见 _translate_user_message）。"""
         messages: list[dict[str, Any]] = []
         for message in request.messages:
             role = message["role"]
@@ -120,9 +122,7 @@ class AnthropicProvider:
                     )
                 messages.append({"role": "assistant", "content": content})
             else:
-                messages.append(
-                    {"role": role, "content": [{"type": "text", "text": message.get("content", "")}]}
-                )
+                messages.append(self._translate_user_message(message))
         thinking = thinking_block_for(request.thinking_level)  # type: ignore[arg-type]
         payload: dict[str, Any] = {
             "model": self._config.model,
@@ -144,6 +144,44 @@ class AnthropicProvider:
                 )
             ]
         return payload
+
+    def _translate_user_message(self, message: dict[str, Any]) -> dict[str, Any]:
+        """普通消息 → anthropic 块形态；带附件的 user 消息按 §5 v1.3 注入。
+
+        - text 附件：标注文本块（内容已截断 200k）追加在正文块之后；
+        - image 附件：``{"type":"image","source":{type:"base64",...}}``
+          块（**需视觉模型**；文本模型的服务端错误经 ProviderErrorEvent
+          → SSE error 透传）；
+        - file 附件：仅文件名标注块，不注入内容。
+        """
+        parts = list(message.get("attachments") or [])
+        blocks: list[dict[str, Any]] = [
+            {"type": "text", "text": message.get("content", "")}
+        ]
+        for part in parts:
+            if part.kind == "text" and part.text is not None:
+                # 契约 §5 v1.3：text 注入截断 200k（适配器强制；resolver
+                # 已截断一次，此处为防御性上界）
+                injected = part.text[:TEXT_INJECTION_CHAR_LIMIT]
+                blocks.append(
+                    {
+                        "type": "text",
+                        "text": f"[附件 {part.name} ({part.mime})]\n{injected}",
+                    }
+                )
+            elif part.kind == "image" and part.data_base64 is not None:
+                blocks.append(
+                    {
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": part.mime,
+                            "data": part.data_base64,
+                        },
+                    }
+                )
+            # file 类：契约未定义内容注入 → 不注入（仅消息元数据可见）
+        return {"role": message["role"], "content": blocks}
 
     # ---------- 流式主流程 ----------
 

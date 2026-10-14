@@ -14,6 +14,8 @@ dependencies = [
     "uvicorn>=0.29",
     "httpx>=0.27",
     "pydantic>=2.6",
+    # v1.3 附件上传（multipart/form-data）所需；FastAPI 表单解析的事实依赖
+    "python-multipart>=0.0.9",
 ]
 
 [project.optional-dependencies]

@@ -88,6 +88,9 @@ class Message(BaseModel):
 
     ``reasoning``（v1.1）：assistant 消息的思考过程全文（ ThoughtDelta
     增量在 Runtime 侧累加），可为空串；user 消息恒为空串。
+    ``attachments``（v1.3）：随消息发送的附件元数据（缺省 []；POST
+    messages 的 ``attachment_ids`` 校验后落到 user 消息上）——字节本体
+    在 AttachmentStore，Provider 注入由 Runtime 的 resolver 完成。
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -99,6 +102,7 @@ class Message(BaseModel):
     reasoning: str = ""
     agent_id: str = Field(min_length=1)
     artifacts: list[Artifact] = Field(default_factory=list)
+    attachments: list[AttachmentMeta] = Field(default_factory=list)
     created_at: str
 
 
