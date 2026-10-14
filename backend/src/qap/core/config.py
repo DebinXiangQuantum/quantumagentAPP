@@ -28,7 +28,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 #: 演示租户的示例密钥（config.toml 中出现时允许被环境变量覆盖）
 DEMO_API_KEY_PLACEHOLDER = "demo-key"
@@ -125,11 +125,39 @@ class AgentsConfig(_StrictModel):
     plugin_state: dict[str, PluginStateConfig] = Field(default_factory=dict)
 
 
-class HardwareNodeConfig(_StrictModel):
-    """``[[hardware.nodes]]``：单个模拟硬件节点。
+class TopologyConfig(_StrictModel):
+    """QPU 网格拓扑声明（v1.2 ``topology = {rows, cols}``）。
 
-    ``capacity`` = 同时可承载的租约数（步数），必须 ≥ 1；
-    负值/零值在解析期即被拒绝（契约 §3 fail-fast）。
+    约束：``rows``/``cols`` ≥ 1 且 ``2 ≤ rows*cols ≤ 1024``（原型网格
+    规模界；1 比特无耦合意义，>1024 超出原型保真度演示需求）。
+    """
+
+    rows: int = Field(ge=1)
+    cols: int = Field(ge=1)
+
+    @model_validator(mode="after")
+    def _check_grid_size(self) -> "TopologyConfig":
+        qubits = self.rows * self.cols
+        if not 2 <= qubits <= 1024:
+            raise ValueError(
+                f"topology rows*cols must be within [2,1024], got {qubits} "
+                f"({self.rows}x{self.cols})"
+            )
+        return self
+
+
+class HardwareNodeConfig(_StrictModel):
+    """单个模拟硬件节点（v1.2 起 per-node 可选监控规格键）。
+
+    可选键与 kind 严格绑定（错配 → 启动 fail-fast）：
+    - ``topology``（仅 qpu）：rows×cols 网格，驱动 QPU metrics 拓扑数据；
+    - ``vram_total_gb``（仅 gpu，> 0）：显存总量；
+    - ``cpu_cores`` + ``memory_total_gb``（仅 cpu，成对出现，> 0）：
+      经典节点规格；
+    - ``status``：``online``（缺省）| ``offline``——离线节点不可调度
+      （调度器/分配器跳过，前端降饱和标注）。
+
+    规格键缺失时该节点 ``metrics`` 为 None（契约 §4：可缺省，前端降级）。
     """
 
     id: str = Field(min_length=1)
@@ -137,6 +165,27 @@ class HardwareNodeConfig(_StrictModel):
     name: str = Field(min_length=1)
     model: str = Field(min_length=1)
     capacity: int = Field(ge=1)
+    status: Literal["online", "offline"] = "online"
+    topology: TopologyConfig | None = None
+    vram_total_gb: float | None = Field(default=None, gt=0)
+    cpu_cores: int | None = Field(default=None, ge=1)
+    memory_total_gb: float | None = Field(default=None, gt=0)
+
+    @model_validator(mode="after")
+    def _check_kind_key_alignment(self) -> "HardwareNodeConfig":
+        kind = self.kind
+        mismatches: list[str] = []
+        if self.topology is not None and kind != "qpu":
+            mismatches.append(f"topology is only allowed on kind='qpu' (got {kind!r})")
+        if self.vram_total_gb is not None and kind != "gpu":
+            mismatches.append(f"vram_total_gb is only allowed on kind='gpu' (got {kind!r})")
+        if kind != "cpu" and (self.cpu_cores is not None or self.memory_total_gb is not None):
+            mismatches.append(f"cpu_cores/memory_total_gb are only allowed on kind='cpu' (got {kind!r})")
+        if kind == "cpu" and (self.cpu_cores is None) != (self.memory_total_gb is None):
+            mismatches.append("cpu metrics require both cpu_cores and memory_total_gb")
+        if mismatches:
+            raise ValueError("; ".join(mismatches))
+        return self
 
 
 class HardwareConfig(_StrictModel):
@@ -169,6 +218,8 @@ class TenantConfig(_StrictModel):
 
     ``enabled`` 默认 true；置 false 后其 API Key 仍可被识别但请求被
     拒绝（403，契约 §5）。计数按自然日重置（内存态原型）。
+    ``role``（v1.2 §5）：``user``（缺省）| ``admin``——管理端点守卫的
+    判定依据（非法值启动拒绝；语义见 tenancy/api 层）。
     """
 
     id: str = Field(min_length=1)
@@ -177,6 +228,7 @@ class TenantConfig(_StrictModel):
     max_concurrent_tasks: int = Field(ge=1)
     max_messages_per_day: int = Field(ge=1)
     enabled: bool = True
+    role: Literal["user", "admin"] = "user"
 
 
 class TenancyConfig(_StrictModel):

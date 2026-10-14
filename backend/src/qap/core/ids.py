@@ -13,10 +13,12 @@ from __future__ import annotations
 import itertools
 import threading
 
-#: 允许的前缀（含运行前缀）。传入其它前缀视为编程错误，立即抛错。
-VALID_PREFIXES = frozenset({"c", "m", "t", "s", "a", "run"})
+#: 允许的前缀（含运行/附件前缀）。传入其它前缀视为编程错误，立即抛错。
+VALID_PREFIXES = frozenset({"c", "m", "t", "s", "a", "run", "att"})
 
 #: 契约 §4 固定的领域 id 前缀（会话/消息/任务/步骤/artifact）。
+#: ``att-``（附件，v1.3）不在不变量 4 的五前缀清单内——附件经
+#: AttachmentMeta 挂在 Message 上而非独立领域对象树。
 DOMAIN_PREFIXES = frozenset({"c", "m", "t", "s", "a"})
 
 

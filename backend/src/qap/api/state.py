@@ -17,9 +17,13 @@ from qap.agents.providers.factory import create_provider
 from qap.agents.runtime import AgentRuntime
 from qap.agents.tools import PlatformTools
 from qap.core.config import AppConfig, LoadedConfig
-from qap.core.errors import NotFoundError
+from qap.core.errors import NotFoundError, SchedulingError
 from qap.core.ids import IdGenerator
 from qap.core.local_store import LOCAL_CONFIG_FILENAME, LocalConfigStore
+from qap.domain.attachments import (
+    TEXT_INJECTION_CHAR_LIMIT,
+    AttachmentStore,
+)
 from qap.domain.store import ConversationStore, MessageStore, TaskStore
 from qap.events.bus import EventBus
 from qap.hardware.allocator import Allocator
@@ -39,6 +43,8 @@ class AppState:
     conversations: ConversationStore
     messages: MessageStore
     tasks: TaskStore
+    #: 附件表（v1.3：内存字节存储；上传/raw/发消息引用三处共用）
+    attachments: AttachmentStore
     tenants: TenantService
     plugins: PluginRegistry
     nodes: NodeRegistry
@@ -139,6 +145,7 @@ def build_app_state(config: AppConfig | LoadedConfig) -> AppState:
     conversations = ConversationStore()
     messages = MessageStore()
     tasks = TaskStore()
+    attachments = AttachmentStore()
     tenants = TenantService(app_config.tenancy)
     plugins = PluginRegistry(app_config.agents, base_dir=base_dir)
     nodes = NodeRegistry(app_config.hardware)
@@ -159,6 +166,43 @@ def build_app_state(config: AppConfig | LoadedConfig) -> AppState:
     providers: dict[str, LLMProvider] = {
         ref: create_provider(entry) for ref, entry in app_config.models.items()
     }
+    def attachment_parts(message) -> list:
+        """带附件的 user 消息 → AttachmentPart 序列（v1.3 §5/§9）。
+
+        text：UTF-8 解码并截断 200k 字符（替换非法字节）；image：base64；
+        file：仅元数据（provider 侧只标注不注入）。附件记录丢失（重启后
+        内存态清空等）时跳过该附件——消息里的 meta 仍保留展示。
+        """
+        import base64 as _base64
+
+        from qap.agents.providers.base import AttachmentPart
+
+        parts = []
+        for meta in message.attachments:
+            record = attachments._items.get(meta.id)  # noqa: SLF001 - 同组装根
+            if record is None or record.conversation_id != message.conversation_id:
+                continue
+            if meta.kind == "text":
+                text = record.data.decode("utf-8", errors="replace")
+                parts.append(
+                    AttachmentPart(
+                        id=meta.id, name=meta.name, mime=meta.mime, kind="text",
+                        text=text[:TEXT_INJECTION_CHAR_LIMIT],
+                    )
+                )
+            elif meta.kind == "image":
+                parts.append(
+                    AttachmentPart(
+                        id=meta.id, name=meta.name, mime=meta.mime, kind="image",
+                        data_base64=_base64.b64encode(record.data).decode("ascii"),
+                    )
+                )
+            else:
+                parts.append(
+                    AttachmentPart(id=meta.id, name=meta.name, mime=meta.mime, kind="file")
+                )
+        return parts
+
     runtime = AgentRuntime(
         plugins,
         # 闭包与 state.providers 共享同一 dict：admin 渠道增删改即时生效
@@ -168,8 +212,57 @@ def build_app_state(config: AppConfig | LoadedConfig) -> AppState:
         default_thinking_for=lambda ref: app_config.models[ref].default_thinking
         if ref in app_config.models
         else "high",
+        attachment_resolver=attachment_parts,
     )
     tools.bind_dispatcher(runtime.run_subagent)  # dispatch_agent 执行器（§8）
+
+    async def execute_agent_step(task, step) -> str:
+        """agent 步的子运行执行器（v1.3：时长=子运行真实总时长，measured）。
+
+        - 目标专家与指令来自步规格 ``workload.{agent_id, instruction}``
+          （缺省 echo + 步名，保证任何 agent 步都有真实子运行）；
+        - **一次一层**：dispatch 子运行内提交的任务（``_submit_depth ≥ 1``）
+          其 agent 步不可再分派 → 该步失败（诚实报错，不静默降级）；
+        - 子运行期间子 Agent 经 submit_task 提交的任务自动挂
+          ``step.subtask_id``（step_context 运行时上下文）；
+        - 子运行产物（emit_artifact）无消息锚点，仅计入运行即弃——
+          agent 步的可观察输出是 detail 与 subtask 链接；
+        - 内存不可得（跨多个 await 的真实子运行，tracemalloc 无法归因）
+          → ``peak_memory_mb`` 保持 null（契约语义）。
+        """
+        from qap.agents.plugins import ORCHESTRATOR_ID
+        from qap.agents.tools import ToolContext
+        from qap.orchestrator.step_context import dispatch_step_scope
+
+        if task._submit_depth >= 1:
+            raise SchedulingError(
+                f"nested dispatch not allowed: task {task.id!r} was submitted "
+                "during a dispatch sub-run (depth=1); its agent steps cannot "
+                "dispatch again"
+            )
+        workload = dict(step.workload or {})
+        agent_id = str(workload.get("agent_id") or "echo")
+        instruction = str(workload.get("instruction") or step.name)
+        parent = ToolContext(
+            conversation_id=task.conversation_id,
+            tenant_id=task.tenant_id,
+            agent_id=ORCHESTRATOR_ID,
+            message_id="m-0",  # 影子锚点：子运行不落库不推 SSE（run_subagent 语义）
+            run_key=f"{task.id}:{step.id}",
+        )
+        with dispatch_step_scope(step):
+            result = await runtime.run_subagent(parent, agent_id, instruction)
+        if "error" in result:
+            raise SchedulingError(
+                f"dispatch_agent {agent_id!r} failed: "
+                f"{result.get('error')}: {result.get('message')}"
+            )
+        reply = str(result.get("reply") or "")
+        return (
+            f"dispatch_agent {agent_id!r} sub-run completed (measured): {reply[:160]}"
+        )
+
+    scheduler.bind_agent_executor(execute_agent_step)
 
     # 插件管理：安装目录相对路径以基底配置目录解析；本地覆盖层同目录
     plugins_dir: Path | None = None
@@ -185,6 +278,7 @@ def build_app_state(config: AppConfig | LoadedConfig) -> AppState:
         conversations=conversations,
         messages=messages,
         tasks=tasks,
+        attachments=attachments,
         tenants=tenants,
         plugins=plugins,
         nodes=nodes,

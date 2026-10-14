@@ -1,12 +1,16 @@
-"""利用率模拟器：周期性驱动各节点 utilization ∈ [0,1]（契约 §3 hardware.simulated）。
+"""利用率与 metrics 模拟器：周期性驱动各节点（契约 §3/§4 v1.2）。
 
-模型（工程选择，非硬件观测）：
+利用率模型（工程选择，非硬件观测）：
 - 目标利用率与负载相关：``target = 0.15 + 0.75 * load_ratio``，
   其中 load_ratio = 活动租约/capacity（空闲 ≈ 0.15，满载 ≈ 0.90）；
 - 实际值向目标一阶惯性逼近并叠加 ±0.05 噪声（模拟测量抖动），
   最后 clamp 到 [0.05, 0.98]——**构造上**保证不变量 3，无需事后修复；
 - 仅当至少一个节点数值发生变化时发布 ``hardware.updated``（契约 §7
-  "利用率变化时推送"），避免无意义的重复帧。
+  "利用率/分配变化时推送"），避免无意义的重复帧。
+
+metrics 漂移（v1.2 §4，simulated 非硬件观测）：QPU 保真度每 tick
+±0.0002 随机游走 clamp (0,1]；CPU/GPU used 值随机游走 clamp [0,total]
+（漂移构造见 hardware/metrics.py，不变量可由 domain/invariants.py 复核）。
 确定性：注入 ``rng``（``random.Random``）即可复现，测试不依赖真实随机。
 """
 
@@ -17,6 +21,7 @@ import random
 
 from qap.domain.models import HardwareNode
 from qap.events.bus import EventBus
+from qap.hardware.metrics import drift_node_metrics
 from qap.hardware.registry import NodeRegistry
 
 #: 空闲基线 / 满载目标 / 噪声幅度 / clamp 上下界（见模块 docstring）
@@ -79,7 +84,12 @@ class UtilizationSimulator:
     # ---------- 单步 ----------
 
     def tick(self) -> bool:
-        """推进一次利用率并按需发布事件；返回是否发布了 hardware.updated。"""
+        """推进一拍（利用率 + metrics 漂移）并按需发布事件；返回是否发布。
+
+        v1.2：metrics 同拍漂移——QPU 保真度 ±0.0002 随机游走 clamp (0,1]，
+        CPU/GPU used 值随机游走 clamp [0,total]（T1/T2 静态规格）；
+        构造性满足 §4 v1.2 不变量（domain.invariants 可复核）。
+        """
         changed = False
         for node_id in self._registry.all_ids():
             node = self._registry.get(node_id)
@@ -87,6 +97,11 @@ class UtilizationSimulator:
             if new_value != node.utilization:
                 self._registry.set_utilization(node_id, new_value)
                 changed = True
+            if node.metrics is not None:
+                drifted = drift_node_metrics(node.kind, node.metrics, self._rng)
+                if drifted != node.metrics:
+                    self._registry.set_metrics(node_id, drifted)
+                    changed = True
         if changed:
             self._events.publish(
                 "hardware.updated",

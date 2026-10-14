@@ -120,8 +120,9 @@ class MockProvider:
     """内置脚本化 Provider；可通过注入 scripts 覆盖默认演示剧本。
 
     ``request_log``：每次 stream 记录 ``{"run_key", "agent_id",
-    "thinking_level"}``（v1.1：mock 忽略思考程度但记录，供测试断言
-    取值优先级），append-only、无清理（原型内存态）。
+    "thinking_level", "attachments"}``（v1.1：mock 忽略思考程度但记录，
+    供测试断言取值优先级；v1.3：附件**仅记录摘要不注入**——契约 §5
+    "mock 仅展示"），append-only、无清理（原型内存态）。
     """
 
     def __init__(self, scripts: dict[str, list[list[tuple]]] | None = None) -> None:
@@ -134,11 +135,18 @@ class MockProvider:
     async def stream(self, request: CompletionRequest) -> AsyncIterator[ProviderEvent]:
         run_key = str(request.metadata.get("run_key", "anonymous"))
         agent_id = str(request.metadata.get("agent_id", ""))
+        # v1.3 附件：汇总本请求所有消息的附件摘要（仅元数据，无内容体）
+        attachment_summaries = [
+            part.summary()
+            for message in request.messages
+            for part in (message.get("attachments") or [])
+        ]
         self.request_log.append(
             {
                 "run_key": run_key,
                 "agent_id": agent_id,
                 "thinking_level": request.thinking_level,
+                "attachments": attachment_summaries,
             }
         )
         if agent_id == "echo":

@@ -58,17 +58,22 @@ class AgentRuntime:
         events: EventBus,
         *,
         default_thinking_for: Callable[[str], str] | None = None,
+        attachment_resolver: Callable[[Message], Sequence] | None = None,
     ) -> None:
         """``default_thinking_for(model_ref)`` 返回渠道默认思考程度（v1.1）。
 
         缺省闭包返回 "high"（契约 §9 优先级末端）；组装根注入
         ``config.models[ref].default_thinking`` 的真实查表。
+        ``attachment_resolver(message)``（v1.3 §5）：把带附件的 user 消息
+        解析为 ``AttachmentPart`` 序列（text 截断 200k / image base64），
+        随中间表示进入 provider；None = 本部署不支持附件注入。
         """
         self._plugins = plugins
         self._provider_for = provider_for
         self._tools = tools
         self._events = events
         self._default_thinking_for = default_thinking_for or (lambda _ref: "high")
+        self._attachment_resolver = attachment_resolver
 
     # ---------- 入口 ----------
 
@@ -195,9 +200,7 @@ class AgentRuntime:
         """
         # 中间表示历史（含本轮用户消息；跳过无文本内容的历史噪音）
         turns: list[dict] = [
-            {"role": message.role, "content": message.content}
-            for message in history
-            if message.content
+            self._turn_for(message) for message in history if message.content
         ]
         text_buffer: list[str] = []
         reasoning_buffer: list[str] = []
@@ -355,3 +358,18 @@ class AgentRuntime:
             for t in plugin.tools
         )
         return specs
+
+    def _turn_for(self, message: Message) -> dict:
+        """历史消息 → provider 中间表示；带附件的 user 消息附加 AttachmentPart
+        序列（v1.3：provider 负责把 text 注入上下文 / image 转 wire 格式；
+        resolver 缺失或无附件时与既有行为完全一致）。"""
+        turn = {"role": message.role, "content": message.content}
+        if (
+            message.role == "user"
+            and message.attachments
+            and self._attachment_resolver is not None
+        ):
+            parts = list(self._attachment_resolver(message))
+            if parts:
+                turn["attachments"] = parts
+        return turn

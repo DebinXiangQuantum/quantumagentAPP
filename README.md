@@ -289,6 +289,117 @@ dispatch_agent、插件安装全生命周期；真实 GLM 冒烟走通全链路�
   正确分配）+ 654 delta / 4 reasoning / 9 task.updated / 6
   hardware.updated。全量 **304 passed**。
 
+**V1（v1.2/v1.3 硬件配置与 metrics，`feat/backend-v3`）**：
+- `qap/core/config.py`：`[[hardware.nodes]]` per-node 可选规格键，与 kind
+  严格绑定（错配/非法值启动 fail-fast）——`topology{rows,cols}` 仅 qpu
+  （`2 ≤ rows*cols ≤ 1024`）、`vram_total_gb` 仅 gpu（>0）、
+  `cpu_cores`+`memory_total_gb` 仅 cpu（成对、>0）、`status ∈
+  {online,offline}`（缺省 online）；`TenantConfig` 增 `role ∈ {user,admin}`
+  （缺省 user；入库 config.toml 的 role 键得以加载，守卫语义在 V3）。
+- 新 `qap/hardware/metrics.py`：按 kind 生成 `HardwareNode.metrics` 初值
+  ——QPU rows×cols 网格拓扑（qubit id=row*cols+col 与 (row,col) 一一对应；
+  couplers=全部右/下相邻对；T1 20–80µs、T2 10–60µs 且构造性满足
+  `t2 ≤ 2*t1`、readout 0.95–0.995、1Q 0.995–0.9999、2Q 0.98–0.995，
+  **simulated** 数据非硬件观测）、CPU 规格+初始 usage/memory_used、GPU
+  vram 总量+初始 used（used ≤ total 构造性成立）；随机源注入
+  `random.Random`（种子可复现）；规格缺失 → metrics=None（前端降级）。
+- `NodeRegistry(config, rng=)`：透传 config `status`（offline 节点自启动
+  即被分配器/调度器跳过）与 metrics 初值；`set_metrics` 供模拟器漂移。
+- `HardwareNode` 序列化增 `metrics`（dict|null，契约 §4 v1.2）。
+- 测试：`tests/test_hardware_metrics.py` 25 用例（kind 键错配/拓扑规模界/
+  非法 status 等 12 类 fail-fast；拓扑 id 双射与相邻对全集；模拟区间与
+  t2≤2t1；种子复现；config offline 节点不被租约；snapshot 含 metrics），
+  全量 **329 passed**。
+
+**V2（v1.3 步骤实测 profile，`feat/backend-v3`）**：
+- `Step` 增 `duration_ms`/`peak_memory_mb`/`subtask_id`（序列化缺省
+  null；peak 赋值期校验 `>0 或 null`）；`StepSpec.workload` 执行参数
+  （quantum `{"qubits":n}` 缺省 8 上界 16、classical `{"bytes":n}` 缺省
+  256KB 上界 8MB、agent `{"agent_id","instruction"}`）——只进运行时，
+  **不进序列化**（契约 §4 Step 字段纯净）。
+- `orchestrator/runners.py` 重写为**真实计算负载**（measured，非编造、
+  亦非硬件观测）：quantum=纯 Python 态矢量模拟（`2^n` 复幅度列表 + 逐层
+  Hadamard/CNOT 迭代 + 范数守恒校验）、classical=JSON→zlib 压缩→解压→
+  反序列化回环（记录数守恒）；tracemalloc 峰值在**纯同步块**内测量
+  （asyncio 单线程下并发步互不污染；外部已开启 tracing 时退化为
+  current 差；<0.05MB 在 1 位小数精度下不可表示 → null）。
+- 调度器 `_execute`：`duration_ms` = perf_counter 墙钟差（1 位小数），
+  覆盖执行全程——`started_at`/`finished_at` 升级毫秒精度 ISO（
+  `core/clock.utcnow_iso_ms`；不变量 5 的 ±50ms 容差需要，前端 Date
+  解析兼容）；超时失败步保留真实墙钟；retry 前清空上一轮实测。
+- dispatch_agent 步：`scheduler.bind_agent_executor`（组装根注入
+  `execute_agent_step`）——以目标专家的真实子运行执行（时长=子运行真实
+  总时长、内存不可得 → null）；`orchestrator/step_context.py` ContextVar
+  scope：执行期间子 Agent 经 submit_task 提交的任务自动挂 `subtask_id`
+  （一次一层：`Task._submit_depth ≥ 1` 的 agent 步直接失败，嵌套不误挂；
+  会话主运行提交的任务不挂接）。
+- 测试：`tests/test_step_profile.py` 14 用例（序列化缺省/负值拒绝/
+  workload 不序列化；quantum/classical 实测 profile 与 2^14 内存>0；
+  ±50ms 时间戳一致性；未启动步 null；超时步保留墙钟；dispatch 步
+  subtask 挂接/嵌套不误挂/会话级不挂接/未知 agent 失败），全量
+  **343 passed**。
+
+**V3（v1.2 租户角色与管理守卫，`feat/backend-v3`）**：
+- `TenantConfig.role ∈ {user,admin}`（缺省 user，非法值启动拒绝，V1 已带
+  最小配置支持）；`/tenants/me` 响应增 `role`；`TenantContext.role` 透传。
+- `api/deps.require_admin`：全部 `/api/v1/admin/*` 端点（models CRUD +
+  plugins 安装/启停/卸载）挂载——先鉴权（401/tenant_disabled 语义不变）
+  再判角色，`role != admin` → 403 `{"error":{"code":"forbidden"}}`
+  （新增 `ForbiddenError`，与租户禁用的 403 语义分开）；守卫先于端点
+  自身校验（user 的畸形 payload 也是 403）。前端隐藏管理分区只是 UX，
+  强制力在后端。
+- 既有 admin 测试夹具的租户补 `role="admin"`（v1.2 契约演进：这些测试
+  验证的就是管理功能本身）。
+- 测试：`tests/test_admin_guard.py` 23 用例（role 缺省/非法/合法；/me 含
+  role；7 端点 × user 403 参数化；守卫优先于 payload 校验；未知 key 401；
+  禁用 admin → tenant_disabled；7 端点 × admin 过守卫；demo 403/admin
+  200 CRUD 端到端），全量 **366 passed**。
+
+**V4（v1.3 附件，`feat/backend-v3`）**：
+- 新 `qap/domain/attachments.py`：kind 判定（`image/*`→image；`text/*` 或
+  {.md,.txt,.py,.json,.toml,.csv,.yaml,.ts,.js}→text；其余 file）、
+  上传校验（空文件/超 8MB→422）、`AttachmentStore`（内存字节存储，
+  跨租户 404 语义；`get_for_conversation` 供发消息校验→422）。
+- 新 `qap/api/routers/attachments.py`：`POST /conversations/{cid}/attachments`
+  （multipart file → 201 `AttachmentMeta{id,name,mime,size,kind}`，id 前缀
+  `att-`；非 multipart 由 FastAPI 表单解析 422）、`GET /attachments/{id}/raw`
+  （原字节 + 存储 mime + 同租户隔离）。依赖新增 `python-multipart`。
+- `Message.attachments: AttachmentMeta[]`（缺省 []）；`POST …/messages`
+  增 `attachment_ids[]`（未知/跨会话/跨租户 → 422，元数据落 user 消息）。
+- Provider 注入（§9 v1.3）：`AttachmentPart`（text 已截断 200k / image
+  base64 / file 仅元数据）经 Runtime resolver 进入中间表示；
+  openai 适配器——text 追加进正文（字符串 content 保持兼容），有图时
+  content 升级 parts（`text` + `image_url` data URL）；anthropic——
+  text/image 各成 content block（`source.type=base64`）；两适配器各
+  **强制 200k 截断**；文本模型拒图的服务端错误经 ProviderErrorEvent →
+  SSE `error` 透传（既有路径）；mock 仅记录摘要（`request_log[].attachments`）。
+- 测试：`tests/test_attachments.py` 25 用例（上传 201 与 kind 判定 5 参数
+  化/空与超限与非 multipart 422/未知会话 404/raw 回环与跨租户 404/
+  attachments 缺省/attachment_ids 正常+未知+跨会话/openai text+image_url
+  data URL/anthropic 双块/200k 截断/file 不注入/mock 仅记录/SSE error
+  透传端到端），全量 **391 passed**。
+
+**V5（v1.2 模拟器漂移与对外校验函数，`feat/backend-v3`）**：
+- `hardware/metrics.drift_node_metrics`：QPU 保真度每 tick ±0.0002 均匀
+  随机游走 → clamp (0,1]（4 位小数）；CPU `cpu_usage`（±0.04 clamp
+  [0,1]）/`memory_used_gb`（±2GB clamp [0,total]）与 GPU `vram_used_gb`
+  （±1GB clamp [0,total]）随机游走；T1/T2 静态规格；返回新 dict，
+  构造性满足全部 v1.2 不变量。模拟器 `tick()` 同拍驱动利用率+metrics
+  漂移，任一变化即发布 `hardware.updated`（含 metrics 全量节点）；
+  `GET /hardware` 快照同源。
+- 新 `qap/domain/invariants.py`（对外校验函数）：`validate_node_metrics`
+  覆盖 §4 v1.2 全部不变量（fidelity ∈ (0,1]、t2 ≤ 2*t1 且 t1/t2>0、
+  used ≤ total（内存/显存）、cpu_usage ∈ [0,1]、coupler 端点界内且网格
+  相邻且不重复、qubit id 与 (row,col) 一一对应、qubits_count ==
+  rows*cols == len(qubits)）；`validate_step_profiles` 覆盖不变量 5
+  （duration ≥ 0、peak > 0 或 null、finished 步起止时间戳齐备且
+  |duration−span| ≤ 50ms；级联取消步豁免）。违例抛 ValidationFailed
+  并指明字段。
+- 测试：`tests/test_hardware_drift.py` 25 用例（漂移 ≤0.0002、T1/T2 静止、
+  25 拍不变量保持、边界 clamp、tick 事件含 metrics、校验函数 12 类负
+  样本 + 不变量 5 正/负样本；test_step_profile 增真实任务整包复核），
+  全量 **416 passed**。
+
 ## 前端 (Frontend)
 
 *本节由 `feat/frontend` 分支的开发切片维护更新：组件清单、页面说明、测试结果。*

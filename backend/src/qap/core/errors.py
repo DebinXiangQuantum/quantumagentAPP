@@ -58,6 +58,16 @@ class ConflictError(QapError):
         super().__init__("conflict", message)
 
 
+class ForbiddenError(QapError):
+    """已认证但权限不足（403，v1.2 §5）：非 admin 访问 /api/v1/admin/*。
+
+    与 ``AuthError(disabled=True)``（租户被禁用）区分：本错误只关乎角色。
+    """
+
+    def __init__(self, message: str) -> None:
+        super().__init__("forbidden", message)
+
+
 class ProviderError(QapError):
     """LLM Provider 侧故障（非 200、流中断、超时、密钥缺失等）。"""
 

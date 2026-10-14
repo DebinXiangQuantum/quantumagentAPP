@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator
 
 from qap.domain.artifacts import validate_artifact_payload
 
@@ -88,6 +88,9 @@ class Message(BaseModel):
 
     ``reasoning``（v1.1）：assistant 消息的思考过程全文（ ThoughtDelta
     增量在 Runtime 侧累加），可为空串；user 消息恒为空串。
+    ``attachments``（v1.3）：随消息发送的附件元数据（缺省 []；POST
+    messages 的 ``attachment_ids`` 校验后落到 user 消息上）——字节本体
+    在 AttachmentStore，Provider 注入由 Runtime 的 resolver 完成。
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -99,14 +102,25 @@ class Message(BaseModel):
     reasoning: str = ""
     agent_id: str = Field(min_length=1)
     artifacts: list[Artifact] = Field(default_factory=list)
+    attachments: list[AttachmentMeta] = Field(default_factory=list)
     created_at: str
 
 
 class Step(BaseModel):
-    """任务中的一个步骤（契约 §4 Step）。
+    """任务中的一个步骤（契约 §4 Step，v1.3 增实测 profile 字段）。
 
     ``node_id`` 未调度时为 null；``depends_on`` 引用同一 Task 内其他 Step id
     （DAG 完整性校验见 orchestrator/dag.py）。
+
+    v1.3 实测 profile（**measured**：真实执行的真实测量值，非编造、
+    亦非硬件观测；未完成/不可得为 null）：
+    - ``duration_ms``：perf_counter 墙钟差（毫秒，1 位小数，≥ 0）；
+    - ``peak_memory_mb``：tracemalloc 峰值（MB，1 位小数，> 0 或 null；
+      dispatch_agent 步与低于 0.05MB 精度下限的测量为 null）；
+    - ``subtask_id``：该步执行期间子 Agent 经 submit_task 提交的任务 id
+      （运行时上下文自动挂接，一次一层；非手工指定）。
+    ``workload``：runner 执行参数（如 quantum 步的 qubit 数），仅运行时
+    使用，**不进入序列化**（契约 §4 Step 字段保持纯净）。
     """
 
     # 运行时会被调度器逐字段改写（status/node_id/...），开启赋值期校验
@@ -120,8 +134,20 @@ class Step(BaseModel):
     depends_on: list[str] = Field(default_factory=list)
     started_at: str | None = None
     finished_at: str | None = None
+    duration_ms: float | None = Field(default=None, ge=0)
+    peak_memory_mb: float | None = Field(default=None, gt=0)
+    subtask_id: str | None = None
+    workload: dict[str, Any] = Field(default_factory=dict, exclude=True)
     detail: str = ""
     error: str | None = None
+
+    @field_validator("peak_memory_mb")
+    @classmethod
+    def _peak_positive_or_none(cls, value: float | None) -> float | None:
+        """不变量 5：peak_memory_mb > 0 或 null（0.0 视为不可表示 → 拒绝）。"""
+        if value is not None and value <= 0:
+            raise ValueError(f"peak_memory_mb must be > 0 or null, got {value}")
+        return value
 
 
 class Task(BaseModel):
@@ -136,6 +162,10 @@ class Task(BaseModel):
     status: TaskStatus = "pending"
     steps: list[Step] = Field(default_factory=list)
     created_at: str
+
+    #: 该任务被提交时所处的工作深度（0=会话主运行；≥1=dispatch 子运行内，
+    #: 其 agent 步不可再分派——"一次一层"）。运行时内部字段，不序列化。
+    _submit_depth: int = PrivateAttr(default=0)
 
 
 class Allocation(BaseModel):
@@ -154,10 +184,14 @@ class Allocation(BaseModel):
 
 
 class HardwareNode(BaseModel):
-    """硬件节点（契约 §4 HardwareNode）：容量/利用率/活动租约。
+    """硬件节点（契约 §4 HardwareNode）：容量/利用率/活动租约 + metrics。
 
     利用率/租约由模拟器与分配器在运行时逐字段改写，开启赋值期校验，
     保证不变量 3 在**每次变更**时都成立（而非仅在构造时）。
+    ``metrics``（v1.2）按 kind 不同：QPU 拓扑+保真度、CPU 规格+用量、
+    GPU 显存——内容为 **simulated** 数据（模拟器生成/漂移，非硬件观测），
+    可为 None（规格缺失/旧数据，前端降级），内部结构校验见
+    ``qap/hardware/metrics.py`` 的 ``validate_node_metrics``。
     """
 
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
@@ -169,9 +203,26 @@ class HardwareNode(BaseModel):
     status: NodeStatus = "online"
     utilization: float = 0.0
     capacity: int = Field(ge=1)
+    metrics: dict[str, Any] | None = None
     allocations: list[Allocation] = Field(default_factory=list)
 
     @field_validator("utilization")
     @classmethod
     def _validate_utilization(cls, value: float) -> float:
         return _check_finite_unit_interval(value)
+
+
+class AttachmentMeta(BaseModel):
+    """附件元数据（契约 §5 v1.3）：上传响应与 Message.attachments 元素。
+
+    ``kind`` 判定：mime ``image/*`` → image；``text/*`` 或文本扩展名
+    {.md,.txt,.py,.json,.toml,.csv,.yaml,.ts,.js} → text；其余 file。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(pattern=r"^att-\d+$")
+    name: str = Field(min_length=1)
+    mime: str = Field(min_length=1)
+    size: int = Field(ge=0)
+    kind: Literal["image", "text", "file"]

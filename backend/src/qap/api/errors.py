@@ -1,7 +1,8 @@
 """QapError → HTTP 状态码映射与 JSON 错误体（契约 §5 错误语义）。
 
 映射表（错误码 → 状态码）：
-- ``unauthorized`` → 401；``tenant_disabled`` → 403
+- ``unauthorized`` → 401；``tenant_disabled`` → 403；``forbidden`` → 403
+  （v1.2：非 admin 访问 /admin/*，与租户禁用语义分开）
 - ``not_found`` → 404（含跨租户访问：与不存在同语义）
 - ``quota_exceeded`` → 429 + ``Retry-After`` 头（秒）
 - ``validation_failed`` → 422
@@ -20,6 +21,7 @@ from qap.core.errors import QapError
 _STATUS_BY_CODE = {
     "unauthorized": 401,
     "tenant_disabled": 403,
+    "forbidden": 403,
     "not_found": 404,
     "conflict": 409,
     "quota_exceeded": 429,

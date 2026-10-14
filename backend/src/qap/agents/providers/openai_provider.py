@@ -36,6 +36,7 @@ from qap.agents.providers.base import (
 )
 from qap.agents.providers.sse import iter_sse_events
 from qap.core.config import ModelConfig, ThinkingLevel
+from qap.domain.attachments import TEXT_INJECTION_CHAR_LIMIT
 
 #: 流式读超时下限（秒）：外层总超时由 ModelConfig.timeout_seconds 控制，
 #: 但读间隙不应小于该值，避免长思考模型被误判断流。
@@ -89,7 +90,8 @@ class OpenAIProvider:
     # ---------- 请求构造 ----------
 
     def _build_payload(self, request: CompletionRequest) -> dict[str, Any]:
-        """中间表示 → openai 请求体（system 消息前置，tools 转 function 声明）。"""
+        """中间表示 → openai 请求体（system 前置，tools 转 function 声明，
+        附件注入见 _translate_user_message）。"""
         messages: list[dict[str, Any]] = []
         if request.system:
             messages.append({"role": "system", "content": request.system})
@@ -122,7 +124,8 @@ class OpenAIProvider:
                     }
                 )
             else:
-                messages.append({"role": role, "content": message.get("content", "")})
+                translated = self._translate_user_message(message)
+                messages.append(translated)
         payload: dict[str, Any] = {
             "model": self._config.model,
             "messages": messages,
@@ -147,6 +150,47 @@ class OpenAIProvider:
         if request.thinking_level is not None:
             payload.update(thinking_params_for(request.thinking_level))
         return payload
+
+    def _translate_user_message(self, message: dict[str, Any]) -> dict[str, Any]:
+        """普通消息 → openai 形态；带附件的 user 消息按 §5 v1.3 注入。
+
+        - text 附件：内容（已由 resolver 截断 200k）以标注块追加进正文
+          （无图片时保持字符串 content，兼容纯文本模型）；
+        - image 附件：content 升级为 parts 列表——``text`` part（含已追加
+          的文本注入）+ ``image_url`` part（data URL）。**需视觉模型**：
+          文本模型的服务端错误（如 4xx）经 ProviderErrorEvent → SSE error
+          透传（既有错误路径，无需特判）；
+        - file 附件：仅文件名标注，不注入内容。
+        """
+        parts = list(message.get("attachments") or [])
+        if not parts:
+            return {"role": message["role"], "content": message.get("content", "")}
+        text_sections: list[str] = [message.get("content", "")]
+        image_parts: list[dict[str, Any]] = []
+        for part in parts:
+            if part.kind == "text" and part.text is not None:
+                # 契约 §5 v1.3：text 注入截断 200k（适配器强制；resolver
+                # 已截断一次，此处为防御性上界）
+                injected = part.text[:TEXT_INJECTION_CHAR_LIMIT]
+                text_sections.append(
+                    f"\n\n[附件 {part.name} ({part.mime})]\n{injected}"
+                )
+            elif part.kind == "image" and part.data_base64 is not None:
+                image_parts.append(
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:{part.mime};base64,{part.data_base64}"
+                        },
+                    }
+                )
+            # file 类：契约未定义内容注入 → 不注入（仅消息元数据可见）
+        combined_text = "".join(text_sections)
+        if not image_parts:
+            return {"role": message["role"], "content": combined_text}
+        content: list[dict[str, Any]] = [{"type": "text", "text": combined_text}]
+        content.extend(image_parts)
+        return {"role": message["role"], "content": content}
 
     # ---------- 流式主流程 ----------
 

@@ -5,6 +5,7 @@ from fastapi import APIRouter
 from qap.api.routers import (
     admin,
     agents,
+    attachments,
     conversations,
     events,
     hardware,
@@ -19,6 +20,7 @@ api_router.include_router(health.router)
 api_router.include_router(agents.router)
 api_router.include_router(tenants.router)
 api_router.include_router(conversations.router)
+api_router.include_router(attachments.router)  # v1.3：上传 + raw（会话路径与独立路径）
 api_router.include_router(tasks.router)
 api_router.include_router(hardware.router)
 api_router.include_router(events.router)

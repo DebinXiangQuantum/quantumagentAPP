@@ -50,6 +50,8 @@ class PostMessageRequest(BaseModel):
     content: str = Field(min_length=1)
     model_ref: str | None = Field(default=None, min_length=1)
     thinking_level: Literal["off", "low", "high", "max"] | None = None
+    #: v1.3：随消息引用的附件（须属于本会话与本租户；未知/跨会话 → 422）
+    attachment_ids: list[str] = Field(default_factory=list)
 
 
 @router.get("/conversations")
@@ -109,12 +111,20 @@ async def post_message(
             f"unknown model_ref {payload.model_ref!r}; "
             f"available: {sorted(state.config.models)}"
         )
+    # v1.3：附件引用校验（未知/跨会话/跨租户 → 422），元数据落到 user 消息
+    attachment_records = [
+        state.attachments.get_for_conversation(
+            attachment_id, conversation.id, tenant.tenant_id
+        )
+        for attachment_id in payload.attachment_ids
+    ]
     state.tenants.check_message_quota(tenant.tenant_id)
     state.tenants.record_message(tenant.tenant_id)
 
     user_message = state.new_message(
         conversation.id, "user", payload.content, conversation.agent_id
     )
+    user_message.attachments = [record.meta() for record in attachment_records]
     state.messages.add(user_message)
     # 预创建空 assistant 消息：SSE 增量归属（契约 §5 message_id 语义）
     assistant = state.new_message(conversation.id, "assistant", "", conversation.agent_id)
