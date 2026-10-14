@@ -19,18 +19,7 @@ cors_origins = ["http://localhost:5173", "http://127.0.0.1:5173"]
 # 模型提供方：支持三种 provider wire format
 #   provider = "openai"     → OpenAI Chat Completions 兼容格式（含各类中转/本地 vLLM）
 #   provider = "anthropic"  → Anthropic Messages API 格式
-#   provider = "mock"       → 内置脚本化 Mock（测试与演示用，不访问网络）
 # -----------------------------------------------------------------------------
-
-[models.default]
-provider = "mock"                       # 原型默认：不消耗算力
-model = "scripted-demo"
-# 接真实 OpenAI 格式时的示例（取消注释并调整）：
-# provider = "openai"
-# model = "gpt-4o-mini"
-# base_url = "https://api.openai.com/v1"
-# api_key_env = "OPENAI_API_KEY"
-# timeout_seconds = 120
 
 [models.claude]
 provider = "anthropic"
@@ -81,7 +70,7 @@ default_thinking = "off"
 [agents]
 # 未显式绑定模型时使用的模型引用（指向 [models.<key>]）。
 # 本机真实运行 GLM：在 config.local.toml（gitignored）覆盖为 "glm-5.3-flash"。
-default_model_ref = "default"
+default_model_ref = "glm-5.3-flash"
 # 插件安装目标目录（运行时安装内容，gitignored；管理平台"插件管理"写入此处）
 plugins_dir = "plugins"
 
