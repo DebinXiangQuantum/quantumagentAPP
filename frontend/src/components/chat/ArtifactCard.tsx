@@ -5,9 +5,12 @@
  *  - 类型徽标（线路/计数/波形；未知类型显示原始 type 字符串）；
  *  - 展开/收起正文（默认收起）；
  *  - 按 type 分发渲染器（renderArtifactBody）；未知/畸形一律降级为
- *    可展开的原始 JSON 视图，**任何输入不崩溃**。
- * Props 契约：{ artifact: Artifact }——允许畸形输入（非对象/缺字段），
- *  组件内部防御式归一化。
+ *    可展开的原始 JSON 视图，**任何输入不崩溃**；
+ *  - v1.4 streaming 态：artifact.created 即时插卡渲染骨架/半透明
+ *    （`artifact-card--streaming` + aria-busy；message.completed 后由父级
+ *    撤销该态转为正常卡）。
+ * Props 契约：{ artifact: Artifact, streaming?: boolean }——允许畸形输入
+ *  （非对象/缺字段），组件内部防御式归一化。
  * 交互行为：头部整行按钮切换展开；focus-visible ring 全局生效。
  */
 import { useState } from 'react';
@@ -51,16 +54,28 @@ function safeJson(value: unknown): string {
   }
 }
 
-export function ArtifactCard(props: { artifact: Artifact }): JSX.Element {
+export function ArtifactCard(props: {
+  artifact: Artifact;
+  /** v1.4：流式插入态（骨架/半透明；completed 后转正常卡） */
+  streaming?: boolean;
+}): JSX.Element {
   const t = useTranslate();
   const [expanded, setExpanded] = useState(false);
   const a = normalizeArtifact(props.artifact);
   const labelKey = ARTIFACT_TYPE_KEYS[a.type];
   const label = labelKey ? t(labelKey) : a.type;
+  const streaming = props.streaming === true;
+  const rootCls = streaming ? 'artifact-card card artifact-card--streaming' : 'artifact-card card';
+  const busy: { 'aria-busy'?: boolean } = streaming ? { 'aria-busy': true } : {};
 
   if (a.broken) {
     return (
-      <div className="artifact-card card" data-artifact-type="broken">
+      <div
+        className={rootCls}
+        data-artifact-type="broken"
+        data-testid="artifact-card"
+        {...busy}
+      >
         <div className="artifact-card__header">
           <span className="artifact-card__badge mono artifact-card__badge--unknown">
             {t('artifact.broken')}
@@ -74,7 +89,7 @@ export function ArtifactCard(props: { artifact: Artifact }): JSX.Element {
   }
 
   return (
-    <div className="artifact-card card" data-artifact-type={a.type}>
+    <div className={rootCls} data-artifact-type={a.type} data-testid="artifact-card" {...busy}>
       <button
         type="button"
         className="artifact-card__header"

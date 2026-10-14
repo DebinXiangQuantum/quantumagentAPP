@@ -54,6 +54,12 @@ export function MessageInput(props: {
 
   const canSend = !sending && (value.trim().length > 0 || items.length > 0);
 
+  // v1.4：当前选中渠道（演示徽标判定 provider === 'mock'）
+  const currentChannel =
+    currentModelRef !== null
+      ? modelChannels.find((c) => c.ref === currentModelRef) ?? null
+      : null;
+
   const submit = (): void => {
     if (!canSend) return;
     const attachments: AttachmentMeta[] = items.map(({ localUrl: _drop, ...meta }) => meta);
@@ -209,6 +215,16 @@ export function MessageInput(props: {
             </option>
           ))}
         </select>
+        {/* v1.4：mock 渠道防误用——模型名旁「演示」徽标（warning 小标签） */}
+        {currentChannel?.provider === 'mock' ? (
+          <span
+            className="composer-demo-badge composer-demo-badge--warning mono"
+            data-testid="composer-demo-badge"
+            title={t('composer.demoTitle')}
+          >
+            {t('composer.demo')}
+          </span>
+        ) : null}
 
         <label className="message-input__label text-secondary" htmlFor="composer-thinking">
           {t('composer.thinking')}

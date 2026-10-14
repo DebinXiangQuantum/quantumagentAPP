@@ -192,3 +192,39 @@ describe('ChatPanel 专家工作区（v1.4）', () => {
     expect(ws).toHaveTextContent('calibration');
   });
 });
+
+/** v1.4：artifact.created 流式临时卡（骨架态）在流式气泡内即时渲染。 */
+describe('ChatPanel 流式 artifact 插卡（v1.4）', () => {
+  it('streaming.artifacts 非空 → 流式气泡渲染骨架卡（artifact-card--streaming）', () => {
+    useAppStore.setState({
+      activeConversationId: 'c-1',
+      conversations: [
+        {
+          id: 'c-1',
+          title: 'T',
+          agent_id: 'orchestrator',
+          tenant_id: 'demo',
+          created_at: '2026-10-14T09:00:00Z',
+        },
+      ],
+      messagesByCid: { 'c-1': [] },
+      streamingByCid: {
+        'c-1': {
+          messageId: 'm-9',
+          text: '正在合成线路',
+          artifacts: [
+            { id: 'a-90', type: 'circuit', title: 'Ansatz（生成中）', payload: null },
+          ],
+        },
+      },
+      subagentActivityByMessage: {},
+      loadedCids: { 'c-1': true },
+    });
+    render(<ChatPanel />);
+    const card = screen.getByTestId('artifact-card');
+    expect(card).toHaveClass('artifact-card--streaming');
+    expect(card).toHaveTextContent('Ansatz（生成中）');
+    // 流式气泡与正文共存
+    expect(screen.getByText('正在合成线路')).toBeInTheDocument();
+  });
+});

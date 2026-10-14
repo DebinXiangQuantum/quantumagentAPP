@@ -18,6 +18,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useAppStore } from '../../store/appStore';
 import type { Message } from '../../types/domain';
 import { MessageBubble } from './MessageBubble';
+import { ArtifactCard } from './ArtifactCard';
 import { MessageInput } from './MessageInput';
 import { StreamingCursor } from './StreamingCursor';
 import { ReasoningBlock } from './ReasoningBlock';
@@ -167,6 +168,17 @@ export function ChatPanel(): JSX.Element {
                       )}
                       <StreamingCursor />
                     </div>
+                    {(streaming.artifacts ?? []).length > 0 ? (
+                      <div className="message__artifacts">
+                        {(streaming.artifacts ?? []).map((artifact, i) => (
+                          <ArtifactCard
+                            key={typeof artifact?.id === 'string' ? artifact.id : `stream-artifact-${i}`}
+                            artifact={artifact}
+                            streaming
+                          />
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               ) : null}

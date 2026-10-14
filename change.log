@@ -5,6 +5,32 @@ Validation（本切片测试结论）+ Known defects（已知缺陷，无则写�
 scope 与流程见 docs/DEVELOPMENT.md §2。
 
 
+## 2026-10-14 `frontend: v4 W3——artifact 流式插卡 + 演示徽标 + 排队徽标`
+
+### Added
+- **artifact 流式插卡**：`ArtifactCard` 新增 `streaming?` prop——
+  `artifact.created` 到达即在消息/流式消息 artifacts 尾部插卡（半透明 +
+  虚线边 + 徽标 shimmer 骨架态、aria-busy、可展开查看载荷），
+  `message.completed` 后转正常卡（store 层全量覆盖去重见 W1）；
+  ChatPanel 流式气泡渲染临时 artifacts。
+- **composer 演示徽标（防误用）**：所选渠道 `provider === 'mock'` 时模型
+  选择器旁显示「演示」warning 小标签，title=「演示脚本渠道，非真实推理」；
+  真实渠道（openai/anthropic）与渠道池加载中不显示。
+- **DagView 排队徽标与云端字段**：`step.queue_position` 非空 → 节点头部
+  「排队 #n」warning 呼吸徽标（title 注明 logicalcloud 实时轮询）；
+  Step Drawer 补 `cloud_job_id` 行、circuit 摘要行（「N 比特 · M 门」）与
+  排队位置行（缺省字段不渲染空行）。
+- i18n：`composer.demo*`/`dag.queue.*`/`dag.detail.cloudJob|circuit|
+  circuitSummary|queue` 三语同步。
+
+### Validation
+- `npm test` 210 passed（+8：ArtifactCard streaming 2、composer 演示徽标 2、
+  DagView 排队/云端 3、ChatPanel 流式插卡 1）；`npm run build` 零错误。
+
+### Known defects
+- 无。
+
+
 ## 2026-10-14 `frontend: v4 W2——专家工作区渐进块（agent.activity 实时外显）`
 
 ### Added

@@ -424,6 +424,10 @@ dispatch_completed 收束），`artifact.created` 即时插卡（未 completed �
 「🔧 专家 <id> 工作区」渐进块——运行中展开（专家名+呼吸徽标+流式正文+
 「→ 调用工具」行），完成自动折叠为「专家已完成 · 输出 N 字 · 工具 M 次」
 摘要行，可展开回看；流式气泡与已完成气泡均渲染。
+③ **artifact 流式插卡 + 演示/排队徽标（W3）**：artifact.created 即时插卡
+（半透明骨架态 → completed 转正常）；composer 所选 mock 渠道显示「演示」
+warning 徽标（title 防误用提示）；DagView 节点 queue_position 非空显示
+「排队 #n」warning 呼吸徽标，Step Drawer 补 cloud_job_id/circuit 摘要。
 
 **v3 前端（2026-10-13，feat/frontend-v3，契约 v1.2/v1.3）**：六片 TDD 提交——
 ① **类型与硬件纯函数 + 自动建会话（W1）**：`HardwareNode.metrics` 三形状可选

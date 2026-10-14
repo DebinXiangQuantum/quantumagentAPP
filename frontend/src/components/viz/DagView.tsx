@@ -255,6 +255,16 @@ export function DagView(props: {
             >
               <span className="dag-node__head">
                 <span className="dag-node__name clamp-2">{step.name}</span>
+                {/* v1.4：云端排队位置徽标（warning 呼吸；排队期间经 task.updated 更新） */}
+                {typeof step.queue_position === 'number' && Number.isFinite(step.queue_position) ? (
+                  <span
+                    className="dag-node__queue mono"
+                    data-testid={`dag-queue-${step.id}`}
+                    title={t('dag.queue.title')}
+                  >
+                    {t('dag.queue.badge', { n: step.queue_position })}
+                  </span>
+                ) : null}
                 <StatusBadge status={step.status} />
               </span>
               <span className="dag-node__meta mono truncate">
@@ -394,6 +404,33 @@ export function DagView(props: {
               <dt>{t('dag.detail.memory')}</dt>
               <dd className="mono">{formatMb(selected.peak_memory_mb ?? null)}</dd>
             </div>
+            {typeof selected.cloud_job_id === 'string' && selected.cloud_job_id.length > 0 ? (
+              <div className="detail-list__row">
+                <dt>{t('dag.detail.cloudJob')}</dt>
+                <dd className="mono" data-testid="dag-detail-cloud-job">
+                  {selected.cloud_job_id}
+                </dd>
+              </div>
+            ) : null}
+            {selected.circuit && typeof selected.circuit === 'object' ? (
+              <div className="detail-list__row">
+                <dt>{t('dag.detail.circuit')}</dt>
+                <dd className="mono" data-testid="dag-detail-circuit">
+                  {t('dag.detail.circuitSummary', {
+                    qubits: selected.circuit.qubits,
+                    gates: Array.isArray(selected.circuit.operations)
+                      ? selected.circuit.operations.length
+                      : 0,
+                  })}
+                </dd>
+              </div>
+            ) : null}
+            {typeof selected.queue_position === 'number' && Number.isFinite(selected.queue_position) ? (
+              <div className="detail-list__row">
+                <dt>{t('dag.detail.queue')}</dt>
+                <dd className="mono">#{selected.queue_position}</dd>
+              </div>
+            ) : null}
             <div className="detail-list__row">
               <dt>{t('dag.detail.detail')}</dt>
               <dd>{selected.detail || t('dag.detail.none')}</dd>
