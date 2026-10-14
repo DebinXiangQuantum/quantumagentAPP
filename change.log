@@ -5,6 +5,52 @@ Validation（本切片测试结论）+ Known defects（已知缺陷，无则写�
 scope 与流程见 docs/DEVELOPMENT.md §2。
 
 
+## 2026-10-14 `backend: V2（v4 轮）——硬件注册表 provider 模式（实拉真机 + fail-fast + 云节点诚实拓扑）`
+
+### Added
+- `core/config.py` `HardwareConfig` 新增 v1.4 键：`provider`
+  （`simulated` 缺省 | `logicalcloud`，未知值启动拒绝）、`lqcloud_base_url`
+  （缺省 https://cloud.logicalqubit.com）、`lqcloud_api_key_env`（缺省
+  LQCLOUD_API_KEY）；空白串拒绝；simulated 模式空节点表拒绝（切
+  logicalcloud 才允许空表——QPU 全部实拉）。
+- `hardware/registry.py`：
+  - `build_cloud_nodes(backends)`：适配器规范 dict → QPU 节点
+    （id=`lq-<name>`、model=chip_architecture、active→online/其余→offline、
+    capacity=1；metrics：`source: "cloud-observed"`，topology.layout="cloud"，
+    rows/cols=坐标极值+1，qubit id=坐标列表下标含 x/y 原坐标，**couplers
+    空 + t1/t2/readout/sq 全 null**——平台未提供的数据诚实为空，绝不伪造）；
+  - `build_node_registry(config, *, adapter=None, rng=None)`：组装根入口。
+    logicalcloud 模式：adapter 缺省时读密钥环境变量构造真实
+    `LQCloudProvider(api_key, url, interactive=False, store=False)`；
+    **密钥缺失/依赖缺失/云端拉取失败/空后端列表 → ConfigError fail-fast
+    带原因**；手写 qpu 节点忽略、gpu/cpu 保留、云拉 QPU 排前；
+  - `NodeRegistry.simulated_ids()`：模拟器作用域（v1.4 云拉节点不参与）。
+- `hardware/simulator.py`：`tick()` 只遍历 `simulated_ids()`——lq-* 节点
+  利用率无云端数据 → 恒 0 不漂移（诚实降级，前端按 0 渲染）。
+- `domain/invariants.py`：`validate_node_metrics` 增 **cloud-observed 分支**
+  （source 标注或 layout="cloud"）：qubits_count==len(qubits)（云拓扑非满
+  网格，不要求 rows*cols）、qubit id 界内唯一、**fidelity 字段必须全 null
+  且 couplers 必须空——出现数值即疑似伪造，拒绝**。
+- `api/state.py` / `main.py`：`build_app_state`/`create_app` 增
+  `cloud_adapter=` 注入参数（测试传 FakeCloudProvider 包装；None=生产真连）。
+
+### Fixed
+- 基线修复：契约修订提交 928a14d 在 config.toml 预置的 `hardware.provider`
+  键此前使 `HardwareConfig`（extra=forbid）拒绝加载、8 个测试文件无法
+  收集——本切片落键定义后全量恢复。
+
+### Validation
+- 新增 `tests/test_hardware_provider.py` 16 用例（provider 枚举/缺省/空白
+  键拒绝/空表规则；忽略手写 qpu 保留 gpu/cpu；云节点字段与坐标拓扑；
+  cloud 分支校验含反伪造负样本；拉取失败与密钥缺失 fail-fast；模拟器
+  不漂移云节点；调度器只租约 online lq-*）。全量 **446 passed**
+  （418 基线 + V1 12 + V2 16）。
+
+### Known defects
+- 云拉节点 status 仅在启动时快照一次（无周期性在线状态刷新——平台原型
+  以任务级轮询兜底，节点状态漂移需重启或后续增刷新任务）。
+
+
 ## 2026-10-14 `backend: V1（v4 轮）——logicalcloud 适配层（circuit 转换 + barrier 硬约束 + LqCloudAdapter）`
 
 ### Added

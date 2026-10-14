@@ -56,7 +56,8 @@ DEFAULT_FAKE_BACKENDS: list[dict[str, Any]] = [
         "chip_architecture": "superconducting-repetition",
         "status": "active",
         "qubits": 12,
-        "topology": {"qubit_coordinates": [[0, i] for i in range(12)]},
+        # 一维链水平摆放：坐标 [x, y] → rows=1、cols=12（极值+1）
+        "topology": {"qubit_coordinates": [[i, 0] for i in range(12)]},
     },
     {
         "name": "QZ02",

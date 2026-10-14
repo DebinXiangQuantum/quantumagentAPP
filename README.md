@@ -420,6 +420,25 @@ FakeCloudProvider 零网络）：`list_backends`（规范 dict）/`submit`（固
 测试：`tests/test_lqcloud_adapter.py`（12 用例）+ 共享替身
 `tests/fake_cloud.py`（现网同构 5 台真机、脚本化轮询、故障注入）。
 
+**V2（硬件注册表 provider 模式）**：`[hardware]` 新增键 `provider`
+（`simulated` 缺省 | `logicalcloud`，枚举外 fail-fast）、`lqcloud_base_url`
+（缺省 https://cloud.logicalqubit.com）、`lqcloud_api_key_env`（缺省
+LQCLOUD_API_KEY，空白串拒绝；simulated 模式空节点表拒绝、logicalcloud
+允许为空）。`build_node_registry()`（registry.py）——logicalcloud 模式启动时
+经适配器实拉真机 → `HardwareNode`（id=`lq-<name>`、model=chip_architecture、
+active→online/其余→offline、capacity=1；metrics.topology 用云端
+qubit_coordinates 摆放比特点：rows/cols=坐标极值+1、qubit id=列表下标含
+x/y、**couplers 空 + fidelity 全 null——平台未提供，诚实为空**，
+`source: "cloud-observed"` 标注）；手写 qpu 节点被忽略、gpu/cpu 保留；
+**密钥环境变量缺失/lqcloud 未安装/云端拉取失败/空列表 → 启动
+ConfigError fail-fast 带原因**（真实模式禁止静默回退伪造数据）。模拟器
+`tick()` 只作用于 `simulated_ids()`（手写节点）——lq-* 节点利用率恒 0
+不漂移（云端未提供，诚实降级）。`invariants.validate_node_metrics` 增
+cloud-observed 分支（qubits_count==len(qubits) 不要求满网格；fidelity
+非 null 或 couplers 非空 → 违例——反伪造）。`build_app_state`/`create_app`
+增 `cloud_adapter=` 注入点（测试传 FakeCloudProvider，None=生产真连）。
+测试：`tests/test_hardware_provider.py`（16 用例）。
+
 ## 前端 (Frontend)
 
 *本节由 `feat/frontend` 分支的开发切片维护更新：组件清单、页面说明、测试结果。*

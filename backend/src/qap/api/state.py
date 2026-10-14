@@ -27,7 +27,7 @@ from qap.domain.attachments import (
 from qap.domain.store import ConversationStore, MessageStore, TaskStore
 from qap.events.bus import EventBus
 from qap.hardware.allocator import Allocator
-from qap.hardware.registry import NodeRegistry
+from qap.hardware.registry import NodeRegistry, build_node_registry
 from qap.hardware.simulator import UtilizationSimulator
 from qap.orchestrator.scheduler import Scheduler
 from qap.tenancy.service import TenantService
@@ -124,13 +124,21 @@ def _spawn(coroutine):
     return asyncio.get_running_loop().create_task(coroutine)
 
 
-def build_app_state(config: AppConfig | LoadedConfig) -> AppState:
+def build_app_state(
+    config: AppConfig | LoadedConfig,
+    *,
+    cloud_adapter: "object | None" = None,
+) -> AppState:
     """从已校验配置组装全部服务（构造顺序即依赖顺序）。
 
     接受 ``LoadedConfig``（生产路径：含 base/local 溯源与 plugins_dir 根）
     或裸 ``AppConfig``（测试注入：无文件溯源，plugins_dir/local 落点取
     CWD）。利用率模拟器是否启动由 ``main.py`` 的 lifespan 按
     ``config.hardware.simulated`` 决定（测试常关）。
+
+    ``cloud_adapter``（v1.4）：``hardware.provider = "logicalcloud"`` 时的
+    适配器注入点（测试传 FakeCloudProvider 包装；None 时按 config 构造
+    真实 ``LQCloudProvider``——密钥缺失/云端不可达 → 启动 fail-fast）。
     """
     if isinstance(config, LoadedConfig):
         loaded = config
@@ -148,7 +156,7 @@ def build_app_state(config: AppConfig | LoadedConfig) -> AppState:
     attachments = AttachmentStore()
     tenants = TenantService(app_config.tenancy)
     plugins = PluginRegistry(app_config.agents, base_dir=base_dir)
-    nodes = NodeRegistry(app_config.hardware)
+    nodes = build_node_registry(app_config.hardware, adapter=cloud_adapter)
     allocator = Allocator(nodes, events)
 
     def on_task_finished(task) -> None:
