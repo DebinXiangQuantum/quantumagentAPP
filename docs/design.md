@@ -156,9 +156,31 @@ token 三主题共用。实现于 `tokens.ts` 的 `buildTokenCss()`：输出
    （kind 色 + 状态图标 + 等宽 id）；边 = 依赖（箭头，竖向贝塞尔）；
    运行中节点呼吸光晕（2s 循环，reduced-motion 时改为实线描边）；
    点击节点 → 右侧详情（node_id、起止时间、detail/error）。
-4. **HardwareTopology**：按 kind 分组的卡片网格；GPU/QPU 卡显示型号、容量点、
-   利用率迷你条（60s 滚动）、活动 allocation 徽标（"algorithm-designer · t-1/s-2"）；
-   点击卡片 → Drawer：节点全量信息 + 该节点历史任务；离线节点降饱和 + 斜纹。
+4. **HardwareTopology**（v1.2 升级：性能监控与 QPU 拓扑保真度图）：
+   - 按 kind 分组的卡片网格；活动 allocation 徽标（"algorithm-designer · t-1/s-2"）、
+     离线节点降饱和 + 斜纹（不变）。
+   - **QPU 卡**：副行显示 `20Q · 2Q 保真度中位 99.1%`（等宽）；点击 → Drawer 内嵌
+     **拓扑保真度图**（手写 SVG）：qubit=圆圈（内标 id），coupler=连线；
+     连线中点标 2Q 保真度百分数、qubit 圈下方标 readout 百分数（全部等宽
+     --font-data）；悬停 qubit → tooltip（T1/T2 µs、1Q/readout 保真度）；
+     图例（三档色阶）置底。
+   - **保真度色阶**（v1.2，阈值表；填充/描边按档取色）：
+
+     | 指标 | 绿 --success | 黄 --warning | 红 --danger |
+     |---|---|---|---|
+     | 2Q 保真度 | ≥0.992 | ≥0.985 | <0.985 |
+     | 1Q 保真度 | ≥0.999 | ≥0.995 | <0.995 |
+     | 读出保真度 | ≥0.98 | ≥0.95 | <0.95 |
+
+   - **CPU 卡**：两行迷你条——CPU 使用率（--info 色）与内存 `used/total GB`
+     （--text-secondary 底 + --accent-cyan 填充）；Drawer 详情：核数、CPU/内存
+     数值与 60s 历史曲线。
+   - **GPU 卡**：VRAM `used/total GB` 迷你条 + 既有利用率条；Drawer 详情含
+     VRAM 数值与历史。
+   - 使用率告警色阶：≤0.8 正常 / ≤0.9 --warning / >0.9 --danger（CPU/内存/VRAM 通用）。
+   - 单位规范：保真度百分数保留 2 位小数（99.12%），T1/T2 用 µs 1 位小数，
+     容量 GB 1 位小数；全部等宽字体。metrics 缺字段（旧后端/畸形）→ 对应
+     行降级隐藏，不崩溃。
 5. **状态徽标体系**：pending(空心) / running(warning 呼吸) / succeeded(success) /
    failed(danger) / cancelled(faint)，全组件统一复用同一 `StatusBadge`。
 

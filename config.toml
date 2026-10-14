@@ -119,6 +119,8 @@ kind = "qpu"
 name = "QuANTA 20Q"
 model = "superconducting-transmon"
 capacity = 1
+# v1.2 拓扑定义（rows×cols 网格；保真度初值由模拟器在文献合理区间生成并漂移）
+topology = { rows = 4, cols = 5 }
 
 [[hardware.nodes]]
 id = "gpu-a800-0"
@@ -126,6 +128,8 @@ kind = "gpu"
 name = "A800 #0"
 model = "NVIDIA A800 80GB"
 capacity = 1
+# v1.2 监控数据（模拟器驱动；总利用率沿用 utilization 字段）
+vram_total_gb = 80.0
 
 [[hardware.nodes]]
 id = "gpu-a800-1"
@@ -133,6 +137,7 @@ kind = "gpu"
 name = "A800 #1"
 model = "NVIDIA A800 80GB"
 capacity = 1
+vram_total_gb = 80.0
 
 [[hardware.nodes]]
 id = "cpu-node-0"
@@ -140,6 +145,9 @@ kind = "cpu"
 name = "经典计算节点 #0"
 model = "EPYC 64C / 256GB"
 capacity = 4
+# v1.2 经典节点规格（cpu_usage/memory_used_gb 由模拟器驱动）
+cpu_cores = 64
+memory_total_gb = 256.0
 
 # -----------------------------------------------------------------------------
 # 调度器

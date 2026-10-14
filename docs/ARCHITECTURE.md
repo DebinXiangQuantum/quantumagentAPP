@@ -109,9 +109,39 @@ wire format + Mock）、SSE 实时事件。
   "model": "NVIDIA A800 80GB", "status": "online"|"offline",
   "utilization": 0.37,                 // ∈ [0,1]，模拟器驱动
   "capacity": 1,                       // 最大并行租约数
+  "metrics": { /* v1.2 按 kind 不同的监控数据，见下；可缺省，前端降级 */ },
   "allocations": [ { "task_id": "t-1", "step_id": "s-2",
                      "agent_id": "algorithm-designer", "leased_at": "…" } ] }
 ```
+
+**v1.2 `HardwareNode.metrics`（性能监控与 QPU 拓扑数据）**：
+
+```jsonc
+// kind=qpu：拓扑结构 + 逐比特/逐耦合器保真度（原型为模拟数据：文献合理
+// 区间随机生成并随 tick 缓慢漂移 —— simulated results，非硬件观测）
+"metrics": {
+  "qubits_count": 20,
+  "topology": {
+    "layout": "grid",                  // 原型：rows×cols 矩形网格
+    "rows": 4, "cols": 5,
+    "qubits": [ { "id": 0,              // id = row*cols + col
+                  "t1_us": 47.2, "t2_us": 31.5,      // 单位 µs，> 0
+                  "readout_fidelity": 0.978,          // 读出保真度
+                  "sq_fidelity": 0.9993 } ],          // 单比特门保真度
+    "couplers": [ { "a": 0, "b": 1, "tq_fidelity": 0.9912 } ] } } // 网格相邻对
+// kind=cpu：经典节点性能监控
+"metrics": { "cpu_cores": 64, "cpu_usage": 0.37,
+             "memory_total_gb": 256.0, "memory_used_gb": 98.4 }
+// kind=gpu：显存与利用率（utilization 字段沿用为总利用率）
+"metrics": { "vram_total_gb": 80.0, "vram_used_gb": 12.6 }
+```
+
+v1.2 不变量（测试必须覆盖）：所有 fidelity ∈ (0,1]；`t1_us/t2_us > 0` 且
+`t2_us ≤ 2*t1_us`（物理合理性上界）；`memory_used_gb ≤ memory_total_gb`、
+`vram_used_gb ≤ vram_total_gb`；usage ∈ [0,1]；coupler 端点 ∈
+[0, qubits_count) 且为网格相邻对；grid 布局 qubit id 与 (row,col) 一一对应。
+模拟区间（工程选择，标注为模拟）：T1 20–80µs、T2 10–60µs、readout
+0.95–0.995、1Q 0.995–0.9999、2Q 0.98–0.995；漂移幅度每 tick ≤ 0.0002。
 
 不变量（测试必须覆盖）：
 1. Task 为 DAG：`depends_on` 传递闭包无环、无未知 id、无重复 step id。
