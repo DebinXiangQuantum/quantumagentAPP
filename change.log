@@ -5,6 +5,26 @@ Validation（本切片测试结论）+ Known defects（已知缺陷，无则写�
 scope 与流程见 docs/DEVELOPMENT.md §2。
 
 
+## 2026-10-13 `backend: V5 模拟器 metrics 漂移与对外校验函数（v1.2 不变量全覆盖）`
+
+### Added
+- `hardware/metrics.drift_node_metrics`：QPU 保真度 ±0.0002/tick 随机游走
+  clamp (0,1]；CPU usage/memory 与 GPU vram used 随机游走 clamp [0,total]
+  （T1/T2 静态规格）——simulated，构造性满足全部 v1.2 不变量。
+- 模拟器 `tick()` 同拍漂移利用率与 metrics，任一变化发布
+  `hardware.updated`（全量节点含 metrics）；`GET /hardware` 同源快照。
+- `qap/domain/invariants.py` 对外校验函数：`validate_node_metrics`
+  （§4 v1.2 全部不变量）与 `validate_step_profiles`（不变量 5，含
+  finished 步 duration≈时间戳跨度 ±50ms；级联取消步豁免）。
+
+### Validation
+- 新增 `tests/test_hardware_drift.py` 25 用例；test_step_profile 增真实
+  任务经校验函数整包复核；全量 pytest **416 passed**。
+
+### Known defects
+- 无（10 QPU 中 4 台 config offline：调度跳过语义已覆盖）。
+
+
 ## 2026-10-13 `backend: V4 附件——上传/raw/消息引用与 Provider 注入（v1.3）`
 
 ### Added

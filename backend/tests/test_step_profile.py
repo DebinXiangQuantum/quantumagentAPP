@@ -27,6 +27,7 @@ from pydantic import ValidationError
 from qap.agents.providers.mock_provider import MockProvider
 from qap.core.config import SchedulerConfig
 from qap.core.ids import IdGenerator
+from qap.domain.invariants import validate_step_profiles
 from qap.domain.models import Step, Task
 from qap.events.bus import EventBus
 from qap.hardware.allocator import Allocator
@@ -166,6 +167,8 @@ class TestRealWorkloads:
                      depends_on=[0]),
         ])
         final = await scheduler.submit(task)
+        # 对外校验函数整包复核（§4 v1.2 全部步骤不变量 + 不变量 5）
+        validate_step_profiles(final)
         for step in final.steps:
             assert step.finished_at is not None and step.started_at is not None
             span_ms = (parse_iso_ms(step.finished_at) - parse_iso_ms(step.started_at)

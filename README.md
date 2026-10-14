@@ -379,6 +379,27 @@ dispatch_agent、插件安装全生命周期；真实 GLM 冒烟走通全链路�
   data URL/anthropic 双块/200k 截断/file 不注入/mock 仅记录/SSE error
   透传端到端），全量 **391 passed**。
 
+**V5（v1.2 模拟器漂移与对外校验函数，`feat/backend-v3`）**：
+- `hardware/metrics.drift_node_metrics`：QPU 保真度每 tick ±0.0002 均匀
+  随机游走 → clamp (0,1]（4 位小数）；CPU `cpu_usage`（±0.04 clamp
+  [0,1]）/`memory_used_gb`（±2GB clamp [0,total]）与 GPU `vram_used_gb`
+  （±1GB clamp [0,total]）随机游走；T1/T2 静态规格；返回新 dict，
+  构造性满足全部 v1.2 不变量。模拟器 `tick()` 同拍驱动利用率+metrics
+  漂移，任一变化即发布 `hardware.updated`（含 metrics 全量节点）；
+  `GET /hardware` 快照同源。
+- 新 `qap/domain/invariants.py`（对外校验函数）：`validate_node_metrics`
+  覆盖 §4 v1.2 全部不变量（fidelity ∈ (0,1]、t2 ≤ 2*t1 且 t1/t2>0、
+  used ≤ total（内存/显存）、cpu_usage ∈ [0,1]、coupler 端点界内且网格
+  相邻且不重复、qubit id 与 (row,col) 一一对应、qubits_count ==
+  rows*cols == len(qubits)）；`validate_step_profiles` 覆盖不变量 5
+  （duration ≥ 0、peak > 0 或 null、finished 步起止时间戳齐备且
+  |duration−span| ≤ 50ms；级联取消步豁免）。违例抛 ValidationFailed
+  并指明字段。
+- 测试：`tests/test_hardware_drift.py` 25 用例（漂移 ≤0.0002、T1/T2 静止、
+  25 拍不变量保持、边界 clamp、tick 事件含 metrics、校验函数 12 类负
+  样本 + 不变量 5 正/负样本；test_step_profile 增真实任务整包复核），
+  全量 **416 passed**。
+
 ## 前端 (Frontend)
 
 *本节由 `feat/frontend` 分支的开发切片维护更新：组件清单、页面说明、测试结果。*

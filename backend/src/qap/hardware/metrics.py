@@ -20,6 +20,7 @@ T1 20–80µs、T2 10–60µs、readout 0.95–0.995、1Q 0.995–0.9999、
 
 from __future__ import annotations
 
+import copy
 import random
 from typing import Any
 
@@ -139,3 +140,61 @@ def _build_qpu_metrics(rows: int, cols: int, rng: random.Random) -> dict[str, An
             "couplers": couplers,
         },
     }
+
+
+#: 每 tick 保真度漂移幅度上界（契约 §4 v1.2：漂移幅度每 tick ≤ 0.0002）
+FIDELITY_DRIFT_MAX = 0.0002
+#: used 值随机游走步长（工程选择：CPU/GPU 用量的可感知缓变）
+CPU_USAGE_DRIFT = 0.04
+MEMORY_USED_DRIFT_GB = 2.0
+VRAM_USED_DRIFT_GB = 1.0
+#: 保真度下界 clamp 的保护值（区间 (0,1] 的开下界用极小正值守住）
+_FIDELITY_FLOOR = 1e-6
+
+
+def drift_node_metrics(kind: str, metrics: dict[str, Any], rng: random.Random) -> dict:
+    """推进一个节点的 metrics 一拍（simulated 漂移；返回**新 dict**）。
+
+    - QPU：readout/sq/tq 保真度均匀随机游走 ±0.0002 后 clamp (0,1]
+      （4 位小数）；T1/T2 为静态规格（漂移仅作用于保真度与 used 值）；
+    - CPU：``cpu_usage`` 游走 clamp [0,1]，``memory_used_gb`` 游走
+      clamp [0, total]；
+    - GPU：``vram_used_gb`` 游走 clamp [0, total]。
+
+    构造性满足全部 §4 v1.2 不变量（可用 domain.invariants 复核）。
+    """
+    drifted = copy.deepcopy(metrics)
+    if kind == "qpu":
+        topology = drifted["topology"]
+        for qubit in topology["qubits"]:
+            qubit["readout_fidelity"] = _drift_fidelity(
+                qubit["readout_fidelity"], rng
+            )
+            qubit["sq_fidelity"] = _drift_fidelity(qubit["sq_fidelity"], rng)
+        for coupler in topology["couplers"]:
+            coupler["tq_fidelity"] = _drift_fidelity(coupler["tq_fidelity"], rng)
+        return drifted
+    if kind == "cpu":
+        usage = drifted["cpu_usage"] + rng.uniform(-CPU_USAGE_DRIFT, CPU_USAGE_DRIFT)
+        drifted["cpu_usage"] = round(min(1.0, max(0.0, usage)), 3)
+        total = drifted["memory_total_gb"]
+        used = drifted["memory_used_gb"] + rng.uniform(
+            -MEMORY_USED_DRIFT_GB, MEMORY_USED_DRIFT_GB
+        )
+        drifted["memory_used_gb"] = round(min(total, max(0.0, used)), 1)
+        return drifted
+    if kind == "gpu":
+        total = drifted["vram_total_gb"]
+        used = drifted["vram_used_gb"] + rng.uniform(
+            -VRAM_USED_DRIFT_GB, VRAM_USED_DRIFT_GB
+        )
+        drifted["vram_used_gb"] = round(min(total, max(0.0, used)), 1)
+        return drifted
+    raise ValueError(f"unknown node kind {kind!r}")  # pragma: no cover
+
+
+def _drift_fidelity(value: float, rng: random.Random) -> float:
+    """保真度单步漂移：±0.0002 均匀游走 → clamp (0,1] → 4 位小数。"""
+    walked = value + rng.uniform(-FIDELITY_DRIFT_MAX, FIDELITY_DRIFT_MAX)
+    clamped = min(1.0, max(_FIDELITY_FLOOR, walked))
+    return round(clamped, _FIDELITY_DECIMALS)
