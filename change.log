@@ -5,6 +5,36 @@ Validation（本切片测试结论）+ Known defects（已知缺陷，无则写�
 scope 与流程见 docs/DEVELOPMENT.md §2。
 
 
+## 2026-10-13 `backend: V1 硬件配置与 metrics（v1.2 拓扑/监控规格 + v1.3 离线语义）`
+
+### Added
+- `[[hardware.nodes]]` per-node 可选规格键（`core/config.py`，fail-fast）：
+  `topology{rows,cols}` 仅 qpu（2 ≤ rows*cols ≤ 1024）、`vram_total_gb`
+  仅 gpu（>0）、`cpu_cores`+`memory_total_gb` 仅 cpu（成对、>0）、
+  `status ∈ {online,offline}`（缺省 online）；kind 键错配/非法值启动拒绝。
+- `qap/hardware/metrics.py`：按 kind 生成 `HardwareNode.metrics` 初值
+  （**simulated**：文献合理区间随机，种子可注入复现，非硬件观测）——QPU
+  网格拓扑（qubit id=row*cols+col 双射；couplers=右/下相邻对全集；T1/T2/
+  readout/1Q/2Q 契约区间，t2 ≤ 2*t1 构造性成立）、CPU/GPU 规格+初始动态值
+  （used ≤ total 构造性成立）；规格缺失 → metrics=None（前端降级）。
+- `NodeRegistry(config, rng=)` 透传 config `status` 与 metrics；
+  `set_metrics` 深拷贝替换（模拟器漂移入口，V5 接线）。
+- `TenantConfig.role ∈ {user,admin}`（缺省 user）——入库 config.toml 的
+  role 键得以加载；守卫与 /tenants/me 暴露在 V3 落地。
+
+### Changed
+- `HardwareNode` 序列化增 `metrics`（dict|null，契约 §4 v1.2 增补）；
+  `test_domain_models` 的字段全集断言随之更新（契约演进，强度不降）。
+
+### Validation
+- 新增 `tests/test_hardware_metrics.py` 25 用例（12 类配置 fail-fast、
+  拓扑不变量、模拟区间、种子复现、offline 不租约、snapshot 序列化）；
+  全量 pytest **329 passed**（304 基线全保持）。
+
+### Known defects
+- 无（metrics 漂移与对外校验函数在 V5 分片接线）。
+
+
 ## 2026-10-13 `integration: v1.1 真实 GLM 联调走查修复（插件字段契约/连接灯 i18n/空态/护眼对比度）`
 
 ### Fixed

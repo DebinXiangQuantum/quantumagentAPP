@@ -154,10 +154,14 @@ class Allocation(BaseModel):
 
 
 class HardwareNode(BaseModel):
-    """硬件节点（契约 §4 HardwareNode）：容量/利用率/活动租约。
+    """硬件节点（契约 §4 HardwareNode）：容量/利用率/活动租约 + metrics。
 
     利用率/租约由模拟器与分配器在运行时逐字段改写，开启赋值期校验，
     保证不变量 3 在**每次变更**时都成立（而非仅在构造时）。
+    ``metrics``（v1.2）按 kind 不同：QPU 拓扑+保真度、CPU 规格+用量、
+    GPU 显存——内容为 **simulated** 数据（模拟器生成/漂移，非硬件观测），
+    可为 None（规格缺失/旧数据，前端降级），内部结构校验见
+    ``qap/hardware/metrics.py`` 的 ``validate_node_metrics``。
     """
 
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
@@ -169,9 +173,26 @@ class HardwareNode(BaseModel):
     status: NodeStatus = "online"
     utilization: float = 0.0
     capacity: int = Field(ge=1)
+    metrics: dict[str, Any] | None = None
     allocations: list[Allocation] = Field(default_factory=list)
 
     @field_validator("utilization")
     @classmethod
     def _validate_utilization(cls, value: float) -> float:
         return _check_finite_unit_interval(value)
+
+
+class AttachmentMeta(BaseModel):
+    """附件元数据（契约 §5 v1.3）：上传响应与 Message.attachments 元素。
+
+    ``kind`` 判定：mime ``image/*`` → image；``text/*`` 或文本扩展名
+    {.md,.txt,.py,.json,.toml,.csv,.yaml,.ts,.js} → text；其余 file。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(pattern=r"^att-\d+$")
+    name: str = Field(min_length=1)
+    mime: str = Field(min_length=1)
+    size: int = Field(ge=0)
+    kind: Literal["image", "text", "file"]

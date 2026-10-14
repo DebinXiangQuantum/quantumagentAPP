@@ -289,6 +289,28 @@ dispatch_agent、插件安装全生命周期；真实 GLM 冒烟走通全链路�
   正确分配）+ 654 delta / 4 reasoning / 9 task.updated / 6
   hardware.updated。全量 **304 passed**。
 
+**V1（v1.2/v1.3 硬件配置与 metrics，`feat/backend-v3`）**：
+- `qap/core/config.py`：`[[hardware.nodes]]` per-node 可选规格键，与 kind
+  严格绑定（错配/非法值启动 fail-fast）——`topology{rows,cols}` 仅 qpu
+  （`2 ≤ rows*cols ≤ 1024`）、`vram_total_gb` 仅 gpu（>0）、
+  `cpu_cores`+`memory_total_gb` 仅 cpu（成对、>0）、`status ∈
+  {online,offline}`（缺省 online）；`TenantConfig` 增 `role ∈ {user,admin}`
+  （缺省 user；入库 config.toml 的 role 键得以加载，守卫语义在 V3）。
+- 新 `qap/hardware/metrics.py`：按 kind 生成 `HardwareNode.metrics` 初值
+  ——QPU rows×cols 网格拓扑（qubit id=row*cols+col 与 (row,col) 一一对应；
+  couplers=全部右/下相邻对；T1 20–80µs、T2 10–60µs 且构造性满足
+  `t2 ≤ 2*t1`、readout 0.95–0.995、1Q 0.995–0.9999、2Q 0.98–0.995，
+  **simulated** 数据非硬件观测）、CPU 规格+初始 usage/memory_used、GPU
+  vram 总量+初始 used（used ≤ total 构造性成立）；随机源注入
+  `random.Random`（种子可复现）；规格缺失 → metrics=None（前端降级）。
+- `NodeRegistry(config, rng=)`：透传 config `status`（offline 节点自启动
+  即被分配器/调度器跳过）与 metrics 初值；`set_metrics` 供模拟器漂移。
+- `HardwareNode` 序列化增 `metrics`（dict|null，契约 §4 v1.2）。
+- 测试：`tests/test_hardware_metrics.py` 25 用例（kind 键错配/拓扑规模界/
+  非法 status 等 12 类 fail-fast；拓扑 id 双射与相邻对全集；模拟区间与
+  t2≤2t1；种子复现；config offline 节点不被租约；snapshot 含 metrics），
+  全量 **329 passed**。
+
 ## 前端 (Frontend)
 
 *本节由 `feat/frontend` 分支的开发切片维护更新：组件清单、页面说明、测试结果。*

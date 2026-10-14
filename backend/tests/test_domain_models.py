@@ -32,11 +32,13 @@ class TestHardwareNode:
     def test_valid_node_serializes_contract_fields(self) -> None:
         node = HardwareNode(**base_node_kwargs(), utilization=0.37, status="online")
         payload = node.model_dump()
-        # 契约 §4 HardwareNode 字段逐一存在（多出的 allocations 是契约内字段）
+        # 契约 §4 HardwareNode 字段逐一存在（v1.2 增补 metrics，可缺省）
         assert set(payload) == {
-            "id", "kind", "name", "model", "status", "utilization", "capacity", "allocations",
+            "id", "kind", "name", "model", "status", "utilization", "capacity",
+            "metrics", "allocations",
         }
         assert payload["utilization"] == 0.37
+        assert payload["metrics"] is None
 
     @pytest.mark.parametrize("bad", [-0.01, 1.01, float("nan"), float("inf"), float("-inf")])
     def test_utilization_bounds_and_finiteness(self, bad: float) -> None:
