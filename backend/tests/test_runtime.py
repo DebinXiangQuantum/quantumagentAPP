@@ -371,3 +371,80 @@ class TestRuntimeToolLoop:
         assistant = await rig.chat(conversation, "q")
         assert "轮次上限" in assistant.content
         assert assistant.content.endswith("收束。）")
+
+
+class TestModelRefDefaultAlias:
+    """v1.4：插件 model_ref="default" 为保留别名 → agents.default_model_ref。
+
+    真实联调缺陷（2026-10-14）：内置插件 model_ref 字面指向 [models.default]
+    （mock 渠道），在 default_model_ref 配置为真实渠道的部署里，dispatch 出去
+    的专家仍走演示剧本——模板回复+编造计数。别名仅作用于**插件绑定**，
+    消息级覆盖（UI 显式选渠道）保持字面语义。
+    """
+
+    def _rig_with_spy(self) -> tuple["Rig", list[str]]:
+        """构造带 provider 引用侦测的 Rig（脚本用 echo 类单轮文本）。"""
+        rig = Rig()
+        seen: list[str] = []
+
+        def spy(model_ref: str) -> LLMProvider:
+            seen.append(model_ref)
+            return rig.provider
+
+        rig.runtime = AgentRuntime(
+            rig.plugins,
+            spy,
+            rig.tools,
+            rig.bus,
+            model_ref_alias=lambda ref: "glm-5.3-flash" if ref == "default" else ref,
+        )
+        return rig, seen
+
+    async def test_run_resolves_alias_for_plugin_binding(self) -> None:
+        rig, seen = self._rig_with_spy()
+        conv = rig.new_conversation("echo")
+        rig.append_message(conv, "user", "你好")
+        assistant = rig.append_message(conv, "assistant", "")
+        history = [m for m in rig.messages.list(conv.id) if m.id != assistant.id]
+        await rig.runtime.run(conv, history, assistant)
+        # echo 插件 model_ref="default" → 别名解析为 default_model_ref 指向的渠道
+        assert seen == ["glm-5.3-flash"]
+
+    async def test_message_level_override_stays_literal(self) -> None:
+        rig, seen = self._rig_with_spy()
+        conv = rig.new_conversation("echo")
+        rig.append_message(conv, "user", "你好")
+        assistant = rig.append_message(conv, "assistant", "")
+        history = [m for m in rig.messages.list(conv.id) if m.id != assistant.id]
+        await rig.runtime.run(conv, history, assistant, model_ref="mock")
+        # 消息级显式选择渠道：字面引用，不经别名
+        assert seen == ["mock"]
+
+    async def test_subagent_resolves_alias(self) -> None:
+        from qap.agents.tools import ToolContext
+
+        rig, seen = self._rig_with_spy()
+        ctx = ToolContext(
+            conversation_id="c-9", tenant_id="demo", agent_id="orchestrator",
+            message_id="m-9", run_key="c-9:m-9",
+        )
+        result = await rig.runtime.run_subagent(ctx, "echo", "回声测试")
+        assert "error" not in result
+        assert seen == ["glm-5.3-flash"]
+
+    async def test_no_alias_keeps_literal_default(self) -> None:
+        """未注入别名（既有组装/测试路径）：行为与历史一致（字面 default）。"""
+        rig = Rig()
+        seen: list[str] = []
+
+        def spy(model_ref: str) -> LLMProvider:
+            seen.append(model_ref)
+            return rig.provider
+
+        rig.runtime = AgentRuntime(rig.plugins, spy, rig.tools, rig.bus)
+        conv = rig.new_conversation("echo")
+        rig.append_message(conv, "user", "你好")
+        assistant = rig.append_message(conv, "assistant", "")
+        history = [m for m in rig.messages.list(conv.id) if m.id != assistant.id]
+        await rig.runtime.run(conv, history, assistant)
+        assert seen == ["default"]

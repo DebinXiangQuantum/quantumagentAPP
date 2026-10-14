@@ -68,7 +68,14 @@ class CloudStepRunner:
         self._poll_interval = poll_interval
 
     async def __call__(self, step: Step) -> str:
-        """调度器入口：真机条件满足走云端，否则委托既有负载。"""
+        """调度器入口：真机条件满足走云端，否则委托既有负载。
+
+        诚实性（v1.4 真实联调反馈）：云模式下 quantum 步**未携带线路**时
+        只能本地模拟执行——必须在 detail 前缀标注"本地模拟（未提交真机）"，
+        杜绝把模拟结果误读为真机观测（模拟模式无 adapter，不标注）。
+        """
+        if self._adapter is not None and step.kind == "quantum" and not step.circuit:
+            step.detail = f"本地模拟执行（未携带线路，未提交真机）{step.detail}"
         if self._adapter is None or step.kind != "quantum" or not step.circuit:
             return await self._fallback(step)
         return await self._run_cloud(step)
@@ -79,6 +86,12 @@ class CloudStepRunner:
         circuit = step.circuit or {}
         shots = _positive_int((step.workload or {}).get("shots"), DEFAULT_CLOUD_SHOTS)
         backend_name, node_id = self._select_node(step)
+        # 写回真实执行机（归因诚实：兜底自动选择时 step.node_id 与租约不同，
+        # 任务面板必须显示实际执行的真机，而非调度器预租的节点）。
+        # note_prefix：兜底选择的"未识别节点…已自动选择"备注需在后续
+        # 排队/完成 detail 更新中保留（否则被覆盖丢失归因信息）。
+        note_prefix = step.detail if step.detail else ""
+        step.node_id = node_id
         submitted_at = perf_counter()
         job = await asyncio.to_thread(
             self._adapter.submit, circuit, shots, backend_name
@@ -94,6 +107,7 @@ class CloudStepRunner:
                 step.queue_position = position
                 if status in ("queued", "pending") and position is not None:
                     step.detail = (
+                        f"{note_prefix}"
                         f"logicalcloud 真机任务排队中（cloud-observed）："
                         f"云端排队 #{position}（backend {backend_name}，"
                         f"job {step.cloud_job_id}）"
@@ -113,33 +127,64 @@ class CloudStepRunner:
         detail = self._emit_counts_artifact(
             step, backend_name, circuit, shots, counts, waited_for, executed_for
         )
-        return detail
+        # 兜底备注前缀同样保留在终态 detail（归因链完整）
+        return f"{note_prefix}{detail}" if note_prefix else detail
 
     def _select_node(self, step: Step) -> tuple[str, str]:
-        """选执行节点：指定（workload.node_id）→ 租约节点（step.node_id）→
-        首个 online lq-*；返回 (backend 名, 注册表节点 id)。
+        """选执行节点（v1.4 模糊归一化修订）；返回 (backend 名, 注册表节点 id)。
 
-        指定节点未知/离线 → 诚实报错（不静默改投其它机器）。
+        候选链（真实联调发现 LLM 常传模糊名如 "logicalcloud"）：
+        1. 显式 workload.node_id：裸名→补 lq- 前缀；再做**大小写不敏感包含
+           匹配**（"gate"→AGate-100、"mq"→MQ02）；
+        2. 已租约节点（step.node_id，调度器预租）；
+        3. 候选全部不可用且**确有匹配但离线** → 诚实报错（不静默改投）；
+        4. 完全未识别 → 兜底自动选首个在线 lq-* 并在 detail 注明
+           （"未识别节点 X，已自动选择 Y"）——模糊名是常态而非异常。
         """
         registry = self._registry
-        preferred = (step.workload or {}).get("node_id") or (
-            step.node_id if str(step.node_id or "").startswith("lq-") else None
-        )
-        if preferred:
-            resolved = _resolve_node_id(str(preferred))
-            node = registry.find(resolved)
-            if node is None or node.kind != "qpu":
-                raise RuntimeError(
-                    f"logicalcloud execution failed: unknown QPU node {resolved!r}"
-                )
-            if node.status != "online":
-                raise RuntimeError(
-                    f"logicalcloud execution failed: node {resolved!r} is offline"
-                )
-            return _backend_name(resolved), resolved
+        wanted = (step.workload or {}).get("node_id")
+        # 1) 显式指定：先于租约/自动选择判定（存在但离线 → 诚实报错，
+        #    绝不让租约候选静默改投到其它机器）
+        if wanted:
+            raw = str(wanted).strip()
+            if raw:
+                explicit: list[str] = [raw if raw.startswith("lq-") else f"lq-{raw}"]
+                needle = raw.lower().removeprefix("lq-")
+                if needle:
+                    for node_id in registry.all_ids():
+                        if (
+                            node_id.startswith("lq-")
+                            and needle in node_id[3:].lower()
+                            and node_id not in explicit
+                        ):
+                            explicit.append(node_id)
+                for node_id in explicit:
+                    node = registry.find(node_id)
+                    if node is not None and node.kind == "qpu" and node.status == "online":
+                        return _backend_name(node_id), node_id
+                for node_id in explicit:
+                    node = registry.find(node_id)
+                    if node is not None and node.kind == "qpu":
+                        raise RuntimeError(
+                            f"logicalcloud execution failed: node {node_id!r} is offline"
+                        )
+                # 显式名完全未识别 → 带备注降级（LLM 模糊名是常态）
+                step.detail = f"未识别节点 {raw!r}，将自动选择可用真机（cloud-observed）"
+        # 2) 已租约节点（调度器只租在线机）
+        leased = str(step.node_id or "")
+        if leased.startswith("lq-"):
+            node = registry.find(leased)
+            if node is not None and node.kind == "qpu" and node.status == "online":
+                return _backend_name(leased), leased
+        # 3) 自动选择首个在线 lq-*
         for node_id in registry.all_ids():
             node = registry.get(node_id)
             if node.kind == "qpu" and node.status == "online" and node_id.startswith("lq-"):
+                if wanted:
+                    step.detail = (
+                        f"未识别节点 {str(wanted)!r}，已自动选择 "
+                        f"{_backend_name(node_id)}（cloud-observed）"
+                    )
                 return _backend_name(node_id), node_id
         raise RuntimeError(
             "logicalcloud execution failed: no online lq-* QPU node available"

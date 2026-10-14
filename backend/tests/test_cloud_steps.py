@@ -323,3 +323,93 @@ def _logicalcloud_app_config():
         ],
     )
     return config
+
+
+class TestCircuitlessQuantumHonestAnnotation:
+    """v1.4：云模式下 quantum 步未携带线路 → 委托本地负载但 detail 必须诚实
+    标注"本地模拟（未提交真机）"，杜绝把模拟结果误读为真机执行。"""
+
+    def _bare_step(self, sid: str) -> "Step":
+        from qap.domain.models import Step
+
+        return Step(
+            id=sid, name="无线路量子步", kind="quantum", status="running",
+            node_id=None, depends_on=[], started_at=None, finished_at=None,
+            detail="", error=None,
+        )
+
+    async def test_circuitless_quantum_detail_annotated(self, rig: "CloudRig") -> None:
+        step = self._bare_step("s-1")
+        runner = CloudStepRunner(
+            adapter=rig.adapter, registry=rig.registry, events=rig.bus,
+            poll_interval=0.01,
+        )  # adapter 非 None = 云模式
+        outcome = await runner(step)
+        # fallback 返回其详情串（非状态字）；标注必须落在 step.detail 上
+        assert isinstance(outcome, str) and len(outcome) > 0
+        assert "本地模拟" in step.detail and "未提交真机" in step.detail
+
+    async def test_simulated_mode_no_annotation(self, rig: "CloudRig") -> None:
+        step = self._bare_step("s-2")
+        runner = CloudStepRunner(
+            adapter=None, registry=rig.registry, events=rig.bus,
+            poll_interval=0.01,
+        )  # 模拟模式：无需标注
+        await runner(step)
+        assert "未提交真机" not in step.detail
+
+
+class TestFuzzyNodeResolution:
+    """v1.4 真实联调缺陷：GLM 传模糊节点名（如 "logicalcloud"）→ 拼成
+    lq-logicalcloud 报 unknown 直接失败。语义修正：
+    - 归一化（裸名/带前缀/大小写不敏感包含匹配）命中且在线 → 使用；
+    - 归一化命中但离线 → 诚实报错（不许静默改投）；
+    - 完全未识别 → **兜底自动选首个在线 QPU**并在 detail 注明
+      "未识别节点 X，已自动选择 Y"（LLM 传模糊名是常态，非异常）。
+    """
+
+    def _step_with(self, node_ref: str) -> "Step":
+        from qap.domain.models import Step
+
+        return Step(
+            id="s-1", name="模糊节点量子步", kind="quantum", status="running",
+            node_id=None, depends_on=[], started_at=None, finished_at=None,
+            detail="", error=None,
+            circuit={"qubits": 2, "operations": [
+                {"id": "op-0", "gate": "H", "targets": [0]},
+                {"id": "op-1", "gate": "CNOT", "controls": [0], "targets": [1]},
+                {"id": "op-2", "gate": "MEASURE", "targets": [0, 1]},
+            ]},
+            workload={"node_id": node_ref, "shots": 64},
+        )
+
+    async def test_unknown_name_falls_back_with_note(self, rig: "CloudRig") -> None:
+        step = self._step_with("logicalcloud")  # GLM 实际传过的模糊名
+        runner = CloudStepRunner(
+            adapter=rig.adapter, registry=rig.registry, events=rig.bus,
+            artifact_emitter=rig.emitter, poll_interval=0.01,
+        )
+        outcome = await runner(step)
+        assert "已自动选择" in step.detail and "未识别节点" in step.detail
+        assert step.node_id and step.node_id.startswith("lq-")
+        # counts artifact 发射依赖调度器注入的 Task 上下文（current_running_task），
+        # 直呼 runner 的单元路径不适用——由 run_task 调度器路径用例覆盖
+
+    async def test_bare_backend_name_normalizes(self, rig: "CloudRig") -> None:
+        step = self._step_with("MQ02")
+        runner = CloudStepRunner(
+            adapter=rig.adapter, registry=rig.registry, events=rig.bus,
+            artifact_emitter=rig.emitter, poll_interval=0.01,
+        )
+        await runner(step)
+        assert step.node_id == "lq-MQ02"
+
+    async def test_offline_node_still_honest_error(self, rig: "CloudRig") -> None:
+        step = self._step_with("QZ02")  # 现网离线真机（fixtures 同构）
+        runner = CloudStepRunner(
+            adapter=rig.adapter, registry=rig.registry, events=rig.bus,
+            artifact_emitter=rig.emitter, poll_interval=0.01,
+        )
+        import pytest
+        with pytest.raises(RuntimeError, match="offline"):
+            await runner(step)

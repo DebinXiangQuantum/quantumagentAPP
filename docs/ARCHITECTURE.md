@@ -175,6 +175,8 @@ v1.2 不变量（测试必须覆盖）：所有 fidelity ∈ (0,1]；`t1_us/t2_u
 
 **v1.3 步骤执行=真实测量（profile 语义）**：simulated runner 不再 sleep 冒充
 计算——每步执行一段**真实的小型计算负载**并实测资源：
+- 真机转换（v1.5）：RX/RY/RZ 携 params 角度；CZ 用原生 qc.cz；RZZ(θ)
+  标准分解为 CX(a,b)·RZ(θ,b)·CX(a,b)（[Qiskit] RZZGate 等价定义）；
 - quantum 步：纯 Python 态矢量模拟（按步规格的 qubit 数构造幅度列表并做
   门作用迭代）；
 - classical 步：JSON 序列化/压缩负载（zlib 标准库）；
@@ -272,13 +274,19 @@ v1.2 不变量（测试必须覆盖）：所有 fidelity ∈ (0,1]；`t1_us/t2_u
 不得崩溃。载荷必须通过后端校验（非法载荷在生成侧即拒绝）。
 
 ```jsonc
-// type: "circuit" —— 量子线路（gate 级）
+// type: "circuit" —— 量子线路（gate 级；v1.5 增 params 与 RZZ）
 { "qubits": 2, "operations": [
-    {"id":"op-0","gate":"H","targets":[0]},
+    {"id":"op-0","gate":"RY","targets":[0],"params":[0.11]},
     {"id":"op-1","gate":"CNOT","controls":[0],"targets":[1]},
-    {"id":"op-2","gate":"MEASURE","targets":[0,1]} ] }
+    {"id":"op-2","gate":"RZZ","targets":[0,1],"params":[0.23]},
+    {"id":"op-3","gate":"CZ","controls":[0],"targets":[1]},
+    {"id":"op-4","gate":"MEASURE","targets":[0,1]} ] }
 // 约束：qubits ∈ [1,32]；targets/controls ⊂ [0,qubits)；gate 非空；
-//       单量子门 targets 长度 1；MEASURE 无 controls。
+//       单量子门 targets 长度 1；MEASURE 无 controls；
+//       v1.5：RX/RY/RZ 需 params=[θ]（1 个有限角度）；RZZ 为双比特 ZZ
+//       旋转（targets 恰 2、无 controls、params=[θ]）；**每个比特的
+//       MEASURE 之后不得再出现作用该比特的操作**（真实反馈：测量后接
+//       CNOT 属非法线路，生成侧即拒绝，模型收结构化工具错误自纠）。
 
 // type: "counts" —— 测量计数
 { "shots": 1024, "qubits": 2, "counts": {"00": 498, "11": 512, "01": 8, "10": 6} }

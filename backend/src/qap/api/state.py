@@ -271,6 +271,11 @@ def build_app_state(
         if ref in app_config.models
         else "high",
         attachment_resolver=attachment_parts,
+        # v1.4：插件绑定 model_ref="default" 视为保留别名 → default_model_ref
+        # （否则内置专家字面命中 mock 渠道，dispatch 走演示剧本产出模板回复）
+        model_ref_alias=lambda ref: app_config.agents.default_model_ref
+        if ref == "default"
+        else ref,
     )
     tools.bind_dispatcher(runtime.run_subagent)  # dispatch_agent 执行器（§8）
 

@@ -67,5 +67,14 @@ def create_app(
     return app
 
 
-#: uvicorn 入口（PYTHONPATH=src python -m uvicorn qap.main:app）
-app = create_app()
+#: uvicorn 入口（PYTHONPATH=src python -m uvicorn qap.main:app）。
+#:
+#: PEP 562 惰性创建（v1.4）：import 本模块**不**触发真实配置加载/云适配器
+#: 构建——否则本机 config.local.toml 为 logicalcloud 模式而环境缺
+#: LQCLOUD_API_KEY 时，任何 `import qap.main` 的测试都会在收集期爆炸。
+#: uvicorn 以 `qap.main:app` 字符串导入后做属性访问，届时才真正 create_app()
+#: （fail-fast 语义保持：真实启动缺配置仍立即报错）。
+def __getattr__(name: str):
+    if name == "app":
+        return create_app()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

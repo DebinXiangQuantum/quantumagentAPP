@@ -59,6 +59,7 @@ class AgentRuntime:
         *,
         default_thinking_for: Callable[[str], str] | None = None,
         attachment_resolver: Callable[[Message], Sequence] | None = None,
+        model_ref_alias: Callable[[str], str] | None = None,
     ) -> None:
         """``default_thinking_for(model_ref)`` 返回渠道默认思考程度（v1.1）。
 
@@ -74,6 +75,10 @@ class AgentRuntime:
         self._events = events
         self._default_thinking_for = default_thinking_for or (lambda _ref: "high")
         self._attachment_resolver = attachment_resolver
+        # v1.4 别名：插件绑定 model_ref == "default" → agents.default_model_ref
+        # （真实联调缺陷修复：内置插件字面指向 mock 渠道会让 dispatch 专家走
+        #  演示剧本产出模板回复；别名只作用于插件绑定，消息级覆盖保持字面）。
+        self._model_ref_alias = model_ref_alias or (lambda ref: ref)
 
     # ---------- 入口 ----------
 
@@ -95,7 +100,8 @@ class AgentRuntime:
         :raises NotFoundError: 会话绑定的 agent 未注册（API 层 404/422）。
         """
         plugin = self._plugins.get(conversation.agent_id)
-        effective_ref = model_ref or plugin.model_ref
+        # 消息级覆盖优先且保持字面渠道语义；否则插件绑定经别名解析
+        effective_ref = model_ref or self._model_ref_alias(plugin.model_ref)
         provider = self._provider_for(effective_ref)
         level = thinking_level or self._default_thinking_for(effective_ref)
         context = ToolContext(
@@ -132,8 +138,9 @@ class AgentRuntime:
                 "error": "agent_not_found",
                 "message": f"no registered agent with id {agent_id!r}",
             }
-        provider = self._provider_for(plugin.model_ref)
-        level = self._default_thinking_for(plugin.model_ref)
+        resolved_ref = self._model_ref_alias(plugin.model_ref)
+        provider = self._provider_for(resolved_ref)
+        level = self._default_thinking_for(resolved_ref)
         from qap.core.clock import utcnow_iso
         from qap.domain.models import Message as MessageModel
 

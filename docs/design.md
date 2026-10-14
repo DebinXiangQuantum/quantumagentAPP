@@ -195,9 +195,20 @@ token 三主题共用。实现于 `tokens.ts` 的 `buildTokenCss()`：输出
 
 ## 6. 可视化组件规范（全部手写 SVG，禁用图表库）
 
-1. **CircuitCanvas**：qubit 横线自上而下编号（等宽字体标签 `q0…`）；门为格点方块，
-   单位格 44×36px；多量子门竖线连接；MEASURE 画表针符号；列压缩无空列；
-   悬停门高亮 + tooltip 显示 gate/参数；>32 qubits 提示并截断。
+1. **CircuitCanvas**（v1.5 符号修订）：qubit 横线自上而下编号（等宽 `q0…`）；
+   门为格点方块（44×36）；MEASURE 表针；**CZ = 竖线 + 两端实心圆点**（控制点
+   样式，无 ⊕）；**RZZ(θ) = 竖线 + 两端实心点 + 线中点小标签 `RZZ(θ)`**
+   （θ=params[0] 保留 2 位小数）；单比特旋转门显示角度 `RX(0.11)`（params
+   缺失退化为门名）；悬停 tooltip 显示 gate/角度；>32 qubits 截断提示；
+   **测量后操作防御**：后端已拒，渲染层再兜底将其按 dropped 计数提示。
+   **消息内容渲染（v1.5，用户反馈：Markdown/公式/表格原样输出）**：
+   助手消息正文经 Markdown 管线渲染——react-markdown + remark-gfm（表格/
+   删除线/任务列表）+ remark-math/rehype-katex（行内 `$…$`、块级 `$$…$$`，
+   KaTeX 衬线字体与 --font-serif 语义一致）；标题/列表/引用/代码块/表格样式
+   全 token 化（代码块 mono + --bg-inset，表格边框 --border-default、表头
+   --bg-inset、行 hover --bg-elevated）；默认禁 raw HTML（安全）；流式渲染
+   期间的部分 Markdown 不得崩溃。依赖白名单增补：react-markdown、
+   remark-gfm、remark-math、rehype-katex、katex（用户明确要求，非模板库）。
 2. **CountsHistogram**：横轴比特串（等宽）、纵轴概率（counts/shots）；
    条形从基线生长动画 160ms；hover 显示计数与占比；总 shots 显示于副标题；
    最大值归一化不变量：`max(高度)/绘图高 == max(counts)/max_count`。
