@@ -45,11 +45,42 @@ export interface ErrorEventData {
   message: string;
 }
 
+/** §7 v1.4：dispatch_agent 子运行全程实时外显的 phase 枚举。 */
+export type AgentActivityPhase =
+  | 'dispatch_started'
+  | 'reasoning_delta'
+  | 'text_delta'
+  | 'tool_call'
+  | 'dispatch_completed';
+
+/**
+ * §7 v1.4 agent.activity —— 子 Agent 运行事件（专家工作区渐进块驱动源）。
+ * delta 仅 reasoning_delta/text_phase 携带；tool 仅 tool_call 携带。
+ */
+export interface AgentActivityData {
+  conversation_id: string;
+  message_id: string;
+  agent_id: string;
+  phase: AgentActivityPhase;
+  delta?: string;
+  tool?: string;
+  seq: number;
+}
+
+/** §7 v1.4 artifact.created —— emit_artifact 产生即推送（前端流式插卡）。 */
+export interface ArtifactCreatedData {
+  conversation_id: string;
+  message_id: string;
+  artifact: import('./domain').Artifact;
+}
+
 /** 会话流事件（event name → data） */
 export type ConversationStreamEvent =
   | { event: 'message.delta'; data: MessageDeltaData }
   | { event: 'message.reasoning'; data: MessageReasoningData }
   | { event: 'message.completed'; data: MessageCompletedData }
+  | { event: 'agent.activity'; data: AgentActivityData }
+  | { event: 'artifact.created'; data: ArtifactCreatedData }
   | { event: 'error'; data: ErrorEventData };
 
 /** 全局流事件 */

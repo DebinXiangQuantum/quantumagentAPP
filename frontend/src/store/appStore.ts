@@ -8,6 +8,10 @@
  *  - 会话流归并：message.reasoning（v1.1 思考增量，先于正文）与 message.delta
  *    分别累积于 streamingByCid；message.completed → 追加完整 assistant 消息
  *    （artifacts + reasoning 全文入库）；
+ *  - v1.4 归并：agent.activity 按 message_id→agentId 聚合进
+ *    subagentActivityByMessage（专家工作区渐进块数据源；seq 单调门控，
+ *    乱序/重复丢弃）；artifact.created 即时插卡（未 completed → 流式消息
+ *    临时 artifacts 骨架态；completed 事件携带 artifacts 全量覆盖去重）；
  *  - 全局流归并：task.updated → upsert（未知 task 以事件包络合成占位）；
  *    hardware.updated → 节点替换 + 利用率历史滚动（60s 窗口，cap 30 样本）；
  *  - 顶栏选择（v1.1）：selectModel 切换渠道（思考程度跟随新渠道
@@ -27,6 +31,7 @@ import { t } from '../i18n';
 import { useUiStore } from './uiStore';
 import type {
   AgentInfo,
+  Artifact,
   AttachmentMeta,
   Conversation,
   HardwareNode,
@@ -39,6 +44,7 @@ import type {
 } from '../types/domain';
 import { parseThinkingLevel } from '../types/domain';
 import type {
+  AgentActivityPhase,
   ConversationStreamEvent,
   GlobalStreamEvent,
   StreamHandle,
@@ -60,6 +66,22 @@ interface StreamingMessage {
   text: string;
   /** v1.1：思考过程累积缓冲（message.reasoning 增量；与 text 同一缓冲模式） */
   reasoning?: string;
+  /** v1.4：artifact.created 即时插卡缓冲（completed 时被事件全量覆盖）。 */
+  artifacts?: Artifact[];
+}
+
+/**
+ * v1.4 单个专家（dispatch_agent 子 Agent）在一条消息内的聚合活动。
+ * 按事件 message_id → agentId 聚合；reasoning/text 增量追加进 text，
+ * tool_call 依序记录工具名；dispatch_completed 收束 phase（保留全文供回看）。
+ */
+export interface SubagentActivity {
+  agentId: string;
+  phase: AgentActivityPhase;
+  /** reasoning/text 增量累计全文（专家工作区正文） */
+  text: string;
+  /** 已调用工具名（按调用顺序；畸形 tool 降级为占位空串） */
+  tools: string[];
 }
 
 /** 发送失败的草稿（内联重试用；附件元数据一并保留以便重试渲染）。 */
@@ -80,6 +102,12 @@ export interface AppDataState {
   loadedCids: Record<string, boolean>;
   messagesByCid: Record<string, Message[]>;
   streamingByCid: Record<string, StreamingMessage | undefined>;
+  /**
+   * v1.4 专家工作区聚合：message_id → 各 agentId 的 SubagentActivity。
+   * 运行中由 MessageBubble 内嵌渐进块实时外显；dispatch_completed 后折叠
+   * 为摘要行（内存态，刷新后不回放——活动为流式期 affordance）。
+   */
+  subagentActivityByMessage: Record<string, SubagentActivity[]>;
   tasks: Task[];
   hardwareNodes: HardwareNode[];
   utilHistoryByNode: Record<string, number[]>;
@@ -145,10 +173,94 @@ export const useAppStore = create<AppDataState>((set, get) => {
     set({ connection: combineStatus() });
   }
 
+  /**
+   * §7 seq 单调门控：携带 seq 的事件（delta/reasoning/agent.activity）
+   * 若 seq ≤ 已见最大值（乱序/重复，如断线重放）则丢弃，不污染增量拼接。
+   * 返回 false = 丢弃。无 seq 字段或畸形 seq 的事件不门控（降级放行）。
+   */
+  function seqGate(cid: string, seq: unknown): boolean {
+    if (typeof seq !== 'number' || !Number.isFinite(seq)) return true;
+    const last = lastSeqByCid.get(cid) ?? 0;
+    if (seq <= last) return false;
+    lastSeqByCid.set(cid, seq);
+    return true;
+  }
+
+  /** v1.4 agent.activity 归并：按 message_id → agentId 聚合（见 SubagentActivity）。 */
+  function mergeAgentActivity(cid: string, data: import('../types/events').AgentActivityData): void {
+    if (!seqGate(cid, data.seq)) return;
+    const { message_id: mid, agent_id: agentId, phase, delta, tool } = data;
+    set((s) => {
+      const list = s.subagentActivityByMessage[mid] ?? [];
+      const idx = list.findIndex((a) => a.agentId === agentId);
+      const prev: SubagentActivity =
+        idx >= 0 ? list[idx] : { agentId, phase: 'dispatch_started', text: '', tools: [] };
+      let next: SubagentActivity;
+      if (phase === 'reasoning_delta' || phase === 'text_delta') {
+        next = {
+          ...prev,
+          phase,
+          text: prev.text + (typeof delta === 'string' ? delta : ''),
+        };
+      } else if (phase === 'tool_call') {
+        next = {
+          ...prev,
+          phase,
+          tools: [...prev.tools, typeof tool === 'string' ? tool : ''],
+        };
+      } else {
+        // dispatch_started / dispatch_completed：只迁移 phase（text/tools 保留）
+        next = { ...prev, phase };
+      }
+      return {
+        subagentActivityByMessage: {
+          ...s.subagentActivityByMessage,
+          [mid]: idx >= 0 ? list.map((a, i) => (i === idx ? next : a)) : [...list, next],
+        },
+      };
+    });
+  }
+
+  /**
+   * v1.4 artifact.created 即时插卡：消息未 completed → 追加进流式消息
+   * 临时 artifacts；已完成 → 就地追加进该消息 artifacts。均按 artifact.id
+   * 去重；畸形 artifact（非对象）忽略。
+   */
+  function insertStreamArtifact(
+    cid: string,
+    data: import('../types/events').ArtifactCreatedData,
+  ): void {
+    const artifact = data?.artifact;
+    if (artifact === null || typeof artifact !== 'object') return;
+    const mid = data.message_id;
+    set((s) => {
+      const list = s.messagesByCid[cid] ?? [];
+      const targetIdx = list.findIndex((m) => m.id === mid);
+      if (targetIdx >= 0) {
+        const target = list[targetIdx];
+        const artifacts = Array.isArray(target.artifacts) ? target.artifacts : [];
+        if (artifacts.some((a) => a?.id === artifact.id)) return s;
+        const nextList = [...list];
+        nextList[targetIdx] = { ...target, artifacts: [...artifacts, artifact] };
+        return { messagesByCid: { ...s.messagesByCid, [cid]: nextList } };
+      }
+      const prev = s.streamingByCid[cid];
+      if (!prev || prev.messageId !== mid) return s;
+      const temp = Array.isArray(prev.artifacts) ? prev.artifacts : [];
+      if (temp.some((a) => a?.id === artifact.id)) return s;
+      return {
+        streamingByCid: {
+          ...s.streamingByCid,
+          [cid]: { ...prev, artifacts: [...temp, artifact] },
+        },
+      };
+    });
+  }
+
   function handleConversationEvent(cid: string, evt: ConversationStreamEvent): void {
     if (evt.event === 'message.delta' || evt.event === 'message.reasoning') {
       const { message_id: mid, delta, seq } = evt.data;
-      if (Number.isFinite(seq)) lastSeqByCid.set(cid, Math.max(lastSeqByCid.get(cid) ?? 0, seq));
+      if (!seqGate(cid, seq)) return;
       const field = evt.event === 'message.delta' ? 'text' : 'reasoning';
       set((s) => {
         const prev = s.streamingByCid[cid];
@@ -163,6 +275,14 @@ export const useAppStore = create<AppDataState>((set, get) => {
           },
         };
       });
+      return;
+    }
+    if (evt.event === 'agent.activity') {
+      mergeAgentActivity(cid, evt.data);
+      return;
+    }
+    if (evt.event === 'artifact.created') {
+      insertStreamArtifact(cid, evt.data);
       return;
     }
     if (evt.event === 'message.completed') {
@@ -358,6 +478,7 @@ export const useAppStore = create<AppDataState>((set, get) => {
     loadedCids: {},
     messagesByCid: {},
     streamingByCid: {},
+    subagentActivityByMessage: {},
     tasks: [],
     hardwareNodes: [],
     utilHistoryByNode: {},
@@ -561,6 +682,7 @@ export const useAppStore = create<AppDataState>((set, get) => {
         loadedCids: {},
         messagesByCid: {},
         streamingByCid: {},
+        subagentActivityByMessage: {},
         tasks: [],
         hardwareNodes: [],
         utilHistoryByNode: {},

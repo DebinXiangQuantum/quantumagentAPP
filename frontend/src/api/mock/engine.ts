@@ -203,14 +203,21 @@ export function createMockClient(): MockClient {
       const m = node.metrics;
       if (m !== undefined && m !== null && typeof m === 'object') {
         if ('topology' in m) {
+          // v1.4：云端真机无保真度（字段可选）——只漂移已存在的样本值
           const driftFid = (v: number): number =>
             Math.min(1, Math.max(0.9, v + (Math.random() - 0.5) * 0.0002));
           for (const q of m.topology.qubits) {
-            q.readout_fidelity = Number(driftFid(q.readout_fidelity).toFixed(4));
-            q.sq_fidelity = Number(driftFid(q.sq_fidelity).toFixed(4));
+            if (typeof q.readout_fidelity === 'number') {
+              q.readout_fidelity = Number(driftFid(q.readout_fidelity).toFixed(4));
+            }
+            if (typeof q.sq_fidelity === 'number') {
+              q.sq_fidelity = Number(driftFid(q.sq_fidelity).toFixed(4));
+            }
           }
           for (const c of m.topology.couplers) {
-            c.tq_fidelity = Number(driftFid(c.tq_fidelity).toFixed(4));
+            if (typeof c.tq_fidelity === 'number') {
+              c.tq_fidelity = Number(driftFid(c.tq_fidelity).toFixed(4));
+            }
           }
         } else if ('cpu_usage' in m) {
           m.cpu_usage = Math.min(1, Math.max(0.02, m.cpu_usage + (Math.random() - 0.5) * 0.08));

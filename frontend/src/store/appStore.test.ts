@@ -16,7 +16,8 @@ import { useAppStore } from './appStore';
 import { setApi } from '../api';
 import { createMockClient, type MockClient } from '../api/mock/engine';
 import { ApiError } from '../api/client';
-import type { AttachmentMeta, Conversation } from '../types/domain';
+import type { Artifact, AttachmentMeta, Conversation, Message } from '../types/domain';
+import type { ConversationStreamEvent } from '../types/events';
 
 describe('useAppStore（Mock 引擎驱动）', () => {
   let client: MockClient;
@@ -275,5 +276,236 @@ describe('sendMessage 附件参数（v1.3）', () => {
     );
     const msg = useAppStore.getState().messagesByCid['c-1'][0];
     expect(msg.attachments).toEqual([meta]);
+  });
+});
+
+/**
+ * v1.4 事件归并：agent.activity（按 message_id 聚合到 subagentActivityByMessage）
+ * 与 artifact.created（即时插卡：未 completed → 流式临时 artifacts；
+ * completed → 就地追加/全量覆盖去重）；seq 单调门控（乱序/重复丢弃）。
+ */
+describe('v1.4 agent.activity / artifact.created 归并', () => {
+  let emit: ((e: ConversationStreamEvent) => void) | null = null;
+
+  beforeEach(() => {
+    const base = createMockClient();
+    setApi({
+      ...base,
+      // 可编程流：捕获 onEvent 供测试注入合成事件（不发真实脚本）
+      openConversationStream: (
+        _cid: string,
+        _after: number | null,
+        cb: { onEvent: (e: ConversationStreamEvent) => void },
+      ) => {
+        emit = cb.onEvent;
+        return { close: () => undefined };
+      },
+      openGlobalStream: () => ({ close: () => undefined }),
+    } as never);
+    useAppStore.getState().resetForTest();
+    useAppStore.setState({
+      activeConversationId: 'c-1',
+      conversations: [
+        {
+          id: 'c-1',
+          title: 'T',
+          agent_id: 'orchestrator',
+          tenant_id: 'demo',
+          created_at: '2026-10-14T09:00:00Z',
+        },
+      ],
+      messagesByCid: { 'c-1': [] },
+      loadedCids: { 'c-1': true },
+    });
+    // selectConversation 已在 resetForTest 后重放：手动打开流（emit 已捕获）
+    useAppStore.getState().selectConversation('c-1');
+  });
+  afterEach(() => {
+    emit = null;
+  });
+
+  const activity = (seq: number, phase: string, extra: Record<string, unknown> = {}): void => {
+    emit?.({
+      event: 'agent.activity',
+      data: {
+        conversation_id: 'c-1',
+        message_id: 'm-a',
+        agent_id: 'algorithm-designer',
+        phase,
+        seq,
+        ...extra,
+      } as never,
+    });
+  };
+
+  const lastMessage = (): Message => {
+    const list = useAppStore.getState().messagesByCid['c-1'];
+    return list[list.length - 1];
+  };
+
+  it('dispatch_started 创建聚合条目；delta 增量按顺序拼接', () => {
+    activity(1, 'dispatch_started');
+    activity(2, 'reasoning_delta', { delta: '分析问题…' });
+    activity(3, 'reasoning_delta', { delta: '选择 ansatz。' });
+    activity(4, 'text_delta', { delta: '正在合成线路' });
+    let entry = useAppStore.getState().subagentActivityByMessage['m-a'];
+    expect(entry).toHaveLength(1);
+    expect(entry![0]).toEqual({
+      agentId: 'algorithm-designer',
+      phase: 'text_delta',
+      text: '分析问题…选择 ansatz。正在合成线路',
+      tools: [],
+    });
+    activity(5, 'dispatch_completed');
+    entry = useAppStore.getState().subagentActivityByMessage['m-a'];
+    expect(entry![0].phase).toBe('dispatch_completed');
+    // 收束后 text/tools 保持（摘要行可回看）
+    expect(entry![0].text).toBe('分析问题…选择 ansatz。正在合成线路');
+  });
+
+  it('tool_call 追加工具名（多次调用按序保留）', () => {
+    activity(1, 'dispatch_started');
+    activity(2, 'tool_call', { tool: 'query_hardware' });
+    activity(3, 'tool_call', { tool: 'emit_artifact' });
+    activity(4, 'tool_call', { tool: 'query_hardware' });
+    const entry = useAppStore.getState().subagentActivityByMessage['m-a']!;
+    expect(entry[0].tools).toEqual(['query_hardware', 'emit_artifact', 'query_hardware']);
+  });
+
+  it('多个专家同消息并存（按 agentId 聚合互不串扰）', () => {
+    activity(1, 'dispatch_started');
+    emit?.({
+      event: 'agent.activity',
+      data: {
+        conversation_id: 'c-1',
+        message_id: 'm-a',
+        agent_id: 'calibration',
+        phase: 'dispatch_started',
+        seq: 2,
+      },
+    });
+    activity(3, 'text_delta', { delta: 'A 输出' });
+    emit?.({
+      event: 'agent.activity',
+      data: {
+        conversation_id: 'c-1',
+        message_id: 'm-a',
+        agent_id: 'calibration',
+        phase: 'text_delta',
+        delta: 'C 输出',
+        seq: 4,
+      },
+    });
+    const entry = useAppStore.getState().subagentActivityByMessage['m-a']!;
+    expect(entry).toHaveLength(2);
+    expect(entry.find((e) => e.agentId === 'algorithm-designer')?.text).toBe('A 输出');
+    expect(entry.find((e) => e.agentId === 'calibration')?.text).toBe('C 输出');
+  });
+
+  it('seq 乱序/重复事件被丢弃（乱序不污染增量拼接）', () => {
+    activity(5, 'dispatch_started');
+    activity(6, 'text_delta', { delta: '正确顺序' });
+    activity(3, 'text_delta', { delta: '迟到旧包' }); // seq 回退 → 丢弃
+    activity(6, 'text_delta', { delta: '重复 seq' }); // 与已见 seq 相等 → 丢弃
+    activity(7, 'text_delta', { delta: '·新包' });
+    const entry = useAppStore.getState().subagentActivityByMessage['m-a']!;
+    expect(entry[0].text).toBe('正确顺序·新包');
+  });
+
+  it('artifact.created（未 completed）→ 插入流式消息临时 artifacts', () => {
+    emit?.({
+      event: 'message.delta',
+      data: { conversation_id: 'c-1', message_id: 'm-a', delta: '合成中', seq: 1 },
+    });
+    emit?.({
+      event: 'artifact.created',
+      data: {
+        conversation_id: 'c-1',
+        message_id: 'm-a',
+        artifact: { id: 'a-90', type: 'circuit', title: 'Ansatz', payload: { qubits: 2, operations: [] } },
+      },
+    });
+    const streaming = useAppStore.getState().streamingByCid['c-1'];
+    expect((streaming?.artifacts ?? []).map((a) => a.id)).toEqual(['a-90']);
+    // 同 id 重复推送 → 去重
+    emit?.({
+      event: 'artifact.created',
+      data: {
+        conversation_id: 'c-1',
+        message_id: 'm-a',
+        artifact: { id: 'a-90', type: 'circuit', title: 'Ansatz', payload: { qubits: 2, operations: [] } },
+      },
+    });
+    expect(useAppStore.getState().streamingByCid['c-1']?.artifacts).toHaveLength(1);
+  });
+
+  it('completed 用事件携带 artifacts 全量覆盖临时卡（不做双份）', () => {
+    emit?.({
+      event: 'message.delta',
+      data: { conversation_id: 'c-1', message_id: 'm-a', delta: '合成中', seq: 1 },
+    });
+    const art: Artifact = { id: 'a-90', type: 'circuit', title: 'Ansatz', payload: null };
+    emit?.({
+      event: 'artifact.created',
+      data: { conversation_id: 'c-1', message_id: 'm-a', artifact: art },
+    });
+    emit?.({
+      event: 'message.completed',
+      data: {
+        conversation_id: 'c-1',
+        message_id: 'm-a',
+        artifacts: [art, { id: 'a-91', type: 'counts', title: '计数', payload: null }],
+        reasoning: '',
+      },
+    });
+    const s = useAppStore.getState();
+    expect(s.streamingByCid['c-1']).toBeUndefined();
+    const last = s.messagesByCid['c-1'][s.messagesByCid['c-1'].length - 1];
+    expect(last.id).toBe('m-a');
+    expect(last.artifacts.map((a) => a.id)).toEqual(['a-90', 'a-91']);
+  });
+
+  it('completed 之后再收到 artifact.created → 就地追加进已完成消息（去重）', () => {
+    emit?.({
+      event: 'message.completed',
+      data: {
+        conversation_id: 'c-1',
+        message_id: 'm-a',
+        artifacts: [{ id: 'a-1', type: 'circuit', title: 'x', payload: null }],
+        reasoning: '',
+      },
+    });
+    emit?.({
+      event: 'artifact.created',
+      data: {
+        conversation_id: 'c-1',
+        message_id: 'm-a',
+        artifact: { id: 'a-2', type: 'counts', title: 'y', payload: null },
+      },
+    });
+    let last = lastMessage();
+    expect(last.artifacts.map((a) => a.id)).toEqual(['a-1', 'a-2']);
+    emit?.({
+      event: 'artifact.created',
+      data: {
+        conversation_id: 'c-1',
+        message_id: 'm-a',
+        artifact: { id: 'a-2', type: 'counts', title: 'y', payload: null },
+      },
+    });
+    last = lastMessage();
+    expect(last.artifacts).toHaveLength(2);
+  });
+
+  it('message.delta 同样受 seq 门控：乱序旧包不拼接', () => {
+    emit?.({
+      event: 'message.delta',
+      data: { conversation_id: 'c-1', message_id: 'm-a', delta: '第一段', seq: 10 },
+    });
+    emit?.({
+      event: 'message.delta',
+      data: { conversation_id: 'c-1', message_id: 'm-a', delta: '旧包', seq: 9 },
+    });
+    expect(useAppStore.getState().streamingByCid['c-1']?.text).toBe('第一段');
   });
 });
