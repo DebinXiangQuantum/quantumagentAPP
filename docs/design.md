@@ -140,8 +140,11 @@ token 三主题共用。实现于 `tokens.ts` 的 `buildTokenCss()`：输出
      `/admin/*` 同步 403 强制）：渠道列表（ref/provider/model/base_url/
      密钥已设置√/default_thinking）+ 新建/编辑表单（api_key 仅写入框，
      保存后永不回显）；
-  3. **插件管理**（**仅 admin 角色**）：已装插件列表（名称/版本/启用开关/
-     来源 builtin·installed/broken 原因）+ 安装（source_path）+ 卸载。
+  3. **插件管理**（**仅 admin 角色**）：已装插件列表——**每张插件卡必须展示
+     状态徽标**（v1.3：`启用中`=success / `已停用`=faint / `加载失败`=danger
+     +broken 原因内联展示），以及名称、id、版本（空则省略）、来源徽标
+     （内置/已安装）、capabilities 标签、绑定 model_ref、启用开关（内置插件
+     开关禁用但可启停状态可见）、安装（source_path）与卸载（两段式确认）。
   - 分区标题右侧显示「管理员」徽标；普通用户设置页仅剩分区 1。
   - **文字边界（v1.2 修复）**：设置页容器与卡片 `min-width: 0`；描述段落
     `word-break: break-word`；渠道/插件表格容器 `overflow-x: auto` +
