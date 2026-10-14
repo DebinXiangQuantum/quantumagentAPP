@@ -103,6 +103,11 @@ export interface AppDataState {
   selectConversation: (cid: string) => Promise<void>;
   createConversation: (title?: string) => Promise<Conversation>;
   /**
+   * 确保存在活跃会话并返回 cid（无则自动新建，标题=seed 前 20 字）——
+   * composer 附件上传前调用（§5.2：附件必须挂在会话下）。
+   */
+  ensureConversation: (titleSeed: string) => Promise<string>;
+  /**
    * v1.2/v1.3 发送：无活跃会话自动建会话（标题=消息前 20 字）；404 自动
    * 重建重试一次；失败 → sendError + failedDraft（retrySend 重发）。
    */
@@ -417,6 +422,8 @@ export const useAppStore = create<AppDataState>((set, get) => {
       await get().selectConversation(conv.id);
       return conv;
     },
+
+    ensureConversation: async (titleSeed) => ensureConversationInner(titleSeed),
 
     sendMessage: async (content, opts) => {
       const trimmed = content.trim();

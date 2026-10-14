@@ -16,7 +16,7 @@ import { useAppStore } from './appStore';
 import { setApi } from '../api';
 import { createMockClient, type MockClient } from '../api/mock/engine';
 import { ApiError } from '../api/client';
-import type { Conversation } from '../types/domain';
+import type { AttachmentMeta, Conversation } from '../types/domain';
 
 describe('useAppStore（Mock 引擎驱动）', () => {
   let client: MockClient;
@@ -240,5 +240,40 @@ describe('sendMessage 自动建会话（v1.2）', () => {
     await first;
     expect(sends).toEqual(['第一条']);
     expect(useAppStore.getState().sending).toBe(false);
+  });
+});
+
+/** v1.3：sendMessage 携带 attachment_ids（空数组不携带，保持既有 POST body 断言兼容）。 */
+describe('sendMessage 附件参数（v1.3）', () => {
+  it('attachment_ids 非空时进入 POST body；attachments 元数据随乐观用户消息上屏', async () => {
+    const sendSpy = vi.fn(async () => ({ message_id: 'm-20', run_id: 'r-20' }));
+    const base = createMockClient();
+    setApi({
+      ...base,
+      sendMessage: sendSpy,
+      openConversationStream: () => ({ close: () => undefined }),
+      openGlobalStream: () => ({ close: () => undefined }),
+    } as never);
+    useAppStore.getState().resetForTest();
+    useAppStore.setState({ activeConversationId: 'c-1', messagesByCid: {} });
+
+    const meta: AttachmentMeta = {
+      id: 'att-9',
+      name: '数据.csv',
+      mime: 'text/csv',
+      size: 1024,
+      kind: 'text',
+    };
+    await useAppStore.getState().sendMessage('分析这个', {
+      attachmentIds: ['att-9'],
+      attachments: [meta],
+    });
+    expect(sendSpy).toHaveBeenCalledWith(
+      'c-1',
+      '分析这个',
+      expect.objectContaining({ attachment_ids: ['att-9'] }),
+    );
+    const msg = useAppStore.getState().messagesByCid['c-1'][0];
+    expect(msg.attachments).toEqual([meta]);
   });
 });
