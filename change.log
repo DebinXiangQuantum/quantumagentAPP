@@ -5,6 +5,38 @@ Validation（本切片测试结论）+ Known defects（已知缺陷，无则写�
 scope 与流程见 docs/DEVELOPMENT.md §2。
 
 
+## 2026-10-14 `backend: V5（v4 轮）——dispatch 实时外显（agent.activity）+ artifact.created 即时事件`
+
+### Added
+- `events/bus.py`：`agent.activity` 加入 SEQ_CARRYING 事件集（载荷注入
+  seq，与 SSE 帧 id 一致——契约 §7 v1.4）。
+- `agents/runtime.py`：dispatch_agent 子运行全程映射 `agent.activity`——
+  run_subagent 发布 dispatch_started/dispatch_completed（成败均收束）；
+  `_stream_turn(activity=True)` 把子运行的 ThoughtDelta/TextDelta/ToolCall
+  逐条映射为 reasoning_delta/text_delta/tool_call（delta 或
+  tool{name,arguments} 载荷；正文增量不进 message.delta，与主运行流不
+  混淆）；主运行（stream_to_sse=True）行为完全不变。
+- `agents/tools.py`：`PlatformTools` 增可选 `events=` 注入——
+  `emit_artifact` 构造校验通过即推 `artifact.created`（载荷
+  conversation_id/message_id/artifact，产生即推非 completed 批量）；
+  `events=None`（测试 Rig 缺省）行为与 v1.3 完全一致。
+  `api/state.py` 组装根注入总线。
+
+### Validation
+- 新增 `tests/test_dispatch_stream.py` 6 用例（事件序 dispatch_started→
+  增量族→dispatch_completed 且 seq 严格单调与帧 id 一致；tool_call 携带
+  {name,arguments}；主运行仍 message.delta/completed 一次且互不混淆；
+  emit_artifact 同步发布即可订阅（零等待断言）；created 均先于 completed
+  且 completed 仍全量携带并一一对应；子运行产物流式外显锚定父消息 +
+  全局流不转发新事件）。全量 **476 passed**（470 + 6；v4 轮累计新增 58：
+  V1 12 + V2 16 + V3 15 + V4 9 + V5 6）。
+
+### Known defects
+- 无（agent 步（task 内 dispatch 执行器路径）的子运行 activity 以影子
+  锚点 message_id="m-0" 发布——conversation 路由正确，前端按会话流可见，
+  消息级归因降级显示；后续可在 Step 上携带真实消息锚点改善）。
+
+
 ## 2026-10-14 `backend: V4（v4 轮）——内置专家真实化（通用领域提示）+ mock 渠道诚实化`
 
 ### Changed

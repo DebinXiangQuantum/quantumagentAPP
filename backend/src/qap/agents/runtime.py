@@ -168,10 +168,22 @@ class AgentRuntime:
         history = [type(shadow)(id="m-0", conversation_id=carrier.id,
                                 role="user", content=instruction,
                                 agent_id=plugin.id, created_at=shadow.created_at)]
-        shadow, failure = await self._drive(
-            carrier, plugin, shadow, sub_context, provider, history, level,
-            stream_to_sse=False,
+        # v1.4 实时外显：子运行全程映射为 agent.activity（契约 §7）——
+        # dispatch_started → reasoning/text/tool 增量 → dispatch_completed
+        # （成败都收束；正文增量不进 message.delta，避免与父运行混淆）。
+        self._publish_activity(
+            parent.conversation_id, parent.message_id, plugin.id, "dispatch_started"
         )
+        try:
+            shadow, failure = await self._drive(
+                carrier, plugin, shadow, sub_context, provider, history, level,
+                stream_to_sse=False, activity=True,
+            )
+        finally:
+            self._publish_activity(
+                parent.conversation_id, parent.message_id, plugin.id,
+                "dispatch_completed",
+            )
         if failure is not None:
             return {"error": "provider_error", "message": failure}
         return {"reply": shadow.content, "agent_id": plugin.id}
@@ -189,12 +201,15 @@ class AgentRuntime:
         thinking_level: str,
         *,
         stream_to_sse: bool = True,
+        activity: bool = False,
     ) -> tuple[Message, str | None]:
         """工具循环骨架；``stream_to_sse=False`` 为 dispatch 子运行（§8）。
 
         子运行与主运行的差异：不向 SSE 发布增量与完成事件（其回复作为
         工具结果回流 orchestrator）、不落库（无独立 assistant 消息语义）；
         provider 故障仍发布 SSE ``error``（诚实遥测）。
+        ``activity=True``（v1.4 §7）：子运行的 ProviderEvent 逐条映射为
+        ``agent.activity``（phase= reasoning_delta/text_delta/tool_call）。
 
         :returns: (累积后的 assistant, 失败消息或 None)。
         """
@@ -218,7 +233,7 @@ class AgentRuntime:
                 )
                 calls, stop_reason, failure = await self._stream_turn(
                     conversation, assistant, context, provider, request,
-                    text_buffer, reasoning_buffer, stream_to_sse,
+                    text_buffer, reasoning_buffer, stream_to_sse, activity,
                 )
                 if failure is not None or not calls:
                     break  # 出错或纯文本轮 → 收束
@@ -262,8 +277,13 @@ class AgentRuntime:
         text_buffer: list[str],
         reasoning_buffer: list[str],
         stream_to_sse: bool,
+        activity: bool = False,
     ) -> tuple[list[ToolCallRecord], str | None, str | None]:
         """消费一次 provider 流。
+
+        ``activity=True``（v1.4）：dispatch 子运行期把 ThoughtDelta/TextDelta/
+        ToolCall 逐条映射为 ``agent.activity``（phase= reasoning_delta/
+        text_delta/tool_call；正文不进 message.delta，与父运行流不混淆）。
 
         :returns: (本轮工具调用记录, stop_reason, 失败消息或 None)。
         """
@@ -284,6 +304,11 @@ class AgentRuntime:
                         },
                         conversation_id=conversation.id,
                     )
+                elif activity:
+                    self._publish_activity(
+                        conversation.id, assistant.id, context.agent_id,
+                        "reasoning_delta", delta=event.text,
+                    )
             elif isinstance(event, TextDelta):
                 text_buffer.append(event.text)
                 assistant.content = "".join(text_buffer)
@@ -297,6 +322,11 @@ class AgentRuntime:
                         },
                         conversation_id=conversation.id,
                     )
+                elif activity:
+                    self._publish_activity(
+                        conversation.id, assistant.id, context.agent_id,
+                        "text_delta", delta=event.text,
+                    )
             elif isinstance(event, ToolCall):
                 calls.append(
                     ToolCallRecord(
@@ -305,6 +335,12 @@ class AgentRuntime:
                         arguments=event.arguments,
                     )
                 )
+                if activity and not stream_to_sse:
+                    self._publish_activity(
+                        conversation.id, assistant.id, context.agent_id,
+                        "tool_call",
+                        tool={"name": event.name, "arguments": event.arguments},
+                    )
             elif isinstance(event, ProviderErrorEvent):
                 failure = event.message
                 # 契约 §7：provider 故障（超时等）走 error 事件
@@ -316,6 +352,29 @@ class AgentRuntime:
             elif isinstance(event, TurnCompleted):
                 stop_reason = event.stop_reason
         return calls, stop_reason, failure
+
+    def _publish_activity(
+        self,
+        conversation_id: str,
+        message_id: str,
+        agent_id: str,
+        phase: str,
+        *,
+        delta: str | None = None,
+        tool: dict | None = None,
+    ) -> None:
+        """发布一条 ``agent.activity``（契约 §7 v1.4；seq 由总线注入）。"""
+        payload: dict = {
+            "conversation_id": conversation_id,
+            "message_id": message_id,
+            "agent_id": agent_id,
+            "phase": phase,
+        }
+        if delta is not None:
+            payload["delta"] = delta
+        if tool is not None:
+            payload["tool"] = tool
+        self._events.publish("agent.activity", payload, conversation_id=conversation_id)
 
     # ---------- 收束 ----------
 

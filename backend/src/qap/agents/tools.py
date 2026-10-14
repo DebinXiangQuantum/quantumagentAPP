@@ -24,6 +24,7 @@ from qap.core.errors import QapError, ValidationFailed
 from qap.core.ids import IdGenerator
 from qap.domain.models import Artifact, Task
 from qap.domain.store import TaskStore
+from qap.events.bus import EventBus
 from qap.orchestrator.dag import StepSpec, build_steps, validate_step_specs
 from qap.orchestrator.scheduler import Scheduler
 from qap.orchestrator.step_context import current_dispatch_step
@@ -160,13 +161,18 @@ class PlatformTools:
         hardware_snapshot: HardwareSnapshotFn,
         *,
         dispatcher: DispatcherFn | None = None,
+        events: EventBus | None = None,
     ) -> None:
+        """``events``（v1.4 §7）：注入总线后 ``emit_artifact`` 产生即推
+        ``artifact.created``（前端流式插卡）；None = 本部署不外显（测试
+        Rig 缺省，行为与 v1.3 完全一致——产物仍全量随 message.completed）。"""
         self._idgen = idgen
         self._tenants = tenants
         self._scheduler = scheduler
         self._tasks = tasks
         self._hardware_snapshot = hardware_snapshot
         self._dispatcher = dispatcher
+        self._events = events
 
     def bind_dispatcher(self, dispatcher: DispatcherFn) -> None:
         """绑定 dispatch_agent 执行器（AgentRuntime.run_subagent，组装期）。"""
@@ -216,7 +222,12 @@ class PlatformTools:
     # ---------- 各工具实现 ----------
 
     def _emit_artifact(self, context: ToolContext, args: dict) -> dict:
-        """构造并校验 Artifact，挂到运行上下文（§6：非法载荷生成侧拒绝）。"""
+        """构造并校验 Artifact，挂到运行上下文（§6：非法载荷生成侧拒绝）。
+
+        v1.4 §7：注入总线时**产生即推** ``artifact.created``（载荷
+        conversation_id/message_id/artifact）——前端流式插卡，无需等
+        message.completed；completed 帧仍全量携带（既有事件不变）。
+        """
         envelope = args.get("artifact")
         if not isinstance(envelope, dict):
             raise ValidationFailed("emit_artifact requires an 'artifact' object")
@@ -227,6 +238,16 @@ class PlatformTools:
             payload=envelope.get("payload", {}),
         )
         context.pending_artifacts.append(artifact)
+        if self._events is not None:
+            self._events.publish(
+                "artifact.created",
+                {
+                    "conversation_id": context.conversation_id,
+                    "message_id": context.message_id,
+                    "artifact": artifact.model_dump(),
+                },
+                conversation_id=context.conversation_id,
+            )
         return {"artifact_id": artifact.id, "type": artifact.type}
 
     def _submit_task(self, context: ToolContext, args: dict) -> dict:

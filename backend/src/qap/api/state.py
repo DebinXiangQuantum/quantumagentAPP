@@ -215,7 +215,9 @@ def build_app_state(
         on_task_finished=on_task_finished,
     )
     simulator = UtilizationSimulator(nodes, events, app_config.hardware.tick_seconds)
-    tools = PlatformTools(idgen, tenants, scheduler, tasks, nodes.snapshot)
+    tools = PlatformTools(
+        idgen, tenants, scheduler, tasks, nodes.snapshot, events=events
+    )
 
     # Provider 表：model_ref → provider 实例（mock 共享剧本游标，天然单例）。
     # 存于 providers dict 并挂到 state：admin 渠道编辑（v1.1 §5）原地增删改。

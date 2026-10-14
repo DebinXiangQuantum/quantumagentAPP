@@ -478,6 +478,21 @@ calibration：校准数据→误差分析→波形修正计算（DRAG/脉冲整�
 calibration）保持不变。测试：`tests/test_expert_prompts.py`（9 用例：
 通用提示正/负断言 + 诚实通知 + 演示链路保持）。
 
+**V5（dispatch 实时外显 + artifact 即时事件）**：Runtime 在 dispatch_agent
+子运行全程把子 Agent 的 ProviderEvent 映射为 SSE `agent.activity`
+（§7 v1.4 载荷：conversation_id/message_id/agent_id/phase/delta?/tool?/
+seq——seq 由总线注入并加入 SEQ_CARRYING 集合；phase ∈ dispatch_started |
+reasoning_delta | text_delta | tool_call | dispatch_completed；正文增量不进
+message.delta，与主运行流不混淆；成败均发 dispatch_completed 收束）。
+`emit_artifact` **产生即推** `artifact.created`（PlatformTools 注入
+EventBus——组装根生产路径已接；载荷含消息锚点与产物信封，前端流式插卡），
+`message.completed` 仍全量携带（既有事件不变；测试注入位 events=None 时
+行为与 v1.3 完全一致）。全局流仍只转发 task/hardware 事件（§7 语义保持）。
+测试：`tests/test_dispatch_stream.py`（6 用例：事件序与 seq 单调、tool_call
+载荷、主运行流不受影响、emit 即时可订阅、created 先于 completed 且
+completed 仍全量、子运行产物流式外显 + 全局流隔离）。全量 **476 passed**
+（418 基线 + v4 轮新增 58）。
+
 ## 前端 (Frontend)
 
 *本节由 `feat/frontend` 分支的开发切片维护更新：组件清单、页面说明、测试结果。*
