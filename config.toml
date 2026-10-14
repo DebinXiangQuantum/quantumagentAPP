@@ -7,7 +7,6 @@
 #   2. 密钥绝不写入本文件：每个模型通过 `api_key_env` 指向环境变量名，
 #      运行时从环境读取。
 #   3. 原型默认 `provider = "mock"`（零算力消耗、可离线演示）；
-#      接真实模型时改 `models.default` 的 provider/base_url/model 即可。
 # =============================================================================
 
 [server]
@@ -74,10 +73,6 @@ api_key_env = "OPENAI_API_KEY"
 timeout_seconds = 120
 default_thinking = "off"
 
-[models.mock]
-provider = "mock"
-model = "scripted-demo"
-default_thinking = "off"
 
 # -----------------------------------------------------------------------------
 # Agent 运行时与内置演示插件
@@ -112,7 +107,8 @@ model_ref = "default"
 # -----------------------------------------------------------------------------
 
 [hardware]
-# v1.4 数据源：simulated=本地模拟机群（演示）；logicalcloud=从 logicalcloud
+# v1.6 数据源：logicalcloud=真机（默认与主路径）；simulated=仅限初步验证
+# （离线冒烟/单测），产品运行禁止使用模拟 QPU。v1.4 数据源：simulated=本地模拟机群（演示）；logicalcloud=从 logicalcloud
 # 实拉真机列表与在线状态（QPU 节点忽略下方手写条目，GPU/CPU 仍为本地模拟）。
 # logicalcloud 模式密钥经环境变量 LQCLOUD_API_KEY 注入（绝不写入本文件）；
 # 云端不可达时启动 fail-fast（真实模式禁止静默伪造数据）。

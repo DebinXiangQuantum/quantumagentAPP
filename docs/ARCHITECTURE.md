@@ -56,6 +56,18 @@ wire format + Mock）、SSE 实时事件。
 `scheduler.{max_parallel_steps,step_timeout_seconds,retry_failed_steps}` ·
 `tenancy.{default_tenant, tenants[].{id,name,api_key,max_concurrent_tasks,max_messages_per_day}}`
 
+**v1.6 去 mock 化（产品级要求）**：产品中**不存在任何 mock/假模型渠道**——
+`[models.*]` 的 provider 仅 `openai | anthropic`；mock provider 从 src 移除
+（测试以 tests/ 内的**测试替身**驱动——ScriptedTestProvider/OpenAI 形状的
+MockTransport 回放，绝不注册为可选渠道）。`agents.default_model_ref` 必须
+指向真实渠道（启动校验）。前端 mock 引擎与 VITE_USE_MOCK 一并删除（演示
+数据由真实后端或测试注入 fake ApiClient 提供）。
+**QPU 真机强制**：quantum 步在 logicalcloud 模式下**必须携带 circuit**——
+缺失即步骤失败（错误信息明确"真机执行需要线路"），不再静默落回本地模拟；
+`[hardware] provider = "simulated"` 仅限**初步验证**用途（离线冒烟/单测），
+须在部署文档与本配置注释中显式声明，且 UI 对 simulated 节点标注"模拟·
+初步验证"。
+
 **v1.4 硬件数据源（provider 模式）**：`[hardware] provider = "simulated"|"logicalcloud"`
 （缺省 simulated）。logicalcloud 模式：QPU 节点**启动时从云端实拉**
 （`get_backends()`，实测 2026-10-14：5 台真机——MQ02/AGate-100/
