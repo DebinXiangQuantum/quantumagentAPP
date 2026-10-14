@@ -493,6 +493,36 @@ EventBus——组装根生产路径已接；载荷含消息锚点与产物信封
 completed 仍全量、子运行产物流式外显 + 全局流隔离）。全量 **476 passed**
 （418 基线 + v4 轮新增 58）。
 
+**冒烟修正（两片，真实联调发现）**：① 云端拓扑真实形状——`qubit_coordinates`
+实为 **dict**（键=比特下标）、rows/cols 云端显式、`coupling_map` 连接对
+照录（tq_fidelity 诚实 null，绝不伪造保真度）；`invariants` cloud 分支
+同步（连接对照录、保真度数值=伪造即拒绝）。② 门名大小写归一——GLM 实测
+产出小写 "h"/"cx"，转换器 strip+upper 归一（未知门仍 ValueError）+
+专家提示明确大写门名规范。全量 **480 passed**。
+
+**v4 后端手动冒烟记录（2026-10-14，结果不入测试）**：
+`config.local.toml`（gitignored）覆盖 `provider="logicalcloud"` +
+`agents.*.model_ref="glm-5.3-flash"`，`set -a; source secrets/{lqcloud,
+glm}.env; set +a`（lqcloud.env 键名 APIkey → `export LQCLOUD_API_KEY=$APIkey`）
+后起服务：
+- `GET /hardware`：5 台 lq-* 真机（MQ02/AGate-100/QZ01-surface_code/
+  QZ01-repetition_code online、QZ02 offline；model=云端 chip_architecture
+  实测值 AGate 100/165/30；MQ02 24 比特 8x8 网格 23 耦合器、AGate-100
+  101 比特 14x14 157 耦合器；保真度全 null=cloud-observed 诚实降级）；
+  gpu/cpu 模拟节点保留；lq-* 利用率恒 0 不漂移。
+- GLM 渠道（Coding Plan 端点）发"给我一个 2 比特 Bell 线路，在真机上跑
+  256 shots 并解读结果"：SSE 流实时观察 dispatch_started → 1245 条
+  agent.activity（reasoning/text/tool_call 增量）→ dispatch_completed；
+  专家即时流式 2 个 circuit artifact（artifact.created）→ submit_task
+  （quantum 步带 circuit/shots）→ 调度租约 lq-MQ02 → 云端 job
+  task_61631313e17749e6（task.updated 推送 queue_position=1 排队帧）→
+  5.2s 后完成，**counts artifact「MQ02 实测计数（job
+  task_61631313e17749e6，cloud-observed）」自动发射：00=131/11=123/10=2/
+  01=0（真实 Bell 态读出，计数守恒 256）**；step.duration_ms=5263.2
+  （perf_counter 实测）；orchestrator 最终回复含诚实声明（计数未回传前
+  不编造数值）与解读框架。首次冒烟曾因 GLM 小写门名失败（step.error
+  诚实透传"unsupported gate 'h'"）——修正后复跑通过。
+
 ## 前端 (Frontend)
 
 *本节由 `feat/frontend` 分支的开发切片维护更新：组件清单、页面说明、测试结果。*
