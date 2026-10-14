@@ -36,6 +36,35 @@ scope 与流程见 docs/DEVELOPMENT.md §2。
 ### Known defects
 - 无。
 
+## 2026-10-13 `frontend: v3 W3——DAG 时间分析与嵌套下钻（v1.3）`
+
+### Added
+- **实测标注（§6.3）**：节点新增 `时长 {v}` / `内存 {v}` 行（--font-data
+  等宽；duration_ms/peak_memory_mb 不可得 → "—"）；文案统一"实测"（后端
+  perf_counter/tracemalloc 测量，UI 不称硬件观测）。节点几何 232×76 →
+  **232×92**（§5.1 v1.1 尺寸容纳不下第三行实测信息；属 §6.3 v1.3 增量，
+  依赖边/层布局规则不变）。
+- **时间线（Gantt）模式**：头部「结构 / 时间线」二段切换；`buildTimelineModel`
+  纯函数（utils/dag.ts）——x=任务起点起算相对时间、条宽=duration_ms
+  （finished 用 duration_ms，缺省回退 finished-started；running=now-started
+  实时增长，250ms 重算 tick + ≤200ms CSS 过渡）；kind 色；0/25/50/75/100%
+  五档刻度线；悬停 title 含起止时刻与时长；未开始步骤无条形（降级列出）。
+- **嵌套下钻**：subtask_id 非空节点渲染 ⊕ 角标（键盘可达）；点击经
+  `loadTask`（ApiClient 新增 `getTask`，InspectorPanel 注入，mock 引擎实现
+  404 语义）加载子任务 DAG 递归渲染；面包屑「根任务 / 来源步骤 / …」逐级
+  返回；子图同样支持二段切换；loadTask 缺省/失败静默降级。
+- Drawer 补「实测时长 / 峰值内存 / 子任务链接（查看子任务 →）」三行。
+
+### Validation
+- `npm test` 174 passed（DagView 重写为 12 条：几何 232×92、实测标注与
+  null 降级、时间线几何不变量 left/width≈duration/total、五档刻度、运行中
+  满宽、⊕ 下钻+面包屑+两模式、Drawer 实测与子任务链接、空态降级）；
+  `npm run build` 零错误。
+
+### Known defects
+- 时间线运行中条形的"实时增长"为 250ms 离散步进 + 120ms CSS 过渡的平滑
+  近似（非逐帧连续），符合 §6.3 ≤200ms 过渡约束。
+
 ## 2026-10-13 `frontend: v3 W2——composer 工具条、附件全流程与顶栏外观控件（v1.2/v1.3）`
 
 ### Added

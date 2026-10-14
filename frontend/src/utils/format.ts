@@ -63,3 +63,9 @@ export function formatDuration(ms: unknown): string {
   if (ms < 1000) return `${Math.round(ms)}ms`;
   return `${(ms / 1000).toFixed(1)}s`;
 }
+
+/** 实测峰值内存（MB，1 位小数：18.3 → "18.3MB"）；畸形 → "—"。 */
+export function formatMb(mb: unknown): string {
+  if (typeof mb !== 'number' || !Number.isFinite(mb) || mb < 0) return '—';
+  return `${mb.toFixed(1)}MB`;
+}

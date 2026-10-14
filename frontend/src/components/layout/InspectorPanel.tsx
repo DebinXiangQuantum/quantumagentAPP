@@ -9,10 +9,12 @@
  */
 import { useUiStore, type InspectorTab } from '../../store/uiStore';
 import { useAppStore } from '../../store/appStore';
+import { getApi } from '../../api';
 import { HardwareTopology } from '../viz/HardwareTopology';
 import { DagView } from '../viz/DagView';
 import { DagSkeleton, HwGridSkeleton } from '../common/Skeletons';
 import { useTranslate } from '../../i18n';
+import type { Task } from '../../types/domain';
 
 const TABS: ReadonlyArray<{ id: InspectorTab; key: string }> = [
   { id: 'hardware', key: 'inspector.tab.hardware' },
@@ -37,6 +39,15 @@ export function InspectorPanel(): JSX.Element {
     ? tasks.filter((tk) => tk.conversation_id === activeCid)
     : [];
   const visibleTasks = scopedTasks.length > 0 ? scopedTasks : tasks;
+
+  // §6.3 v1.3：嵌套下钻——按 subtask_id 拉取子任务（404/畸形 → null 降级）
+  const loadTaskForDag = async (taskId: string): Promise<Task | null> => {
+    try {
+      return await getApi().getTask(taskId);
+    } catch {
+      return null;
+    }
+  };
 
   return (
     <aside
@@ -74,7 +85,13 @@ export function InspectorPanel(): JSX.Element {
             {visibleTasks.length === 0 ? (
               <DagView task={null} />
             ) : (
-              visibleTasks.map((task) => <DagView key={task.id} task={task} />)
+              visibleTasks.map((task) => (
+                <DagView
+                  key={task.id}
+                  task={task}
+                  loadTask={loadTaskForDag}
+                />
+              ))
             )}
           </div>
         )}

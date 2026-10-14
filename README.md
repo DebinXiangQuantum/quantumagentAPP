@@ -312,6 +312,12 @@ medianTqFidelity；formatFidelity/Us/GB）+ `formatBytes/formatDuration`；
 + 连接灯；附件全流程（file input → 无会话自动建会话 → POST attachments →
 预览条缩略图/文件卡 → × 移除 → attachment_ids 随消息发送；用户气泡内嵌
 附件条复用 AttachmentStrip）；发送中态 + 失败内联重试。
+③ **DagView v1.3 时间分析与嵌套下钻（W3，§6.3）**：节点实测标注
+`时长 413ms`/`内存 18.3MB`（measured，等宽，null→"—"；节点 232×92——
+v1.3 增实测行）；「结构/时间线」二段切换——时间线=水平 Gantt（x=任务起点
+相对时间、宽=duration_ms、kind 色、运行中实时增长、0–100% 五档刻度、悬停
+起止+时长）；⊕ 角标下钻子 DAG（getTask 递归 + 面包屑，子图两模式）；
+Drawer 补实测时长/峰值内存/子任务链接。
 **集成修订（2026-10-13，main）**：与真实后端联调对齐四处契约——① SSE 流 URL
 携带 `?api_key=`（`buildStreamUrl`/新增 `buildGlobalStreamUrl`）；②
 `TenantInfo` 字段对齐后端 `usage_snapshot`（`active_tasks`/`enabled`）；③

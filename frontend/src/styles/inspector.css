@@ -390,3 +390,196 @@
   border: 1px solid var(--border-default);
   border-radius: var(--radius-sm);
 }
+
+/* ============ DAG v1.3：实测行 / 下钻角标 / 面包屑 / 时间线 ============ */
+.dag-view__titles {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  min-width: 0; /* 长任务名截断，不压缩二段切换 */
+  flex: 1;
+}
+.dag-node__head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-8);
+  min-width: 0;
+}
+.dag-node__head .dag-node__name {
+  flex: 1;
+}
+/* 实测标注行（measured；--font-data 由 .mono 提供） */
+.dag-node__measured {
+  color: var(--text-secondary);
+  font-size: var(--fs-caption);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dag-node__measured-sep {
+  margin: 0 var(--space-4);
+  color: var(--text-faint);
+}
+/* ⊕ 下钻角标：节点右下角（subtask_id 非空时） */
+.dag-node__drill {
+  position: absolute;
+  right: var(--space-4);
+  bottom: var(--space-4);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  background: var(--bg-inset);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--accent-cyan);
+  font-size: var(--fs-caption);
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    color var(--motion-fast) var(--ease-out),
+    border-color var(--motion-fast) var(--ease-out);
+}
+.dag-node__drill:hover,
+.dag-node__drill:focus-visible {
+  color: var(--accent-violet);
+  border-color: var(--accent-cyan);
+}
+/* 二段切换（复用 .segmented，紧凑档） */
+.segmented--dag {
+  flex-shrink: 0;
+  padding: var(--space-4);
+}
+.segmented--dag .segmented__btn {
+  padding: var(--space-4) var(--space-8);
+  font-size: var(--fs-caption);
+}
+/* 面包屑 */
+.dag-view__crumbs {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  min-width: 0;
+}
+.dag-crumb {
+  max-width: 160px;
+  padding: 2px var(--space-8);
+  background: transparent;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: var(--fs-caption);
+  cursor: pointer;
+  transition: color var(--motion-fast) var(--ease-out);
+}
+.dag-crumb:hover {
+  color: var(--accent-cyan);
+}
+.dag-crumb--root {
+  color: var(--text-primary);
+}
+.dag-crumb[aria-current='page'] {
+  color: var(--accent-cyan);
+  border-color: var(--border-strong);
+}
+.dag-crumb__item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4);
+  min-width: 0;
+}
+.dag-crumb__sep {
+  color: var(--text-faint);
+}
+
+/* 时间线（水平 Gantt）：x=任务起点起算相对时间 */
+.dag-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  padding: var(--space-12) 0 var(--space-4);
+}
+.dag-tl__axis,
+.dag-tl__scale {
+  position: relative;
+  height: 0;
+  margin-left: 128px; /* 与行标签列对齐 */
+}
+.dag-tl__scale {
+  height: 16px;
+  margin-top: calc(-1 * var(--space-4));
+}
+.dag-tl__tick {
+  position: absolute;
+  top: 0;
+  height: 100vh; /* 垂直参考线贯穿全部行（容器裁切） */
+  border-left: 1px dashed var(--border-default);
+  transform: translateX(-0.5px);
+}
+.dag-tl__scale-label {
+  position: absolute;
+  font-size: var(--fs-caption);
+  color: var(--text-faint);
+  transform: translateX(-50%);
+}
+.dag-tl__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  position: relative;
+}
+.dag-tl__row--pending {
+  opacity: 0.7;
+}
+.dag-tl__label {
+  flex-shrink: 0;
+  width: 120px;
+  font-size: var(--fs-caption);
+  color: var(--text-secondary);
+  text-align: right;
+}
+.dag-tl__track {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: 18px;
+}
+.dag-tl__bar {
+  position: absolute;
+  top: 3px;
+  height: 12px;
+  min-width: 2px;
+  border-radius: 2px;
+  /* 运行中实时增长：宽度变化 ≤200ms 平滑过渡（§6.3） */
+  transition: width var(--motion-fast) var(--ease-out);
+}
+.dag-tl__bar--quantum {
+  background: var(--accent-violet);
+}
+.dag-tl__bar--classical {
+  background: var(--info);
+}
+.dag-tl__bar--agent {
+  background: var(--warning);
+}
+.dag-tl__bar--running {
+  /* 呼吸光晕与结构模式运行节点一致 */
+  animation: qap-badge-breathe var(--motion-glow-breath) var(--ease-out) infinite;
+}
+.dag-tl__duration {
+  flex-shrink: 0;
+  width: 56px;
+  font-size: var(--fs-caption);
+  color: var(--text-secondary);
+}
+@media (prefers-reduced-motion: reduce) {
+  .dag-tl__bar {
+    transition: none;
+  }
+  .dag-tl__bar--running {
+    animation: none;
+    outline: 1px solid var(--warning);
+  }
+}
