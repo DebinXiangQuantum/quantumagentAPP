@@ -148,6 +148,13 @@ export const zh: Record<string, string> = {
   'hw.topo.legend.poor': '差（2Q<0.985 · 1Q<0.995 · 读出<0.95）',
   'hw.topo.unavailable': '拓扑数据不可用（旧后端或畸形数据已降级）',
 
+  // —— 线路渲染（v1.5：提示文案入字典）——
+  'circuit.note.invalid': '无法渲染线路：载荷不合法（qubits/operations 缺失或类型错误）',
+  'circuit.note.truncated': '线路包含 {total} 个 qubits（>32），已截断显示前 {max} 行。',
+  'circuit.note.dropped': '已忽略 {n} 个越界或畸形的操作。',
+  'circuit.note.postMeasure': '已剔除 {n} 个测量后仍作用该比特的操作（非法线路，渲染层兜底）。',
+  'circuit.aria': '量子线路（{qubits} qubits，{columns} 列）',
+
   // —— Artifact ——
   'artifact.type.circuit': '线路',
   'artifact.type.counts': '计数',

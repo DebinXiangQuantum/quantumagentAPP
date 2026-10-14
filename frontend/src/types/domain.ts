@@ -137,12 +137,14 @@ export interface Artifact {
   payload: unknown;
 }
 
-/** §6 circuit 载荷 */
+/** §6 circuit 载荷（v1.5：operation 增 params 角度数组） */
 export interface CircuitOperation {
   id: string;
   gate: string;
   targets: number[];
   controls?: number[];
+  /** v1.5：旋转门角度（RX/RY/RZ/RZZ 为 [θ] 有限值；缺省/畸形由渲染层退化为门名） */
+  params?: number[];
 }
 export interface CircuitPayload {
   qubits: number;

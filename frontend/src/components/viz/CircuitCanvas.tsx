@@ -5,14 +5,20 @@
  *  - qubit 横线自上而下编号（等宽标签 q0…，间距 = cellH 36px）；
  *  - 门为格点方块（单位格 44×36）；CNOT 画控制点 + 竖线 + ⊕；
  *    MEASURE 画表针符号；列压缩无空列（utils/circuit 贪心）；
- *  - 悬停门高亮 + tooltip（gate/位号）；
- *  - >32 qubits 截断提示；越界/畸形门丢弃提示。
+ *  - v1.5 符号修订：CZ = 竖线 + 两端实心圆点（控制点样式，无 ⊕ 无方块）；
+ *    RZZ(θ) = 竖线 + 两端实心点 + 线中点标签 RZZ(θ)（θ=params[0] 两位小数，
+ *    缺失退化门名）；单比特旋转门（RX/RY/RZ）显示角度 RX(0.11)；
+ *  - 悬停门高亮 + tooltip（gate/角度/位号）；
+ *  - >32 qubits 截断提示；越界/畸形门丢弃提示；
+ *  - v1.5 测量后防御：测量后仍作用该比特的操作由布局层剔除（dropped），
+ *    此处追加独立提示（后端校验是第一道闸，渲染层兜底）。
  * Props 契约：{ payload: unknown }——畸形载荷降级为提示文案，绝不抛异常。
  * 交互行为：mouseenter/leave 门组切换 tooltip；无键盘子交互（只读可视化）。
  */
 import { useState } from 'react';
 import { TOKENS } from '../../styles/tokens';
-import { gateShape, layoutCircuit } from '../../utils/circuit';
+import { angleLabelOf, gateShape, layoutCircuit } from '../../utils/circuit';
+import { useTranslate } from '../../i18n';
 import type { CircuitOperation } from '../../types/domain';
 
 interface HoverState {
@@ -21,23 +27,40 @@ interface HoverState {
   cy: number;
 }
 
-/** tooltip 文案：gate · q 位号（含控制位）。 */
+/** 旋转门（RX/RY/RZ）判定（大小写归一，后端真机实测可能产出小写门名）。 */
+function isRotationGate(gate: string): boolean {
+  return /^R[XYZ]$/.test(gate.trim().toUpperCase());
+}
+
+/** 门显示名：旋转门带角度 RX(0.11)；其余截 4 字符并大写归一。 */
+function gateLabel(op: CircuitOperation): string {
+  const name = op.gate.trim().toUpperCase();
+  if (isRotationGate(op.gate) || name === 'RZZ') {
+    const angle = angleLabelOf(op);
+    return angle !== null ? `${name}(${angle})` : name;
+  }
+  return name.slice(0, 4);
+}
+
+/** tooltip 文案：gate(角度) · q 位号（含控制位）。 */
 function tooltipText(op: CircuitOperation): string {
   const targets = op.targets.map((t) => `q${t}`).join(' ');
   const controls = (op.controls ?? []).map((c) => `q${c}`).join(' ');
-  if (op.gate.toUpperCase() === 'MEASURE') return `MEASURE · ${targets}`;
-  if (controls.length > 0) return `${op.gate} · ctrl ${controls} → ${targets}`;
-  return `${op.gate} · ${targets}`;
+  const label = gateLabel(op);
+  if (op.gate.trim().toUpperCase() === 'MEASURE') return `MEASURE · ${targets}`;
+  if (controls.length > 0) return `${label} · ctrl ${controls} → ${targets}`;
+  return `${label} · ${targets}`;
 }
 
 export function CircuitCanvas(props: { payload: unknown }): JSX.Element {
+  const t = useTranslate();
   const [hover, setHover] = useState<HoverState | null>(null);
   const layout = layoutCircuit(props.payload);
 
   if (!layout.ok) {
     return (
       <p className="viz-note viz-note--error" role="note">
-        无法渲染线路：载荷不合法（qubits/operations 缺失或类型错误）
+        {t('circuit.note.invalid')}
       </p>
     );
   }
@@ -59,7 +82,7 @@ export function CircuitCanvas(props: { payload: unknown }): JSX.Element {
         placed.op.targets.includes(q) || (placed.op.controls ?? []).includes(q);
       if (touches) {
         lastCol = placed.column;
-        lastIsMeasure = placed.op.gate.toUpperCase() === 'MEASURE';
+        lastIsMeasure = placed.op.gate.trim().toUpperCase() === 'MEASURE';
       }
     }
     wireEndX.set(q, lastIsMeasure && lastCol >= 0 ? colX(lastCol) + 14 : width - 8);
@@ -103,12 +126,65 @@ export function CircuitCanvas(props: { payload: unknown }): JSX.Element {
       );
     }
 
+    // v1.5 两点符号（RZZ / 缺 controls 的 CZ）：竖线 + 两端实心点；
+    // RZZ 在线中点标注 RZZ(θ)（等宽），CZ 宽容形态不标注
+    if (shape === 'twodot') {
+      const allQ = [...op.targets].sort((a, b) => a - b);
+      const top = qY(allQ[0]);
+      const bottom = qY(allQ[allQ.length - 1]);
+      const isRzz = op.gate.trim().toUpperCase() === 'RZZ';
+      return (
+        <g key={testId} data-testid={testId} data-col={col} {...handlers} className="circuit-gate">
+          <line
+            x1={cx}
+            y1={top}
+            x2={cx}
+            y2={bottom}
+            strokeWidth="1.6"
+            className="circuit-stroke-violet"
+          />
+          {allQ.map((q) => (
+            <circle key={`d-${q}`} cx={cx} cy={qY(q)} r="4" className="circuit-fill-violet" />
+          ))}
+          {isRzz ? (
+            <text
+              x={cx}
+              y={(top + bottom) / 2 + 4}
+              textAnchor="middle"
+              className="circuit-gate-label mono"
+            >
+              {gateLabel(op)}
+            </text>
+          ) : null}
+        </g>
+      );
+    }
+
     if (shape === 'controlled') {
       const controls = op.controls ?? [];
       const allQ = [...controls, ...op.targets].sort((a, b) => a - b);
       const top = qY(allQ[0]);
       const bottom = qY(allQ[allQ.length - 1]);
-      const isCnot = /^CNOT$|^CX$/i.test(op.gate);
+      const gate = op.gate.trim().toUpperCase();
+      const isCnot = gate === 'CNOT' || gate === 'CX';
+      // v1.5 CZ：竖线 + 两端实心圆点（复用控制点样式；无 ⊕、无方块、无标签）
+      if (gate === 'CZ') {
+        return (
+          <g key={testId} data-testid={testId} data-col={col} {...handlers} className="circuit-gate">
+            <line
+              x1={cx}
+              y1={top}
+              x2={cx}
+              y2={bottom}
+              strokeWidth="1.6"
+              className="circuit-stroke-violet"
+            />
+            {allQ.map((q) => (
+              <circle key={`cz-${q}`} cx={cx} cy={qY(q)} r="4" className="circuit-fill-violet" />
+            ))}
+          </g>
+        );
+      }
       return (
         <g key={testId} data-testid={testId} data-col={col} {...handlers} className="circuit-gate">
           <line
@@ -155,14 +231,14 @@ export function CircuitCanvas(props: { payload: unknown }): JSX.Element {
               textAnchor="middle"
               className="circuit-gate-label mono"
             >
-              {op.gate.slice(0, 4)}
+              {gateLabel(op)}
             </text>
           ) : null}
         </g>
       );
     }
 
-    // 单量子门：格点方块
+    // 单量子门：格点方块（v1.5 旋转门标签带角度）
     return (
       <g key={testId} data-testid={testId} data-col={col} {...handlers} className="circuit-gate">
         {op.targets.length === 1 ? (
@@ -181,7 +257,7 @@ export function CircuitCanvas(props: { payload: unknown }): JSX.Element {
               textAnchor="middle"
               className="circuit-gate-label mono"
             >
-              {op.gate.slice(0, 4)}
+              {gateLabel(op)}
             </text>
           </>
         ) : (
@@ -205,13 +281,17 @@ export function CircuitCanvas(props: { payload: unknown }): JSX.Element {
     <div className="circuit-wrap">
       {layout.truncated ? (
         <p className="viz-note" role="note">
-          线路包含 {layout.totalQubits} 个 qubits（&gt;32），已截断显示前
-          {' '}{TOKENS.circuit.maxQubits} 行。
+          {t('circuit.note.truncated', { total: layout.totalQubits, max: TOKENS.circuit.maxQubits })}
         </p>
       ) : null}
       {layout.dropped > 0 ? (
         <p className="viz-note" role="note">
-          已忽略 {layout.dropped} 个越界或畸形的操作。
+          {t('circuit.note.dropped', { n: layout.dropped })}
+        </p>
+      ) : null}
+      {layout.droppedAfterMeasure > 0 ? (
+        <p className="viz-note" role="note">
+          {t('circuit.note.postMeasure', { n: layout.droppedAfterMeasure })}
         </p>
       ) : null}
       <div className="circuit-scroll">
@@ -221,7 +301,7 @@ export function CircuitCanvas(props: { payload: unknown }): JSX.Element {
           height={height}
           viewBox={`0 0 ${width} ${height}`}
           role="img"
-          aria-label={`量子线路（${layout.qubits} qubits，${layout.columns} 列）`}
+          aria-label={t('circuit.aria', { qubits: layout.qubits, columns: layout.columns })}
           className={hover ? 'circuit-svg circuit-svg--hover' : 'circuit-svg'}
         >
           {Array.from({ length: layout.qubits }, (_, q) => (

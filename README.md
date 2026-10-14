@@ -542,7 +542,16 @@ remark-gfm + remark-math + rehype-katex（行内 `$…$`、块级 `$$…$$`；�
 CSS 变量适配三主题）；默认禁 raw HTML；内部 ErrorBoundary 兜底流式截断 Markdown
 不崩溃（content 变化自动重试）；MessageBubble 助手正文与用户气泡、ChatPanel 流式
 正文均走该管线（pre-wrap 撤销）。构建分包 katex/markdown 独立 chunk（缓存友好）。
-**W1 后测试 235 passed**（基线 223 + 新增 12：MarkdownContent 10 + MessageBubble 2）。
+② **W2 电路符号 v1.5**（用户反馈"测量后又画 CNOT/RZZ 没显示/CZ 不像两点/旋转门
+无角度"）：`CircuitOperation` 增 `params?: number[]`（畸形滤除，空→undefined）；
+**CZ = 竖线 + 两端实心圆点**（复用控制点样式，无 ⊕ 无方块，缺 controls 的宽容
+形态同样两点）；**RZZ(θ) = 竖线 + 两端实心点 + 线中点等宽标签**（θ=params[0]
+两位小数）；RX/RY/RZ 门标签带角度 `RX(0.11)`（缺失/NaN/负值退化为门名——负角度
+按畸形降级是渲染层约定）；tooltip 含角度；门名大小写归一（后端真机小写 h/cx）；
+**测量后防御**：utils/circuit 布局把"某比特 MEASURE 之后仍作用该比特"的操作剔除
+并计入 dropped/droppedAfterMeasure，画布追加独立提示（后端校验第一道闸、渲染层
+兜底）；CircuitCanvas 四条提示文案迁入 i18n 字典（circuit.note.*，三语同步）。
+**W2 后测试 247 passed**（235 + 新增 12：utils/circuit 6 + CircuitCanvas 6）。
 
 **v4 前端（2026-10-14，feat/frontend-v4，契约 v1.4，进行中）**：四片 TDD 提交。
 ① **类型与事件归并（W1）**：`Step` 增 `circuit/cloud_job_id/queue_position`；

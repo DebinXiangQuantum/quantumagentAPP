@@ -5,6 +5,39 @@ Validation（本切片测试结论）+ Known defects（已知缺陷，无则写�
 scope 与流程见 docs/DEVELOPMENT.md §2。
 
 
+## 2026-10-14 `frontend: W2 电路符号 v1.5——CZ 两点/RZZ/角度标签/测量后防御（v5 轮，用户反馈缺陷 3）`
+
+### Added
+- `CircuitOperation.params?: number[]`（types/domain.ts，逐字对齐 ARCHITECTURE §6
+  v1.5 载荷）；utils/circuit 解析时滤除非有限值，空/全畸形 → undefined。
+- `utils/circuit.angleLabelOf`：params[0] 两位小数；缺失/NaN/**负值** → null
+  （退化为仅门名——负角度按畸形降级为渲染层约定）。
+- 测量后防御：layoutCircuit 维护 measured 集合，某比特 MEASURE 之后仍作用该
+  比特（targets ∪ controls）的操作剔除，计入 `dropped` 与新字段
+  `droppedAfterMeasure`（后端校验第一道闸，渲染层兜底——真实反馈"测量后又画
+  CNOT 属非法线路"）。
+
+### Changed
+- CircuitCanvas 符号（design.md §6.1 v1.5）：**CZ = 竖线 + 两端实心圆点**
+  （复用控制点样式，无 ⊕ 无方块无标签；缺 controls 的宽容形态同样两点）；
+  **RZZ = 竖线 + 两端实心点 + 线中点等宽标签 RZZ(θ)**；RX/RY/RZ 标签带角度
+  `RX(0.11)`；tooltip 含角度（`RX(0.11) · q0`）；门名大小写归一显示（后端
+  真机实测小写 h/cx）。
+- CircuitCanvas 四条提示（非法载荷/截断/丢弃/测量后剔除）与 aria-label 迁入
+  i18n 字典（`circuit.note.*`/`circuit.aria`，zh 文案保留原文案子串，既有测试
+  断言不变；en/ja 同步）。
+
+### Validation
+- 全量 **247 passed**（W1 后 235 + 新增 12：utils/circuit.test 6——params
+  合法保留/畸形降级/测量后剔除×2/gateShape 分类/角度标签边界；CircuitCanvas 6
+  ——CZ 两点无 ⊕/RZZ 标签与中点位置/旋转门角度与退化/tooltip 角度/测量后
+  提示与剔除/params 畸形不崩）。`npm run build` 零错误。
+
+### Known defects
+- `RX(0.11)` 标签（8 字符等宽）宽于 44px 格点，同列相邻同排门可能轻微视觉
+  重叠；符号与语义不受影响（格点几何由 token 锁定，不为长标签破坏网格）。
+
+
 ## 2026-10-14 `frontend: W1 Markdown+公式+表格渲染管线（v5 轮，用户反馈缺陷 1/2）`
 
 ### Added
