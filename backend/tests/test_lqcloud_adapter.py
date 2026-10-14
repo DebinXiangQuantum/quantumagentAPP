@@ -180,3 +180,29 @@ class TestAdapterSubmitPollResult:
         assert adapter.poll(job)["status"] == "failed"
         with pytest.raises(JobError, match="readout timeout"):
             adapter.result_counts(job)
+
+
+class TestGateNameNormalization:
+    def test_lowercase_gate_variants_accepted(self) -> None:
+        """门名大小写归一（实测 GLM 产出小写变体）：h/cx/measure 可转换，
+        与大写产物等价（仍自动插 barrier）。"""
+        lower = {
+            "qubits": 2,
+            "operations": [
+                {"id": "op-0", "gate": "h", "targets": [0]},
+                {"id": "op-1", "gate": "cx", "controls": [0], "targets": [1]},
+                {"id": "op-2", "gate": "measure", "targets": [0, 1]},
+            ],
+        }
+        qc = circuit_to_lqcloud(lower)
+        names = [i["name"] for i in serialize_instructions(qc)]
+        assert "measure" in names and "barrier" in names
+
+    def test_unknown_gate_still_rejected_after_normalization(self) -> None:
+        with pytest.raises(ValueError, match="unsupported gate"):
+            circuit_to_lqcloud(
+                {"qubits": 1, "operations": [
+                    {"id": "op-0", "gate": "  badgate ", "targets": [0]},
+                    {"id": "op-1", "gate": "MEASURE", "targets": [0]},
+                ]}
+            )

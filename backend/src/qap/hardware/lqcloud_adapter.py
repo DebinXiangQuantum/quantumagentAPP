@@ -86,9 +86,12 @@ def circuit_to_lqcloud(circuit_json: dict[str, Any]):
     for index, op in enumerate(operations):
         if not isinstance(op, dict):
             raise ValueError(f"operation[{index}] must be an object")
-        gate = op.get("gate")
-        if not isinstance(gate, str) or not gate:
+        raw_gate = op.get("gate")
+        if not isinstance(raw_gate, str) or not raw_gate.strip():
             raise ValueError(f"operation[{index}].gate must be a non-empty string")
+        # 门名大小写归一（实测 GLM 产出 "h"/"cx" 小写变体；§6 演示为大写）：
+        # 已知门的大小写变体不是未知门，未知门仍 ValueError（诚实拒绝）。
+        gate = raw_gate.strip().upper()
         targets = op.get("targets")
         if not isinstance(targets, list) or not targets:
             raise ValueError(f"operation[{index}] ({gate}) requires a non-empty targets list")

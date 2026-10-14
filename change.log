@@ -5,7 +5,25 @@ Validation（本切片测试结论）+ Known defects（已知缺陷，无则写�
 scope 与流程见 docs/DEVELOPMENT.md §2。
 
 
-## 2026-10-14 `backend: 冒烟修正——云端拓扑真实形状（dict 坐标 + 显式 rows/cols + coupling_map 照录）`
+## 2026-10-14 `backend: 冒烟修正 II——门名大小写归一（GLM 实测产出小写 h/cx）`
+
+### Fixed
+- **GLM 真实链冒烟发现**：专家（glm-5.3-flash）emit 的 circuit 产物用
+  小写门名（"h"/"cx"），转换器仅认大写 → step.error
+  "unsupported gate 'h'"（诚实失败路径工作正常，但真机链路被大小写
+  卡断）。修正：`circuit_to_lqcloud` 对 gate 名 strip+upper 归一（大小写
+  变体不是未知门；未知门仍 ValueError）；algorithm-designer 提示明确
+  "门名用大写 H/X/Y/Z/RX/RY/RZ(theta)/CX/CZ/MEASURE，CNOT 可用 CX 表达"
+  （源头引导 + 转换层防御双保险）。
+
+### Validation
+- 新增 2 用例（小写变体转换等价 + 归一后未知门仍拒绝）。全量
+  **480 passed**（478 + 2）。真实冒烟复跑：GLM 渠道 Bell 256 shots
+  全链通过（dispatch→agent.activity 流式→真机 job→cloud-observed
+  counts artifact，见 README 冒烟记录）。
+
+### Known defects
+- 无。
 
 ### Fixed
 - **真实回包与契约注释的差异**（2026-10-14 冒烟实测 logicalcloud
