@@ -12,7 +12,7 @@ import { describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MessageBubble } from './MessageBubble';
 import { setApi } from '../../api';
-import { createMockClient } from '../../api/mock/engine';
+import { createFakeApi } from '../../test/fakeApi';
 import type { Message } from '../../types/domain';
 
 const base: Message = {
@@ -27,7 +27,7 @@ const base: Message = {
 
 describe('MessageBubble 附件条（v1.3）', () => {
   it('用户消息内嵌附件条：file 卡（名称+大小）与 image 缩略图', () => {
-    const client = createMockClient();
+    const client = createFakeApi();
     setApi(client);
     render(
       <MessageBubble
@@ -46,7 +46,6 @@ describe('MessageBubble 附件条（v1.3）', () => {
     expect(screen.queryByTestId('attachment-remove-att-1')).toBeNull();
     client.dispose();
   });
-
   it('无附件 / 畸形数组 → 不渲染附件条', () => {
     const { rerender } = render(<MessageBubble message={base} />);
     expect(screen.queryByTestId(/^attachment-/)).toBeNull();

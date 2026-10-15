@@ -44,8 +44,8 @@ cd frontend
 npm install
 npm run build        # 生产构建
 npm test             # vitest 单元/组件测试
-VITE_USE_MOCK=1 npm run dev    # Mock 模式：后端未启动也可完整演示界面
-npm run dev          # 连接 http://127.0.0.1:8000 的真实后端
+npm run dev          # 连接真实后端（同源代理 /api → 127.0.0.1:8000）
+# v1.6 起 product 无 mock 模式：需真实模型渠道（config.toml）与后端运行
 ```
 
 ## 仓库结构
@@ -549,6 +549,20 @@ glm}.env; set +a`（lqcloud.env 键名 APIkey → `export LQCLOUD_API_KEY=$APIke
 frontend/package.json；v1.5 增补 react-markdown/remark-gfm/remark-math/
 rehype-katex/katex——用户明确要求的 Markdown/公式渲染管线）。
 
+**v6 前端（2026-10-14，feat/frontend-v6，契约 v1.6 去 mock 化，进行中）**：
+产品级要求"mock 全部删除"（后端并行删 mock 渠道）。**W2 测试改注入**：新增
+`src/test/fakeApi.ts`——实现 ApiClient 接口的可编程测试替身（预置
+agents/tenant/会话/硬件机群/任务/渠道/插件于 `src/test/data.ts`，深拷贝可变；
+sendMessage 可挂相对延时脚本或经 emitConversation/emitGlobal 手动注入 SSE
+事件；会话流 seq 单调 + ?after= 重放；REST 404/409/422 语义与附件 8MB 上限
+契约保留），替代原 mock 引擎驱动 store/组件测试——appStore（bootstrap/202
+上屏/流式归并/task·hardware upsert/自动建会话三分支/agent.activity 聚合/
+artifact.created 插卡/queue_position 演进）、ReasoningBlock（思考先于正文）、
+SettingsPage/MessageInput/MessageBubble/ComposerAttachments/HardwareTopology
+全部改为注入 fakeApi 或引用 test/data 预置数据，行为断言等价保持；fakeApi
+自身 16 条契约测试（provider 仅 openai|anthropic、api_key_inline 不回显等）。
+测试 266 passed（250 基线 + 16；W1 删除 mock 引擎专属契约用例后数量回落）。
+
 **v5 前端（2026-10-14，feat/frontend-v5，契约 v1.5）**：渲染缺陷修复轮，
 四片 TDD 提交。① **W1 Markdown+公式+表格管线**（用户反馈"星号井号原样输出/
 公式表格不渲染"）：新增 `components/chat/MarkdownContent.tsx`——react-markdown +
@@ -576,8 +590,7 @@ c-2 校准回复带行内公式；vqeScript/calibrationScript 剧本同步（流
 Markdown 管线）——`VITE_USE_MOCK=1` 演示直接可见公式/表格/新符号三类渲染效果。
 ④ **W4 测试与 i18n 收尾**：ChatPanel 增流式 Markdown 集成测试（加粗/公式渲染 +
 半截表格不崩）；i18n 三语互异清单纳入 circuit.note.*（key 集合一致性既有测试锁定）；
-`VITE_USE_MOCK=1 npm run dev` 冒烟（200/无变换错误）。**全量 250 passed**
-（基线 223 + v5 新增 27：MarkdownContent 10 / MessageBubble 2 / utils·circuit 6 /
+`（基线 223 + v5 新增 27：MarkdownContent 10 / MessageBubble 2 / utils·circuit 6 /
 CircuitCanvas 6 / fixtures 2 / ChatPanel 1），`npm run build` 零错误（katex/markdown
 独立 chunk：主包 267KB + markdown 440KB）。
 
@@ -761,7 +774,6 @@ cd frontend && npm install
 npm run build          # tsc -b && vite build
 npm test               # vitest run
 npm run dev            # 开发服务器（5173），连接 http://127.0.0.1:8000
-VITE_USE_MOCK=1 npm run dev   # Mock 模式：后端未启动也可完整演示
 ```
 
 ### 测试结果（feat/frontend-v2 · 最终）

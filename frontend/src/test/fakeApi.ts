@@ -1,18 +1,19 @@
 /**
- * engine.ts —— Mock 引擎：以脚本化事件驱动完整演示链路（ARCHITECTURE §10 + v1.1）。
+ * fakeApi.ts —— 可编程 ApiClient 测试替身（仅供测试注入，setApi(fake)）。
  *
- * 职责：
- *  - 实现 ApiClient 同一契约（fixtures 初始状态 + 内存可变状态），含 v1.1
- *    管理平台端点（admin models 渠道池 PUT/DELETE、plugins 安装/启停/卸载）；
- *  - sendMessage 触发编排脚本（scripts.ts）：思考增量（message.reasoning，
- *    thinking=off 跳过）→ dispatch 专家 → 流式正文 → completed（含
- *    reasoning 全文 + artifacts）→ DAG 推进 → hardware allocation 变化；
- *  - 会话流带 seq 单调递增（delta 与 reasoning 同源）+ 事件日志（cap 1024）
- *    支持 ?after= 重放；
- *  - 硬件利用率模拟：2s tick 随机游走（对齐 config.toml tick_seconds=2.0）。
- * 失败行为：无网络依赖；畸形输入按 404/409/422 语义抛 ApiError。
+ * v1.6 去 mock 化：产品内不再有 mock/演示渠道（ARCHITECTURE §3 v1.6）；
+ * 原 mock 引擎承担的"驱动 store/组件行为测试"职责由本替身接管——
+ *  - 预置数据：agents/tenant/会话+历史消息/硬件机群/任务/渠道/插件
+ *    （src/test/data.ts，clone 后可变，测试间互不串改）；
+ *  - 可脚本化流：sendMessage 可挂测试脚本（相对延时动作序列，fake timers
+ *    驱动）；也可经 emitConversation/emitGlobal 手动注入任意 SSE 事件；
+ *  - 会话流日志：seq 单调（delta/reasoning/agent.activity 自动补号）+
+ *    ?after= 重放（接口契约 §7 语义的最小实现）；
+ *  - 契约语义：REST 按 404/409/422 抛 ApiError（附件 8MB 上限、渠道
+ *    provider 仅 openai|anthropic、基底渠道不可删、builtin 插件不可卸载）。
+ * 失败行为：无网络依赖；dispose() 清理全部定时器与订阅（afterEach 调用）。
  */
-import { ApiError, type ApiClient } from '../client';
+import { ApiError, type ApiClient } from '../api/client';
 import type {
   AgentInfo,
   AttachmentMeta,
@@ -25,51 +26,39 @@ import type {
   ModelChannel,
   ModelChannelInput,
   ModelChannelList,
+  ModelSummary,
   PluginInfo,
   PluginList,
   SendMessageAck,
   Task,
   TenantInfo,
   ThinkingLevel,
-} from '../../types/domain';
-import { parseThinkingLevel } from '../../types/domain';
+} from '../types/domain';
 import type {
   ConversationStreamEvent,
   GlobalStreamEvent,
   StreamCallbacks,
   StreamHandle,
-} from '../../types/events';
+} from '../types/events';
 import {
-  ADMIN_MODELS,
-  ADMIN_PLUGINS,
-  AGENTS,
-  BASE_CHANNEL_REFS,
-  CONVERSATIONS,
-  HARDWARE_NODES,
-  MESSAGES_BY_CID,
-  TASKS,
-  TENANT,
-} from './fixtures';
-import {
-  buildOrchestratorScript,
-  type MockScriptContext,
-  type TimedAction,
-} from './scripts';
+  TEST_AGENTS,
+  TEST_BASE_CHANNEL_REFS,
+  TEST_CHANNELS,
+  TEST_CONVERSATIONS,
+  TEST_HARDWARE_NODES,
+  TEST_MESSAGES_BY_CID,
+  TEST_PLUGINS,
+  TEST_TASKS,
+  TEST_TENANT,
+} from './data';
 
-/** 会话流日志条目：logSeq 为内部单调序号（delta/reasoning 的 data.seq 与之同源）。 */
-interface LoggedEvent {
-  logSeq: number;
-  evt: ConversationStreamEvent;
-}
-
-const EVENT_LOG_CAP = 1024;
-const TICK_MS = 2000;
 /** §5.2 v1.3：单文件上限 8MB（超限 422）。 */
 const ATTACHMENT_MAX_BYTES = 8 * 1024 * 1024;
 /** kind 判定的文本扩展名集合（mime text/* 之外的补充，契约 §5.2）。 */
 const TEXT_EXTENSIONS = new Set([
   '.md', '.txt', '.py', '.json', '.toml', '.csv', '.yaml', '.ts', '.js',
 ]);
+const EVENT_LOG_CAP = 1024;
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -80,22 +69,63 @@ function clone<T>(value: T): T {
   return structuredClone(value);
 }
 
-export interface MockClient extends ApiClient {
-  /** 清理全部定时器（仅测试/热更新需要；正常页面生命周期常驻）。 */
-  dispose: () => void;
+/** 脚本动作：atMs 为相对上一动作的延时（与既有脚本风格一致，累计调度）。 */
+export interface FakeScriptAction {
+  atMs: number;
+  run: (ctx: FakeScriptContext) => void;
 }
 
-export function createMockClient(): MockClient {
-  // —— 可变内存状态（clone fixtures，避免测试间串改常量）——
-  const conversations: Conversation[] = clone(CONVERSATIONS);
+/** 脚本运行上下文：事件发射 + 目标会话/消息标识。 */
+export interface FakeScriptContext {
+  cid: string;
+  /** 后端 202 语义预创建的 assistant 消息 id（事件归属者）。 */
+  assistantMessageId: string;
+  content: string;
+  emitConversation(evt: ConversationStreamEvent): void;
+  emitGlobal(evt: GlobalStreamEvent): void;
+}
+
+export type FakeSendScript = (ctx: FakeScriptContext) => FakeScriptAction[];
+
+export interface FakeApiClient extends ApiClient {
+  /** 手动向会话订阅者推送事件（seq 缺省时自动补号，见文件头）。 */
+  emitConversation(cid: string, evt: ConversationStreamEvent): void;
+  /** 手动向全局订阅者推送事件（task.updated / hardware.updated / error）。 */
+  emitGlobal(evt: GlobalStreamEvent): void;
+  /** 设置 sendMessage 的脚本化行为（null = 仅 202 落库，不发事件）。 */
+  setSendScript(script: FakeSendScript | null): void;
+  /** 最近一次 sendMessage 的 (cid, content, req)——断言请求体用。 */
+  readonly lastSendCall: {
+    cid: string;
+    content: string;
+    req: Omit<import('../types/domain').SendMessageRequest, 'content'> | undefined;
+  } | null;
+  /** 清理全部定时器与订阅（afterEach 调用）。 */
+  dispose(): void;
+}
+
+export interface FakeApiOptions {
+  /** 租户角色（v1.2 管理分区可见性用例）；缺省 admin。 */
+  tenantRole?: TenantInfo['role'];
+}
+
+/** 会话流日志条目：logSeq 为内部单调序号（delta/reasoning/activity 同源）。 */
+interface LoggedEvent {
+  logSeq: number;
+  evt: ConversationStreamEvent;
+}
+
+export function createFakeApi(options: FakeApiOptions = {}): FakeApiClient {
+  const conversations: Conversation[] = clone(TEST_CONVERSATIONS);
   const messagesByCid = new Map<string, Message[]>(
-    Object.entries(clone(MESSAGES_BY_CID)),
+    Object.entries(clone(TEST_MESSAGES_BY_CID)),
   );
-  const tasks: Task[] = clone(TASKS);
-  const nodes: HardwareNode[] = clone(HARDWARE_NODES);
-  const channels: ModelChannel[] = clone(ADMIN_MODELS);
-  const plugins: PluginInfo[] = clone(ADMIN_PLUGINS);
-  /** §5.2 v1.3 附件存储：id → 元数据 + data URL（图片缩略图直接可渲染）。 */
+  const tasks: Task[] = clone(TEST_TASKS);
+  const nodes: HardwareNode[] = clone(TEST_HARDWARE_NODES);
+  const channels: ModelChannel[] = clone(TEST_CHANNELS);
+  const plugins: PluginInfo[] = clone(TEST_PLUGINS);
+  const tenant: TenantInfo = { ...clone(TEST_TENANT), role: options.tenantRole ?? TEST_TENANT.role };
+  /** 附件存储：id → 元数据 + data URL（图片缩略图直接可渲染）。 */
   const attachmentsById = new Map<string, AttachmentMeta & { dataUrl: string }>();
   /** 会话 → 已上传附件 id 集合（sendMessage 校验"未知/跨会话 id → 422"）。 */
   const attachmentIdsByCid = new Map<string, Set<string>>();
@@ -104,10 +134,11 @@ export function createMockClient(): MockClient {
   const convLog = new Map<string, LoggedEvent[]>();
   const convSubs = new Map<string, Set<(e: ConversationStreamEvent) => void>>();
   const globalSubs = new Set<(e: GlobalStreamEvent) => void>();
+  const timers = new Set<ReturnType<typeof setTimeout>>();
+  let sendScript: FakeSendScript | null = null;
+  let lastSendCall: FakeApiClient['lastSendCall'] = null;
 
   let idCounter = 100;
-  const timers = new Set<ReturnType<typeof setTimeout>>();
-  const intervals = new Set<ReturnType<typeof setInterval>>();
   const nextId = (prefix: string): string => {
     idCounter += 1;
     return `${prefix}${idCounter}`;
@@ -126,23 +157,23 @@ export function createMockClient(): MockClient {
     return conv;
   }
 
-  // —— 事件发射 ——
+  // —— 事件发射（seq 自动补号：调用方显式给 seq 时保留，仅推进计数器）——
   function nextSeq(cid: string): number {
     const s = (convSeq.get(cid) ?? 0) + 1;
     convSeq.set(cid, s);
     return s;
   }
 
-  function emitConv(cid: string, evt: ConversationStreamEvent): void {
+  function emitConversation(cid: string, evt: ConversationStreamEvent): void {
     const logSeq = nextSeq(cid);
-    // delta / reasoning / agent.activity 的 data.seq 与内部 logSeq 同源分配
-    // （§7 seq 单调契约；v1.4 agent.activity 同样携带 seq）
-    const normalized: ConversationStreamEvent =
+    const hasOwnSeq =
       evt.event === 'message.delta' || evt.event === 'message.reasoning' || evt.event === 'agent.activity'
-        ? ({
-            event: evt.event,
-            data: { ...evt.data, seq: logSeq },
-          } as ConversationStreamEvent)
+        ? typeof (evt.data as { seq?: unknown }).seq === 'number'
+        : false;
+    const normalized: ConversationStreamEvent = hasOwnSeq
+      ? evt
+      : evt.event === 'message.delta' || evt.event === 'message.reasoning' || evt.event === 'agent.activity'
+        ? ({ event: evt.event, data: { ...evt.data, seq: logSeq } } as ConversationStreamEvent)
         : evt;
     const log = convLog.get(cid) ?? [];
     log.push({ logSeq, evt: normalized });
@@ -155,133 +186,8 @@ export function createMockClient(): MockClient {
     for (const cb of globalSubs) cb(evt);
   }
 
-  function emitHardware(): void {
-    emitGlobal({ event: 'hardware.updated', data: { nodes: clone(nodes) } });
-  }
-
-  function emitTask(task: Task): void {
-    emitGlobal({
-      event: 'task.updated',
-      data: { task_id: task.id, status: task.status, steps: clone(task.steps) },
-    });
-  }
-
-  // —— 硬件租约操作（维护容量不变量：操作仅经此入口）——
-  function lease(nodeId: string, taskId: string, stepId: string, agentId: string): void {
-    const node = nodes.find((n) => n.id === nodeId);
-    if (!node) return;
-    node.allocations.push({
-      task_id: taskId,
-      step_id: stepId,
-      agent_id: agentId,
-      leased_at: nowIso(),
-    });
-  }
-
-  function releaseStep(nodeId: string, stepId: string): void {
-    const node = nodes.find((n) => n.id === nodeId);
-    if (!node) return;
-    node.allocations = node.allocations.filter((a) => a.step_id !== stepId);
-  }
-
-  /** completed 后写会话历史（GET /conversations/{cid} 可回看 reasoning/artifacts）。 */
-  function storeMessage(cid: string, message: Message): void {
-    messagesByCid.set(cid, [...(messagesByCid.get(cid) ?? []), message]);
-  }
-
-  // —— 利用率模拟：2s 随机游走（offline 恒 0；持租约节点维持高负载）——
-  const tick = setInterval(() => {
-    for (const node of nodes) {
-      if (node.status === 'offline') {
-        node.utilization = 0;
-        continue;
-      }
-      const base = node.allocations.length > 0 ? 0.75 : 0.15;
-      const drift = (Math.random() - 0.5) * 0.12;
-      node.utilization = Math.min(0.97, Math.max(0.02, base + drift));
-      // v1.2 metrics 缓慢漂移：QPU 保真度每 tick ≤0.0002（契约 §4）、
-      // CPU/GPU 使用率与显存随机走（始终满足 used ≤ total / usage ∈ [0,1]）
-      const m = node.metrics;
-      if (m !== undefined && m !== null && typeof m === 'object') {
-        if ('topology' in m) {
-          // v1.4：云端真机无保真度（字段可选）——只漂移已存在的样本值
-          const driftFid = (v: number): number =>
-            Math.min(1, Math.max(0.9, v + (Math.random() - 0.5) * 0.0002));
-          for (const q of m.topology.qubits) {
-            if (typeof q.readout_fidelity === 'number') {
-              q.readout_fidelity = Number(driftFid(q.readout_fidelity).toFixed(4));
-            }
-            if (typeof q.sq_fidelity === 'number') {
-              q.sq_fidelity = Number(driftFid(q.sq_fidelity).toFixed(4));
-            }
-          }
-          for (const c of m.topology.couplers) {
-            if (typeof c.tq_fidelity === 'number') {
-              c.tq_fidelity = Number(driftFid(c.tq_fidelity).toFixed(4));
-            }
-          }
-        } else if ('cpu_usage' in m) {
-          m.cpu_usage = Math.min(1, Math.max(0.02, m.cpu_usage + (Math.random() - 0.5) * 0.08));
-          m.memory_used_gb = Math.min(
-            m.memory_total_gb,
-            Math.max(1, m.memory_used_gb + (Math.random() - 0.5) * 2),
-          );
-        } else if ('vram_total_gb' in m) {
-          m.vram_used_gb = Math.min(
-            m.vram_total_gb,
-            Math.max(0.5, m.vram_used_gb + (Math.random() - 0.5) * 1.5),
-          );
-        }
-      }
-    }
-    emitHardware();
-  }, TICK_MS);
-  intervals.add(tick);
-
-  // —— 脚本上下文（scripts.ts 触碰引擎状态的唯一入口）——
-  const scriptCtx: MockScriptContext = {
-    emitConv,
-    emitGlobal,
-    emitTask,
-    emitHardware,
-    lease,
-    releaseStep,
-    nextId,
-    nowIso,
-    tasks,
-    nodes,
-    storeMessage,
-  };
-
-  /** 新脚本开始前：取消所有遗留 running 任务并释放租约（保持容量不超限）。 */
-  function cancelLingeringTasks(atMs: number): void {
-    for (const task of tasks) {
-      if (task.status !== 'running' && task.status !== 'pending') continue;
-      for (const step of task.steps) {
-        if (step.status !== 'running' && step.status !== 'pending') continue;
-        if (step.node_id) releaseStep(step.node_id, step.id);
-        step.status = 'cancelled';
-        step.finished_at = nowIso();
-      }
-      task.status = 'cancelled';
-      schedule(atMs, () => {
-        emitTask(task);
-        emitHardware();
-      });
-    }
-  }
-
-  function runScript(actions: TimedAction[], atBase: number): void {
-    let t = atBase;
-    for (const action of actions) {
-      t += action.atMs;
-      const fireAt = t;
-      schedule(fireAt, action.run);
-    }
-  }
-
-  // —— 管理端校验辅助 ——
-  const VALID_PROVIDERS = new Set(['openai', 'anthropic', 'mock']);
+  // —— 管理端校验（v1.6：provider 仅真实渠道）——
+  const VALID_PROVIDERS = new Set(['openai', 'anthropic']);
   const VALID_THINKING = new Set(['off', 'low', 'high', 'max']);
 
   function validateChannelInput(input: ModelChannelInput): void {
@@ -296,22 +202,12 @@ export function createMockClient(): MockClient {
     }
   }
 
-  // —— ApiClient 实现 ——
-  const client: MockClient = {
+  const client: FakeApiClient = {
     async listAgents(): Promise<AgentInfo[]> {
-      return clone(AGENTS);
+      return clone(TEST_AGENTS);
     },
     async getTenant(): Promise<TenantInfo> {
-      // v1.2 双角色演示：localStorage['qap.mockRole'] = 'user' 后刷新即普通
-      // 用户视角（管理分区隐藏）；缺省 admin（fixtures TENANT.role）
-      let role: TenantInfo['role'] = TENANT.role;
-      try {
-        const override = typeof localStorage !== 'undefined' ? localStorage.getItem('qap.mockRole') : null;
-        if (override === 'user' || override === 'admin') role = override;
-      } catch {
-        /* 隐私模式等：仅默认 */
-      }
-      return { ...clone(TENANT), role };
+      return clone(tenant);
     },
     async listConversations(): Promise<Conversation[]> {
       return clone(conversations);
@@ -320,12 +216,11 @@ export function createMockClient(): MockClient {
       const conv: Conversation = {
         id: nextId('c-'),
         title: req.title?.trim() || '新会话',
-        // v1.1：agent_id 缺省 = orchestrator（编排入口）
         agent_id: req.agent_id ?? 'orchestrator',
-        tenant_id: 'demo',
+        tenant_id: tenant.id,
         created_at: nowIso(),
       };
-      conversations.unshift(conv);
+      conversations.unshift(clone(conv));
       messagesByCid.set(conv.id, []);
       return clone(conv);
     },
@@ -343,7 +238,8 @@ export function createMockClient(): MockClient {
       },
     ): Promise<SendMessageAck> {
       const conv = requireConversation(cid);
-      // §5.2 v1.3：未知/跨会话附件 id → 422（契约语义）
+      lastSendCall = { cid, content, req };
+      // §5.2 v1.3：未知/跨会话附件 id → 422
       const attachmentIds = Array.isArray(req?.attachment_ids) ? req!.attachment_ids! : [];
       const owned = attachmentIdsByCid.get(cid) ?? new Set<string>();
       const known = attachmentIds.filter((id) => owned.has(id));
@@ -358,11 +254,10 @@ export function createMockClient(): MockClient {
           attMeta.push(meta);
         }
       }
-      const userId = nextId('m-');
       messagesByCid.set(cid, [
         ...(messagesByCid.get(cid) ?? []),
         {
-          id: userId,
+          id: nextId('m-'),
           conversation_id: cid,
           role: 'user',
           content,
@@ -374,14 +269,22 @@ export function createMockClient(): MockClient {
         },
       ]);
       // 202 语义对齐后端：预创建 assistant 消息 id 并作为 message_id 返回
-      // （SSE 增量/完成事件归属它），脚本以该 id 流式输出。
       const assistantId = nextId('m-');
-      // 思考程度：消息级覆盖 > 缺省 high（契约 §9 取值优先级，Mock 无渠道状态）
-      const thinking = parseThinkingLevel(req?.thinking_level ?? 'high');
-      // 先取消遗留 running 任务（释放容量），再启动编排脚本（atMs 已含全部时序）
-      cancelLingeringTasks(80);
-      const actions = buildOrchestratorScript(cid, content, assistantId, thinking, scriptCtx);
-      runScript(actions, 0);
+      if (sendScript !== null) {
+        const ctx: FakeScriptContext = {
+          cid,
+          assistantMessageId: assistantId,
+          content,
+          emitConversation: (evt) => emitConversation(cid, evt),
+          emitGlobal,
+        };
+        let t = 0;
+        for (const action of sendScript(ctx)) {
+          t += action.atMs;
+          const fireAt = t;
+          schedule(fireAt, () => action.run(ctx));
+        }
+      }
       return { message_id: assistantId, run_id: nextId('r-') };
     },
     async listTasks(conversationId?: string | null): Promise<Task[]> {
@@ -419,7 +322,6 @@ export function createMockClient(): MockClient {
             ? 'text'
             : 'file';
       const id = nextId('att-');
-      // 图片构建 data: URL（缩略图可直接渲染）；非图片/超大文件降级空体
       let dataUrl = `data:${mime};base64,`;
       if (kind === 'image' && file.size <= 1_048_576) {
         try {
@@ -448,13 +350,15 @@ export function createMockClient(): MockClient {
     },
     attachmentRawUrl(id: string): string {
       const att = attachmentsById.get(id);
-      return att?.dataUrl ?? `data:application/octet-stream,`;
+      return att?.dataUrl ?? 'data:application/octet-stream,';
     },
-    async listSelectorModels(): Promise<{ models: import('../../types/domain').ModelSummary[] }> {
-      // v1.3：任意角色可读的选择器列表（从渠道 fixtures 投影，去掉管理细节）
-      const channels = await this.listAdminModels();
+    async listAdminModels(): Promise<ModelChannelList> {
+      return { models: clone(channels) };
+    },
+    async listSelectorModels(): Promise<{ models: ModelSummary[] }> {
+      const list = await this.listAdminModels();
       return {
-        models: channels.models.map((c) => ({
+        models: list.models.map((c) => ({
           ref: c.ref,
           provider: c.provider,
           model: c.model,
@@ -462,10 +366,6 @@ export function createMockClient(): MockClient {
           has_api_key: c.has_api_key,
         })),
       };
-    },
-
-    async listAdminModels(): Promise<ModelChannelList> {
-      return { models: clone(channels) };
     },
     async putAdminModel(input: ModelChannelInput): Promise<ModelChannel> {
       validateChannelInput(input);
@@ -487,7 +387,7 @@ export function createMockClient(): MockClient {
       return clone(entry);
     },
     async deleteAdminModel(ref: string): Promise<void> {
-      if (BASE_CHANNEL_REFS.includes(ref)) {
+      if (TEST_BASE_CHANNEL_REFS.includes(ref)) {
         throw new ApiError(409, `渠道 ${ref} 为基底渠道（config.toml），不可删除`, null);
       }
       const idx = channels.findIndex((c) => c.ref === ref);
@@ -537,10 +437,9 @@ export function createMockClient(): MockClient {
       after: number | null,
       cb: StreamCallbacks<ConversationStreamEvent>,
     ): StreamHandle {
-      const log = convLog.get(cid) ?? [];
       if (after !== null && Number.isFinite(after)) {
         // 断线重放：同步回放 logSeq > after 的条目（契约 ?after= 语义）
-        for (const entry of log) {
+        for (const entry of convLog.get(cid) ?? []) {
           if (entry.logSeq > after) cb.onEvent(entry.evt);
         }
       }
@@ -565,11 +464,17 @@ export function createMockClient(): MockClient {
         },
       };
     },
+    emitConversation,
+    emitGlobal,
+    setSendScript(script) {
+      sendScript = script;
+    },
+    get lastSendCall() {
+      return lastSendCall;
+    },
     dispose(): void {
       for (const t of timers) clearTimeout(t);
       timers.clear();
-      for (const iv of intervals) clearInterval(iv);
-      intervals.clear();
       convSubs.clear();
       globalSubs.clear();
     },

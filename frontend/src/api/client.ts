@@ -6,8 +6,8 @@
  *    Retry-After）；
  *  - 会话流 / 全局流：EventSource 封装，断线后**自行接管重连**
  *    （指数退避 nextBackoffMs，上限 30s；会话流带 ?after=<lastSeq> 续传）；
- *  - ApiClient 接口：Mock 引擎（api/mock/engine.ts）实现同一接口，
- *    由 api/index.ts 按 VITE_USE_MOCK 切换。
+ *  - ApiClient 接口：测试以 src/test/fakeApi.ts 测试替身实现（setApi 注入；
+ *    v1.6 起 product 恒为真实后端，无 mock 引擎）。
  *
  * 失败行为：非 2xx → 抛 ApiError；流断开 → onStatus('offline'|'connecting') +
  * 自动重连，恢复后 onStatus('online')；JSON 畸形 → 流事件被丢弃并按 error 上抛。

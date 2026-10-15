@@ -1,20 +1,12 @@
 /**
- * fixtures.ts —— Mock 模式内置演示数据（驱动全部面板）。
+ * data.ts —— 测试预置数据（仅供测试：fakeApi 初始状态与组件测试直灌）。
  *
- * 目的：后端未启动时（VITE_USE_MOCK=1）UI 完整可演示：
- *  4 个 Agent（v1.1 含 orchestrator 编排入口）、2 个含历史的会话
- *  （含 circuit/counts/waveform/未知类型 artifact + 历史思考过程）、
- *  任务含 v1.3 实测字段与嵌套子任务（t-1/s-1 → t-3 可下钻）、
- *  v1.2 硬件机群：10 台 QPU（6 在线/4 离线，拓扑行列各异；确定性 LCG
- *  生成，含 14×2 长条网格演示滚动）+ v1.4 logicalcloud 真机 5 台（lq-*
- *  前缀：4 在线/1 离线，拓扑仅坐标点、无保真度、利用率 0=无数据）
- *  + 3 GPU + 1 CPU（metrics 齐备）、
- *  管理平台数据：渠道池（glm-5.3/glm-5.3-flash/mock + default_thinking）与
- *  插件注册表（capabilities/model_ref 齐备，含一个 broken 示例）。
- *  租户 role=admin；localStorage['qap.mockRole']='user' 可切普通用户视角。
- * 假设：数据形态严格满足 ARCHITECTURE §4 不变量（counts 守恒、容量不超限、
- *  utilization ∈ [0,1]），供硬件面板映射测试直接消费。
- * 失败行为：纯常量，无失败路径；消费方必须 clone 后再修改。
+ * v1.6 去 mock 化：原 src/api/mock/fixtures.ts（产品内演示数据）随 mock
+ * 引擎删除；其中仍有复用价值的**测试数据**迁入本文件——形态严格满足
+ * ARCHITECTURE §4 不变量（counts 守恒、容量不超限、utilization ∈ [0,1]、
+ * t2 ≤ 2*t1、网格 id↔(row,col) 一一对应），供 store/组件等价断言消费。
+ * 与产品代码零耦合：仅 src/test/** 与 *.test.* 允许 import。
+ * 失败行为：纯常量与纯生成器，无失败路径；消费方须 clone 后修改。
  */
 import type {
   AgentInfo,
@@ -31,24 +23,22 @@ import type {
   QpuTopology,
   Task,
   TenantInfo,
-} from '../../types/domain';
+} from '../types/domain';
 
-export const TENANT: TenantInfo = {
+export const TEST_TENANT: TenantInfo = {
   id: 'demo',
   name: 'Demo 租户',
   enabled: true,
-  // §4 v1.2：admin 可见管理分区；mock 演示可经 localStorage['qap.mockRole']
-  // = 'user' 切换普通用户视角（引擎 getTenant 读取）
   role: 'admin',
   usage: { active_tasks: 1, messages_today: 24 },
   quota: { max_concurrent_tasks: 2, max_messages_per_day: 1000 },
 };
 
-export const AGENTS: AgentInfo[] = [
+export const TEST_AGENTS: AgentInfo[] = [
   {
     id: 'orchestrator',
     name: '编排调度',
-    description: 'v1.1 内置编排 Agent：按任务自主决定调用哪个专家（dispatch_agent）。',
+    description: '内置编排 Agent：按任务自主决定调用哪个专家（dispatch_agent）。',
     capabilities: ['dispatch', 'orchestration'],
     model_ref: 'glm-5.3',
     builtin: true,
@@ -74,12 +64,12 @@ export const AGENTS: AgentInfo[] = [
     name: '回显测试',
     description: '最小演示插件：流式回显，不产出 artifact。',
     capabilities: ['echo'],
-    model_ref: 'mock',
+    model_ref: 'default',
     builtin: true,
   },
 ];
 
-export const CONVERSATIONS: Conversation[] = [
+export const TEST_CONVERSATIONS: Conversation[] = [
   {
     id: 'c-1',
     title: 'H2 分子 VQE 基态能量',
@@ -103,8 +93,8 @@ export const CONVERSATIONS: Conversation[] = [
   },
 ];
 
-/** 历史消息：c-1 展示线路+计数+未知类型降级；c-2 展示波形。 */
-export const MESSAGES_BY_CID: Record<string, Message[]> = {
+/** 历史消息：c-1 展示 Markdown/线路/计数/未知类型降级；c-2 展示波形。 */
+export const TEST_MESSAGES_BY_CID: Record<string, Message[]> = {
   'c-1': [
     {
       id: 'm-1',
@@ -119,37 +109,22 @@ export const MESSAGES_BY_CID: Record<string, Message[]> = {
       id: 'm-2',
       conversation_id: 'c-1',
       role: 'assistant',
-      // v1.5：完整 Markdown 样例（标题/加粗/列表/表格/行内与块级公式）——
-      // VITE_USE_MOCK=1 演示时直接可见三类渲染效果
       content:
-        '已完成 **H₂ / STO-3G**（0.735 Å 键长）的 VQE 估算，结果如下。\n\n' +
+        '已完成 **H₂ / STO-3G**（0.735 Å 键长）的 VQE 估算。\n\n' +
         '## 能量收敛\n\n' +
-        'Ansatz 采用硬件高效形式，测量基组旋转后基态能量收敛至：\n\n' +
-        '$$E_0 \\approx -1.1373\\,\\mathrm{Ha}$$\n\n' +
-        '其中期望值 $E(\\theta)=\\langle\\psi(\\theta)|\\hat H|\\psi(\\theta)\\rangle$ 的梯度由参数移位法估计，' +
-        '收敛判据 $1\\times10^{-4}$ Ha。\n\n' +
-        '## 最优参数\n\n' +
-        '| 参数 | 作用位 | 最优值 | 梯度 |\n' +
-        '|---|---|---|---|\n' +
-        '| θ₀ (RY) | q0 | 0.11 | 1.2e-5 |\n' +
-        '| θ₁ (RZ) | q1 | 0.23 | -3.4e-6 |\n' +
-        '| θ₂ (RZZ) | q0–q1 | 0.31 | 5.6e-6 |\n\n' +
-        '线路（含 **CZ** 与 **RZZ(θ)** 符号）与 1024 shots 计数如下：\n\n' +
-        '- 硬件高效 Ansatz：RY/RZ + CNOT/CZ/RZZ(θ)\n' +
-        '- 测量基组：⟨Z₀Z₁⟩、⟨Z₀⟩、⟨Z₁⟩ 三组期望\n' +
-        '- 末尾附带一份未注册类型的产物用于演示降级渲染。\n',
+        '基态能量收敛至 $$E_0 \\approx -1.1373\\,\\mathrm{Ha}$$，' +
+        '期望值 $E(\\theta)=\\langle\\psi(\\theta)|\\hat H|\\psi(\\theta)\\rangle$。\n\n' +
+        '| 参数 | 作用位 | 最优值 |\n|---|---|---|\n' +
+        '| θ₀ (RY) | q0 | 0.11 |\n| θ₁ (RZ) | q1 | 0.23 |\n',
       reasoning:
-        '用户要估算 H2 基态能量并查看线路与测量结果——属于量子算法设计任务。\n' +
-        '计划：dispatch_agent("algorithm-designer")，专家将以 STO-3G 基组建模、' +
-        '合成硬件高效 Ansatz（RY/RZ + CNOT），并在 QPU 上执行 1024 shots 采样。\n' +
-        '预期产物：circuit + counts 两个 artifact；能量收敛判据 1e-4 Ha。',
+        '计划：dispatch_agent("algorithm-designer")，以 STO-3G 建模并合成' +
+        '硬件高效 Ansatz，1024 shots 采样。预期产物：circuit + counts。',
       agent_id: 'algorithm-designer',
       artifacts: [
         {
           id: 'a-1',
           type: 'circuit',
           title: 'H2 硬件高效 Ansatz（2 qubits）',
-          // v1.5 载荷形态：RX/RY/RZ 带 params；CZ 两点符号；RZZ(θ) 线中点标签
           payload: {
             qubits: 2,
             operations: [
@@ -196,7 +171,6 @@ export const MESSAGES_BY_CID: Record<string, Message[]> = {
       id: 'm-4',
       conversation_id: 'c-2',
       role: 'assistant',
-      // v1.5：行内公式样例（Markdown 管线演示）
       content:
         'Q0 的 **DRAG 校准脉冲**已合成（$\\sigma=20\\,\\mathrm{ns}$，$\\alpha=-0.32$），波形如下。',
       agent_id: 'calibration',
@@ -243,7 +217,7 @@ export const MESSAGES_BY_CID: Record<string, Message[]> = {
   'c-3': [],
 };
 
-export const TASKS: Task[] = [
+export const TEST_TASKS: Task[] = [
   {
     id: 't-1',
     conversation_id: 'c-1',
@@ -340,7 +314,7 @@ export const TASKS: Task[] = [
     created_at: '2026-10-13T08:39:58Z',
   },
   {
-    // v1.3 嵌套下钻演示：t-1 的 s-1（dispatch_agent 步）挂接的子任务
+    // 嵌套下钻：t-1 的 s-1（dispatch_agent 步）挂接的子任务
     id: 't-3',
     conversation_id: 'c-1',
     tenant_id: 'demo',
@@ -382,9 +356,9 @@ export const TASKS: Task[] = [
   },
 ];
 
-// —— v1.2 QPU 机群生成器（确定性 LCG，避免测试快照漂移）——
+// —— QPU 机群生成器（确定性 LCG，避免测试快照漂移）——
 
-/** 线性同余伪随机（确定性；仅演示数据用，非加密）。 */
+/** 线性同余伪随机（确定性；仅测试数据用，非加密）。 */
 function lcg(seed: number): () => number {
   let s = (seed * 2654435761) >>> 0;
   return () => {
@@ -397,9 +371,9 @@ const round1 = (v: number): number => Number(v.toFixed(1));
 const round4 = (v: number): number => Number(v.toFixed(4));
 
 /**
- * 网格拓扑 + 逐比特/逐耦合器保真度（模拟区间：T1 20–80µs、T2 10–60µs 且
- * t2 ≤ 2*t1、readout 0.95–0.995、1Q 0.995–0.9999、2Q 0.98–0.995——
- * ARCHITECTURE §4 v1.2 不变量与模拟区间逐条满足；simulated，非硬件观测）。
+ * 网格拓扑 + 逐比特/逐耦合器保真度（模拟区间满足 §4 v1.2 不变量：
+ * T1 20–80µs、T2 10–60µs 且 t2 ≤ 2*t1、readout 0.95–0.995、
+ * 1Q 0.995–0.9999、2Q 0.98–0.995——simulated，非硬件观测）。
  */
 export function makeQpuTopology(rows: number, cols: number, seed: number): QpuTopology {
   const rand = lcg(seed);
@@ -439,8 +413,10 @@ function qpuNode(
   status: 'online' | 'offline',
   utilization: number,
 ): HardwareNode {
-  const topology = makeQpuTopology(rows, cols, seed);
-  const metrics: QpuMetrics = { qubits_count: rows * cols, topology };
+  const metrics: QpuMetrics = {
+    qubits_count: rows * cols,
+    topology: makeQpuTopology(rows, cols, seed),
+  };
   return {
     id,
     kind: 'qpu',
@@ -454,7 +430,7 @@ function qpuNode(
   };
 }
 
-/** v1.2 机群：10 台 QPU（6 在线 / 4 离线，拓扑各异；titan 14×2 演示滚动）。 */
+/** simulated QPU 机群（6 在线 / 4 离线；titan 14×2 演示滚动）。 */
 const QPU_NODES: HardwareNode[] = [
   qpuNode('qpu-quanta-20q', 'QuANTA 20Q', 4, 5, 11, 'online', 0.12),
   qpuNode('qpu-helios-16q', 'Helios 16Q', 4, 4, 23, 'online', 0.34),
@@ -469,10 +445,8 @@ const QPU_NODES: HardwareNode[] = [
 ];
 
 /**
- * v1.4 logicalcloud 真机节点（形状镜像 get_backends() 实拉：MQ02 /
- * AGate-100 / QZ01-surface_code / QZ01-repetition_code active、QZ02
- * offline）。云端不提供 T1/T2/保真度与利用率——拓扑仅有坐标点
- * （qubit_coordinates），utilization 0 表示"无数据"（UI 显示 "—"）。
+ * logicalcloud 真机节点（形状镜像 get_backends() 实拉：4 在线/1 离线）。
+ * 云端不提供 T1/T2/保真度与利用率——拓扑仅有坐标点，utilization 0=无数据。
  */
 function lqQpuNode(
   id: string,
@@ -512,28 +486,11 @@ const LQ_QPU_NODES: HardwareNode[] = [
   lqQpuNode('lq-mq02', 'MQ02', 'MQ02 8Q', gridCoords(2, 4), 'online'),
   lqQpuNode('lq-agate-100', 'AGate-100', 'AGate-100 12Q', gridCoords(3, 4), 'online'),
   lqQpuNode('lq-qz01-surface-code', 'QZ01 surface_code', 'QZ01-surface_code 9Q', gridCoords(3, 3), 'online'),
-  lqQpuNode(
-    'lq-qz01-repetition-code',
-    'QZ01 repetition_code',
-    'QZ01-repetition_code 5Q',
-    gridCoords(1, 5),
-    'online',
-  ),
+  lqQpuNode('lq-qz01-repetition-code', 'QZ01 repetition_code', 'QZ01-repetition_code 5Q', gridCoords(1, 5), 'online'),
   lqQpuNode('lq-qz02', 'QZ02', 'QZ02 6Q', gridCoords(2, 3), 'offline'),
 ];
 
-const CPU_METRICS: CpuMetrics = {
-  cpu_cores: 64,
-  cpu_usage: 0.37,
-  memory_total_gb: 256.0,
-  memory_used_gb: 98.4,
-};
-
-const GPU_A800_METRICS: GpuMetrics = { vram_total_gb: 80.0, vram_used_gb: 12.6 };
-const GPU_A800_1_METRICS: GpuMetrics = { vram_total_gb: 80.0, vram_used_gb: 61.3 };
-const GPU_V100_METRICS: GpuMetrics = { vram_total_gb: 32.0, vram_used_gb: 0 };
-
-export const HARDWARE_NODES: HardwareNode[] = [
+export const TEST_HARDWARE_NODES: HardwareNode[] = [
   ...QPU_NODES,
   ...LQ_QPU_NODES,
   {
@@ -544,7 +501,7 @@ export const HARDWARE_NODES: HardwareNode[] = [
     status: 'online',
     utilization: 0.86,
     capacity: 1,
-    metrics: GPU_A800_METRICS,
+    metrics: { vram_total_gb: 80.0, vram_used_gb: 12.6 } as GpuMetrics,
     allocations: [
       {
         task_id: 't-2',
@@ -562,7 +519,7 @@ export const HARDWARE_NODES: HardwareNode[] = [
     status: 'online',
     utilization: 0.05,
     capacity: 1,
-    metrics: GPU_A800_1_METRICS,
+    metrics: { vram_total_gb: 80.0, vram_used_gb: 61.3 } as GpuMetrics,
     allocations: [],
   },
   {
@@ -573,7 +530,7 @@ export const HARDWARE_NODES: HardwareNode[] = [
     status: 'offline',
     utilization: 0,
     capacity: 1,
-    metrics: GPU_V100_METRICS,
+    metrics: { vram_total_gb: 32.0, vram_used_gb: 0 } as GpuMetrics,
     allocations: [],
   },
   {
@@ -584,13 +541,18 @@ export const HARDWARE_NODES: HardwareNode[] = [
     status: 'online',
     utilization: 0.37,
     capacity: 4,
-    metrics: CPU_METRICS,
+    metrics: {
+      cpu_cores: 64,
+      cpu_usage: 0.37,
+      memory_total_gb: 256.0,
+      memory_used_gb: 98.4,
+    } as CpuMetrics,
     allocations: [],
   },
 ];
 
-/** §5 v1.1 管理平台渠道池（GLM 实测渠道 + mock；密钥脱敏，只报 has_api_key）。 */
-export const ADMIN_MODELS: ModelChannel[] = [
+/** 管理渠道池（v1.6：仅真实渠道 openai/anthropic；密钥脱敏）。 */
+export const TEST_CHANNELS: ModelChannel[] = [
   {
     ref: 'glm-5.3',
     provider: 'openai',
@@ -611,23 +573,13 @@ export const ADMIN_MODELS: ModelChannel[] = [
     default_thinking: 'high',
     timeout_seconds: 120,
   },
-  {
-    ref: 'mock',
-    provider: 'mock',
-    model: 'mock-llm',
-    base_url: '',
-    api_key_env: '',
-    has_api_key: true,
-    default_thinking: 'high',
-    timeout_seconds: 30,
-  },
 ];
 
-/** 基底渠道（config.toml 提交入库）——DELETE 不可删（409），仅本地覆盖渠道可删。 */
-export const BASE_CHANNEL_REFS: readonly string[] = ['glm-5.3', 'glm-5.3-flash', 'mock'];
+/** 基底渠道（config.toml 提交入库）——DELETE 不可删（409）。 */
+export const TEST_BASE_CHANNEL_REFS: readonly string[] = ['glm-5.3', 'glm-5.3-flash'];
 
-/** §8 v1.1 插件注册表：builtin + installed（含一个 broken 演示条目）。 */
-export const ADMIN_PLUGINS: PluginInfo[] = [
+/** 插件注册表：builtin + installed（含一个 broken 示例）。 */
+export const TEST_PLUGINS: PluginInfo[] = [
   {
     id: 'orchestrator',
     name: '编排调度',
@@ -669,7 +621,7 @@ export const ADMIN_PLUGINS: PluginInfo[] = [
     enabled: true,
     source: 'builtin',
     capabilities: ['echo'],
-    model_ref: 'mock',
+    model_ref: 'default',
     broken_reason: null,
   },
   {
