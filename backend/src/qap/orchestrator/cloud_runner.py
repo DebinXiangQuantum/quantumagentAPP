@@ -70,12 +70,18 @@ class CloudStepRunner:
     async def __call__(self, step: Step) -> str:
         """调度器入口：真机条件满足走云端，否则委托既有负载。
 
-        诚实性（v1.4 真实联调反馈）：云模式下 quantum 步**未携带线路**时
-        只能本地模拟执行——必须在 detail 前缀标注"本地模拟（未提交真机）"，
-        杜绝把模拟结果误读为真机观测（模拟模式无 adapter，不标注）。
+        真机强制（v1.6）：云模式下 quantum 步未携带线路 → 直接失败
+        （错误信息指明需提供 circuit 或切换 simulated 初步验证模式）。
+        classical/agent 步仍走本地负载（它们本就不上 QPU）。
         """
+        # v1.6 QPU 真机强制：云模式下 quantum 步必须携带线路——缺失即失败，
+        # 不再静默落回本地模拟（模拟器仅限显式 simulated 初步验证模式）
         if self._adapter is not None and step.kind == "quantum" and not step.circuit:
-            step.detail = f"本地模拟执行（未携带线路，未提交真机）{step.detail}"
+            raise RuntimeError(
+                "真机执行需要线路（circuit）：quantum 步未携带 circuit，"
+                "v1.6 契约禁止无线路量子步静默本地模拟——请为该步提供 "
+                "circuit 载荷（或切换 hardware.provider=simulated 做初步验证）"
+            )
         if self._adapter is None or step.kind != "quantum" or not step.circuit:
             return await self._fallback(step)
         return await self._run_cloud(step)

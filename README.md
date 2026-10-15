@@ -209,7 +209,12 @@ pytest 500 passed。
 **v1.5 续（2026-10-14）**：迁入博士生项目噪声自适应编译（lqmap/SABRE 路由——
 非相邻两比特门自动 SWAP，支持问题真实规模线路）；query_task_results 工具
 补齐"提交→真实计数→最终答案"闭环；counts 键长=测量位数契约修正；专家
-规模诚实指引。pytest 504 passed。真实 E2E：H₂ 问题→GLM 自选 VQE+UCCSD→真机任务（模糊
+规模诚实指引。pytest 504 passed。
+
+**v1.6（2026-10-14）**：去 mock 化（provider 仅 openai/anthropic；mock
+provider 退出 src，测试改 tests/scripted_provider 替身；config 假渠道已删）
++ QPU 真机强制（云模式 quantum 步必须携带线路，缺失即失败；simulated 仅
+初步验证）。pytest 511 passed。真实 E2E：H₂ 问题→GLM 自选 VQE+UCCSD→真机任务（模糊
 节点 bug 由真实测试暴露并修复）。
 
 **B1（v1.1 渠道池与配置覆盖层）**：

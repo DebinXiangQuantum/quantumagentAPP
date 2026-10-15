@@ -230,15 +230,14 @@ class TestCloudQuantumExecution:
         assert step.status == "failed"
         assert "offline" in (step.error or "")
 
-    async def test_simulated_fallback_without_circuit(self, rig) -> None:
-        """logicalcloud 模式下无 circuit 的 quantum 步 → 既有真实计算负载。"""
+    async def test_circuitless_quantum_step_fails(self, rig) -> None:
+        """v1.6 QPU 真机强制：云模式无 circuit 的 quantum 步 → 任务失败。"""
         task = await rig.run_task([
-            StepSpec(name="本地模拟", kind="quantum", workload={"qubits": 4}),
+            StepSpec(name="无线路量子步", kind="quantum", workload={"qubits": 4}),
         ])
         step = task.steps[0]
-        assert step.status == "succeeded"
-        assert "statevector" in step.detail  # runners.simulate_step 既有语义
-        assert step.cloud_job_id is None
+        assert step.status == "failed"
+        assert "真机执行需要线路" in (step.error or "")
         assert rig.provider.submissions == []
 
     async def test_classical_step_unchanged_in_cloud_mode(self, rig) -> None:
@@ -338,16 +337,21 @@ class TestCircuitlessQuantumHonestAnnotation:
             detail="", error=None,
         )
 
-    async def test_circuitless_quantum_detail_annotated(self, rig: "CloudRig") -> None:
+    async def test_circuitless_quantum_fails_honestly(self, rig: "CloudRig") -> None:
+        """v1.6 QPU 真机强制：云模式 quantum 步无 circuit → 步骤失败。
+
+        不再静默落回本地模拟（用户产品级要求：QPU 必须真机，模拟器仅限
+        显式声明的 simulated 初步验证模式）。
+        """
+        import pytest
+
         step = self._bare_step("s-1")
         runner = CloudStepRunner(
             adapter=rig.adapter, registry=rig.registry, events=rig.bus,
             poll_interval=0.01,
-        )  # adapter 非 None = 云模式
-        outcome = await runner(step)
-        # fallback 返回其详情串（非状态字）；标注必须落在 step.detail 上
-        assert isinstance(outcome, str) and len(outcome) > 0
-        assert "本地模拟" in step.detail and "未提交真机" in step.detail
+        )
+        with pytest.raises(RuntimeError, match="真机执行需要线路"):
+            await runner(step)
 
     async def test_simulated_mode_no_annotation(self, rig: "CloudRig") -> None:
         step = self._bare_step("s-2")

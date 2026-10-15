@@ -5,6 +5,29 @@ Validation（本切片测试结论）+ Known defects（已知缺陷，无则写�
 scope 与流程见 docs/DEVELOPMENT.md §2。
 
 
+## 2026-10-14 `backend: v1.6 去 mock 化 + QPU 真机强制（子代理中断后续作完成）`
+
+### Removed / Changed
+- **mock provider 退出 src**：`agents/providers/mock_provider.py` 删除；
+  provider 枚举仅 `openai | anthropic`（config 校验期拒绝 mock，错误指向
+  v1.6 契约）；`agents.default_model_ref` 必须指向真实渠道。测试以
+  `tests/scripted_provider.py`（ScriptedTestProvider，只存 tests/）驱动全部
+  原剧本链路（§10 演示链/思考流/调度断言语义等价保持）。
+- **QPU 真机强制**：云模式 quantum 步未携带 circuit → 步骤**失败**
+  （"真机执行需要线路（circuit）…或切换 simulated 初步验证"），删除
+  "无线路静默本地模拟+标注"路径；classical/agent 步本地负载不变；
+  simulated 模式（初步验证）行为不变。
+
+### Validation
+- `pytest` **511 passed**（含翻转后的两处真机强制用例：runner 直呼
+  RuntimeError + 调度器路径 step.error 断言）。
+- `grep -r mock_provider backend/src/` 零命中。
+
+### Known defects
+- 子代理因用量上限中断，本切片由协调者续作（WIP 提交 + 补 V2 + 全量
+  回归），无功能缺口。
+
+
 ## 2026-10-14 `backend: 噪声自适应编译迁入（lqmap）+ query_task_results 闭环 + 规模诚实`
 
 ### Added
