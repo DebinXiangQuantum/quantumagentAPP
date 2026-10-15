@@ -155,10 +155,28 @@ def build_app_state(
         loaded = None
     idgen = IdGenerator()
     events = EventBus()
-    conversations = ConversationStore()
-    messages = MessageStore()
-    tasks = TaskStore()
-    attachments = AttachmentStore()
+    # v1.9 持久化：config.storage.backend = "sqlite" → SQLite Store（重启
+    # 不丢）；"memory" → 内存版（开发/测试）。接口签名一致（duck-typing）。
+    storage_cfg = getattr(app_config, "storage", None)
+    if storage_cfg is not None and storage_cfg.backend == "sqlite":
+        from qap.domain.db import build_sqlite_stores
+        import pathlib as _pl
+
+        db_path = _pl.Path(storage_cfg.db_path)
+        if not db_path.is_absolute():
+            # 相对路径 → 相对 config 文件所在目录（仓库根）
+            base = _pl.Path(app_config.__dict__.get("_base_dir", "."))
+            db_path = base / db_path
+        sqlite_stores = build_sqlite_stores(db_path)
+        conversations = sqlite_stores["conversations"]
+        messages = sqlite_stores["messages"]
+        tasks = sqlite_stores["tasks"]
+        attachments = sqlite_stores["attachments"]
+    else:
+        conversations = ConversationStore()
+        messages = MessageStore()
+        tasks = TaskStore()
+        attachments = AttachmentStore()
     tenants = TenantService(app_config.tenancy)
     plugins = PluginRegistry(app_config.agents, base_dir=base_dir)
     # v1.4：logicalcloud 模式解析一次适配器（密钥缺失 → 此处 fail-fast），

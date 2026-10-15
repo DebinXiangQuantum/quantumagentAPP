@@ -219,6 +219,19 @@ class HardwareNodeConfig(_StrictModel):
         return self
 
 
+class StorageConfig(_StrictModel):
+    """``[storage]``（v1.9）：持久化后端切换。
+
+    - ``backend``：``"sqlite"``（重启不丢——会话/消息/任务/附件落库）|
+      ``"memory"``（开发/测试，重启丢）。缺省 sqlite。
+    - ``db_path``：SQLite 文件路径（相对仓库根；自动创建父目录）。
+    """
+
+    # 缺省 memory：测试不配 storage 段即走内存（隔离）；产品显式配 sqlite
+    backend: Literal["sqlite", "memory"] = "memory"
+    db_path: str = Field(default="data/qap.db", min_length=1)
+
+
 class HardwareConfig(_StrictModel):
     """``[hardware]``：数据源模式与利用率模拟器（契约 §3 v1.4）。
 
@@ -325,6 +338,7 @@ class AppConfig(_StrictModel):
     models: dict[str, ModelConfig] = Field(min_length=1)
     agents: AgentsConfig
     hardware: HardwareConfig
+    storage: StorageConfig = StorageConfig()
     scheduler: SchedulerConfig
     tenancy: TenancyConfig
 

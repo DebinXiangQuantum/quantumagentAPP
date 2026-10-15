@@ -235,6 +235,11 @@ retry_failed_steps = false # 原型默认不重试
 # 租户（原型：演示租户；demo_key 可被环境变量 QAP_DEMO_API_KEY 覆盖）
 # -----------------------------------------------------------------------------
 
+[storage]
+# v1.9 持久化：backend = "sqlite"（重启不丢）| "memory"（开发/测试，重启丢）
+backend = "sqlite"
+db_path = "data/qap.db"   # 相对仓库根；自动创建父目录
+
 [tenancy]
 default_tenant = "demo"
 

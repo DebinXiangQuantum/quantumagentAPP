@@ -5,6 +5,22 @@ Validation（本切片测试结论）+ Known defects（已知缺陷，无则写�
 scope 与流程见 docs/DEVELOPMENT.md §2。
 
 
+## 2026-10-15 `backend: v1.9 SQLite 持久化——会话/消息/任务/附件落库，重启不丢`
+
+### Added
+- `qap/domain/db.py`：零依赖 SQLite 持久化层（标准库 sqlite3 + json，WAL 模式）。
+  四张表：conversations / messages（按会话+seq 保序）/ tasks / attachments（JSON
+  元数据 + BLOB 字节）。Store 方法签名与内存版完全一致（duck-typing），组装根
+  按 `config.storage.backend` 切换（"sqlite" | "memory"，缺省 memory 供测试隔离）。
+- `config.toml [storage]`：backend / db_path；config.local.toml 启用 sqlite。
+- 消息/任务支持 `update()`（Agent 运行中就地填充 content/artifacts/step 状态）。
+
+### Validation
+- `pytest` **530 passed**（+8 SQLite 持久化用例：重启恢复/消息保序/就地更新/
+  附件字节回读/跨租户 NotFound/重复 id 拒绝）。
+- 真实验证：创建会话 → 发消息 → SQLite 落库（conversations:1, messages:2）。
+
+
 ## 2026-10-14 `backend: v1.7 计算节点真实执行 + 云端标定采集`
 
 ### Added

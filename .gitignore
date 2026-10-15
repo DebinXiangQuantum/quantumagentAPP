@@ -48,3 +48,4 @@ secrets/
 
 # ---- 运行时安装的插件目录（管理平台安装目标，ARCHITECTURE §8 v1.1）----
 /plugins/
+backend/data/
