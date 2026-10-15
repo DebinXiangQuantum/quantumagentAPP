@@ -17,9 +17,9 @@ from __future__ import annotations
 import asyncio
 import json
 
-from qap.agents.providers.mock_provider import default_demo_artifacts
 from qap.agents.runtime import AgentRuntime
 from qap.agents.tools import PlatformTools, ToolContext
+from tests.scripted_provider import default_demo_artifacts
 from tests.test_runtime import Rig
 
 

@@ -19,9 +19,9 @@ import pytest
 
 from qap.agents.plugins import PluginRegistry
 from qap.agents.providers.base import LLMProvider
-from qap.agents.providers.mock_provider import MockProvider, default_demo_artifacts
 from qap.agents.runtime import AgentRuntime
 from qap.agents.tools import PlatformTools
+from tests.scripted_provider import ScriptedTestProvider, default_demo_artifacts
 from qap.core.config import (
     AgentsConfig,
     BuiltinAgentConfig,
@@ -85,7 +85,7 @@ class Rig:
         self.tenants = TenantService(tenancy_cfg)
         self.tasks = TaskStore()
         self.plugins = PluginRegistry(agents_cfg)
-        self.provider = MockProvider(scripts)
+        self.provider = ScriptedTestProvider(scripts)
         self.tools = PlatformTools(
             self.idgen, self.tenants, self.scheduler, self.tasks, self.registry.snapshot
         )
@@ -376,10 +376,10 @@ class TestRuntimeToolLoop:
 class TestModelRefDefaultAlias:
     """v1.4：插件 model_ref="default" 为保留别名 → agents.default_model_ref。
 
-    真实联调缺陷（2026-10-14）：内置插件 model_ref 字面指向 [models.default]
-    （mock 渠道），在 default_model_ref 配置为真实渠道的部署里，dispatch 出去
-    的专家仍走演示剧本——模板回复+编造计数。别名仅作用于**插件绑定**，
-    消息级覆盖（UI 显式选渠道）保持字面语义。
+    真实联调缺陷（2026-10-14）：内置插件 model_ref 若字面命中某个演示渠道，
+    在 default_model_ref 配置为真实渠道的部署里，dispatch 出去的专家仍走
+    演示剧本——模板回复+编造计数。别名仅作用于**插件绑定**，消息级覆盖
+    （UI 显式选渠道）保持字面语义。
     """
 
     def _rig_with_spy(self) -> tuple["Rig", list[str]]:
@@ -416,9 +416,9 @@ class TestModelRefDefaultAlias:
         rig.append_message(conv, "user", "你好")
         assistant = rig.append_message(conv, "assistant", "")
         history = [m for m in rig.messages.list(conv.id) if m.id != assistant.id]
-        await rig.runtime.run(conv, history, assistant, model_ref="mock")
+        await rig.runtime.run(conv, history, assistant, model_ref="alt-chan")
         # 消息级显式选择渠道：字面引用，不经别名
-        assert seen == ["mock"]
+        assert seen == ["alt-chan"]
 
     async def test_subagent_resolves_alias(self) -> None:
         from qap.agents.tools import ToolContext
@@ -458,7 +458,7 @@ class TestQueryTaskResultsTool:
 
         rig = Rig()
         conv = rig.new_conversation("algorithm-designer")
-        # 用 mock 剧本驱动 submit_task？更直接：手工经 PlatformTools 提交
+        # 直接经 PlatformTools 提交（无需剧本驱动 submit_task）
         tools = rig.tools
         ctx = type("C", (), {})()
         # 构造 ToolContext

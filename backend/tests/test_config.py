@@ -20,7 +20,9 @@ from qap.core.config import (
     load_config,
 )
 
-#: 与仓库根 config.toml 等价的最小合法配置（测试基准，字段含义见契约 §3）
+#: 与仓库根 config.toml 等价的最小合法配置（测试基准，字段含义见契约 §3）。
+#: v1.6：产品无 mock 渠道——default 也是真实 provider（openai）形状，
+#: base_url 指向测试域、密钥读不存在的环境变量（结构合法即可加载）。
 VALID_CONFIG = """
 [server]
 host = "127.0.0.1"
@@ -28,8 +30,10 @@ port = 8000
 cors_origins = ["http://localhost:5173"]
 
 [models.default]
-provider = "mock"
+provider = "openai"
 model = "scripted-demo"
+base_url = "http://test.invalid/v1"
+api_key_env = "QAP_TEST_KEY"
 
 [models.claude]
 provider = "anthropic"
@@ -100,9 +104,34 @@ class TestValidConfig:
         repo_root = Path(__file__).resolve().parents[2]
         config = load_config(repo_root / "config.toml")
         assert config.server.port == 8000
-        assert config.models["default"].provider == "mock"
+        # v1.6：默认渠道必须是真实 provider（glm-5.3-flash = openai 形状）
+        assert config.agents.default_model_ref == "glm-5.3-flash"
+        assert config.models["glm-5.3-flash"].provider == "openai"
+        assert all(
+            entry.provider in ("openai", "anthropic")
+            for entry in config.models.values()
+        )
         assert {n.id for n in config.hardware.nodes} >= {"qpu-quanta-20q", "gpu-a800-0", "cpu-node-0"}
         assert config.tenancy.default_tenant == "demo"
+
+    def test_loads_repo_root_builtin_default_alias(self) -> None:
+        """仓库根 config 的 builtin model_ref="default" 为保留别名（运行时
+        解析为 default_model_ref）——别名引用不算悬空（v1.6 修订）。"""
+        repo_root = Path(__file__).resolve().parents[2]
+        config = load_config(repo_root / "config.toml")
+        assert config.agents.builtin["orchestrator"].model_ref == "default"
+        assert config.agents.default_model_ref in config.models
+
+    def test_builtin_default_alias_dangling_when_base_ref_missing(
+        self, tmp_path: Path
+    ) -> None:
+        """负样本：default_model_ref 悬空时，builtin 的 "default" 别名同样
+        悬空（别名不是逃逸口）。"""
+        text = mutate(
+            VALID_CONFIG, 'default_model_ref = "default"', 'default_model_ref = "ghost"'
+        )
+        with pytest.raises(ConfigError, match="dangling"):
+            load_config(write_config(tmp_path, text))
 
     def test_loads_minimal_valid_config(self, tmp_path: Path) -> None:
         config = load_config(write_config(tmp_path, VALID_CONFIG))
@@ -151,7 +180,10 @@ class TestSecretHandling:
         assert config.resolve_api_key("claude") is None
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
         assert config.resolve_api_key("claude") == "sk-test"
-        assert config.resolve_api_key("default") is None  # mock 无 api_key_env
+        monkeypatch.delenv("QAP_TEST_KEY", raising=False)
+        assert config.resolve_api_key("default") is None  # 环境变量未设置
+        monkeypatch.setenv("QAP_TEST_KEY", "sk-test-2")
+        assert config.resolve_api_key("default") == "sk-test-2"
 
 
 class TestFailFast:
@@ -179,6 +211,19 @@ class TestFailFast:
                 'base_url = "https://api.anthropic.com"\napi_key_env = "ANTHROPIC_API_KEY"',
                 '[models.claude]\nprovider = "openai"\nmodel = "gpt-4o-mini"',
             ),
+            (
+                # v1.6：mock 渠道整体移除——配置层明确拒绝并指向契约
+                "removed_mock_provider",
+                '[models.default]\nprovider = "openai"\nmodel = "scripted-demo"\n'
+                'base_url = "http://test.invalid/v1"\napi_key_env = "QAP_TEST_KEY"',
+                '[models.default]\nprovider = "mock"\nmodel = "scripted-demo"',
+            ),
+            (
+                # mock 渠道即使补齐 base_url/密钥也拒绝（不是缺参问题）
+                "removed_mock_provider_full_shape",
+                'provider = "openai"\nmodel = "scripted-demo"',
+                'provider = "mock"\nmodel = "scripted-demo"',
+            ),
             ("empty_models", "[models.default]", "[models.ghost_placeholder]"),
             ("blank_api_key_env", 'api_key_env = "ANTHROPIC_API_KEY"', 'api_key_env = ""'),
         ],
@@ -190,10 +235,35 @@ class TestFailFast:
         with pytest.raises(ConfigError):
             load_config(path)
 
+    def test_mock_provider_rejected_with_v16_pointer(self, tmp_path: Path) -> None:
+        """v1.6：provider="mock" 的报错必须指向契约（可诊断性），而非
+        泛泛的"非法枚举值"。"""
+        text = mutate(
+            VALID_CONFIG,
+            '[models.default]\nprovider = "openai"\nmodel = "scripted-demo"\n'
+            'base_url = "http://test.invalid/v1"\napi_key_env = "QAP_TEST_KEY"',
+            '[models.default]\nprovider = "mock"\nmodel = "scripted-demo"',
+        )
+        with pytest.raises(ConfigError) as excinfo:
+            load_config(write_config(tmp_path, text))
+        message = str(excinfo.value)
+        assert "mock" in message and "v1.6" in message
+        assert "openai" in message and "anthropic" in message  # 指向可用真实渠道
+
+    def test_mock_provider_rejected_at_model_level(self) -> None:
+        """ModelConfig 构造层同样拒绝 provider="mock"（admin PUT 复用该校验）。"""
+        from qap.core.config import ModelConfig
+
+        with pytest.raises(Exception, match="v1.6"):
+            ModelConfig.model_validate(
+                {"provider": "mock", "model": "scripted-demo"}
+            )
+
     def test_empty_models_rejected(self, tmp_path: Path) -> None:
         """models 段被整体删除 → 至少一个模型的约束失败。"""
         text = VALID_CONFIG.replace(
-            '[models.default]\nprovider = "mock"\nmodel = "scripted-demo"\n', ""
+            '[models.default]\nprovider = "openai"\nmodel = "scripted-demo"\n'
+            'base_url = "http://test.invalid/v1"\napi_key_env = "QAP_TEST_KEY"\n', ""
         ).replace(
             '[models.claude]\nprovider = "anthropic"\nmodel = "claude-sonnet-4-5"\n'
             "base_url = \"https://api.anthropic.com\"\n"

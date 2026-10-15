@@ -27,7 +27,9 @@ ADMIN = {"Authorization": "Bearer admin-key"}
 #: admin 侧只断言"过了守卫"（状态码由端点自身语义决定）。
 ALL_ADMIN_ENDPOINTS: list[tuple[str, str, dict | None]] = [
     ("GET", "/api/v1/admin/models", None),
-    ("PUT", "/api/v1/admin/models/guard-chan", {"provider": "mock", "model": "x"}),
+    ("PUT", "/api/v1/admin/models/guard-chan",
+     {"provider": "openai", "model": "x", "base_url": "http://test.invalid/v1",
+      "api_key_env": "QAP_TEST_KEY"}),
     ("DELETE", "/api/v1/admin/models/guard-chan", None),
     ("GET", "/api/v1/admin/plugins", None),
     ("POST", "/api/v1/admin/plugins/install", {"source_path": "/nonexistent-xyz"}),
@@ -157,7 +159,9 @@ class TestAdminGuard:
             assert denied.status_code == 403
             created = await instance.http.put(
                 "/api/v1/admin/models/guard-chan",
-                json={"provider": "mock", "model": "scripted-demo"},
+                json={"provider": "openai", "model": "scripted-demo",
+                      "base_url": "http://test.invalid/v1",
+                      "api_key_env": "QAP_TEST_KEY"},
                 headers=ADMIN,
             )
             assert created.status_code == 200

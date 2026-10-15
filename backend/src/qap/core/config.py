@@ -37,8 +37,9 @@ DEMO_API_KEY_ENV = "QAP_DEMO_API_KEY"
 #: 本地覆盖层文件名（与基底配置同目录；gitignored，契约 §3 v1.1）
 LOCAL_CONFIG_FILENAME = "config.local.toml"
 
-#: 支持的 provider wire format（未知值 → 启动失败）
-KNOWN_PROVIDERS = frozenset({"openai", "anthropic", "mock"})
+#: 支持的 provider wire format（未知值 → 启动失败）。v1.6 去 mock 化：
+#: 产品**不存在任何 mock/假模型渠道**——测试替身只在 tests/（契约 §3 v1.6）。
+KNOWN_PROVIDERS = frozenset({"openai", "anthropic"})
 #: 支持的硬件节点类型（未知值 → 启动失败）
 KNOWN_NODE_KINDS = frozenset({"qpu", "gpu", "cpu"})
 
@@ -69,9 +70,10 @@ class ServerConfig(_StrictModel):
 class ModelConfig(_StrictModel):
     """``[models.<ref>]``：一个模型的 provider 格式与连接参数。
 
-    ``base_url``/``api_key_env``/``timeout_seconds`` 对 mock provider 可缺省
-    （进程内、不联网）；对 openai/anthropic 必须显式给出 base_url 与
-    ``api_key_env`` **或** ``api_key_inline``（在引用校验阶段强制）。
+    v1.6 去 mock 化：provider 仅 ``openai | anthropic``（两种真实 wire
+    format）；一切渠道都必须显式给出 ``base_url`` 与 ``api_key_env``
+    **或** ``api_key_inline``（在引用校验阶段强制——产品无零配置渠道，
+    测试用占位 base_url/密钥环境变量满足形状）。
 
     ``default_thinking``（v1.1 §9）：该渠道的默认思考程度，缺省 ``"high"``。
     ``api_key_inline``：明文密钥，**只允许出现在 config.local.toml**
@@ -80,7 +82,7 @@ class ModelConfig(_StrictModel):
 
     model_config = ConfigDict(extra="forbid", protected_namespaces=())
 
-    provider: Literal["openai", "anthropic", "mock"]
+    provider: Literal["openai", "anthropic"]
     model: str = Field(min_length=1)
     base_url: str | None = None
     api_key_env: str | None = None
@@ -89,6 +91,19 @@ class ModelConfig(_StrictModel):
     timeout_seconds: float = Field(default=120.0, gt=0)
     #: 默认思考程度（v1.1 §9：消息级 > 渠道 default_thinking > "high"）
     default_thinking: ThinkingLevel = "high"
+
+    @field_validator("provider", mode="before")
+    @classmethod
+    def _reject_removed_mock(cls, value: str) -> str:
+        # v1.6：mock 渠道整体移除——报错必须指向契约而非泛泛的枚举拒绝，
+        # 让遗留配置（旧 config.local.toml / admin 请求体）一眼可诊断。
+        if value == "mock":
+            raise ValueError(
+                "provider 'mock' 已按 v1.6 契约移除（产品不存在 mock/假模型"
+                "渠道，QPU 真机、LLM 真实渠道）；请改用 openai 或 anthropic "
+                "真实渠道（契约 §3 v1.6）"
+            )
+        return value
 
     @field_validator("base_url", "api_key_env", "api_key_inline")
     @classmethod
@@ -301,7 +316,7 @@ class AppConfig(_StrictModel):
         """读取模型密钥（内联优先，其次 ``api_key_env`` 环境变量）。
 
         :returns: 有可用密钥则返回非空值，否则 None（调用方在被实际使用
-            时才报错，契约 §3：不影响其他模型与 Mock）。
+            时才报错，契约 §3：不影响其他模型）。
         :raises KeyError: model_ref 未在配置中定义（编程错误）。
         """
         entry = self.models[model_ref]
@@ -366,16 +381,22 @@ def _cross_validate(config: AppConfig) -> None:
     if config.agents.default_model_ref not in model_refs:
         dangling.append(f"agents.default_model_ref -> {config.agents.default_model_ref!r}")
     for agent_id, builtin in config.agents.builtin.items():
-        if builtin.model_ref not in model_refs:
-            dangling.append(f"agents.builtin.{agent_id}.model_ref -> {builtin.model_ref!r}")
+        ref = builtin.model_ref
+        # v1.4 保留别名：插件绑定 model_ref == "default" 在运行时解析为
+        # agents.default_model_ref（见 api/state.py 的 model_ref_alias）——
+        # 别名合法当且仅当 default_model_ref 本身命中渠道（上面已校验）；
+        # default_model_ref 悬空时别名同样悬空（别名不是逃逸口）。
+        if ref == "default" and config.agents.default_model_ref in model_refs:
+            continue
+        if ref not in model_refs:
+            dangling.append(f"agents.builtin.{agent_id}.model_ref -> {ref!r}")
     if config.tenancy.default_tenant not in {t.id for t in config.tenancy.tenants}:
         dangling.append(f"tenancy.default_tenant -> {config.tenancy.default_tenant!r}")
     if dangling:
         raise ConfigError("dangling references in config.toml: " + "; ".join(dangling))
-    # openai/anthropic 必须有 base_url 与密钥来源（env 名或本地内联；mock 不需要）。
+    # v1.6：一切渠道（openai/anthropic）都必须有 base_url 与密钥来源
+    # （env 名或本地内联）——产品无零配置渠道。
     for ref, entry in config.models.items():
-        if entry.provider == "mock":
-            continue
         missing = []
         if entry.base_url is None:
             missing.append("base_url")
@@ -384,7 +405,7 @@ def _cross_validate(config: AppConfig) -> None:
         if missing:
             raise ConfigError(
                 f"models.{ref}: provider {entry.provider!r} requires "
-                f"{', '.join(missing)} (mock provider does not)"
+                f"{', '.join(missing)}"
             )
 
 

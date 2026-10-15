@@ -24,7 +24,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from pydantic import ValidationError
 
-from qap.agents.providers.mock_provider import MockProvider
+from tests.scripted_provider import ScriptedTestProvider
 from qap.core.config import SchedulerConfig
 from qap.core.ids import IdGenerator
 from qap.domain.invariants import validate_step_profiles
@@ -242,7 +242,7 @@ class TestDispatchStepProfile:
     ) -> None:
         """dispatch 步：真实子运行（时长 measured、内存 null）；执行期间
         子 Agent 经 submit_task 提交的任务自动挂 subtask_id。"""
-        bundle.state.providers["default"] = MockProvider({
+        bundle.state.providers["default"] = ScriptedTestProvider({
             "calibration": [
                 [("text", "收到，提交一个子任务。"),
                  ("tool", "submit_task", {
@@ -273,7 +273,7 @@ class TestDispatchStepProfile:
     async def test_nested_dispatch_not_mislinked(self, bundle: ClientBundle) -> None:
         """一次一层：子 Agent（depth=1）提交的内层任务若再含 agent 步，
         该步被拒绝失败，且不误改外层步的 subtask_id。"""
-        bundle.state.providers["default"] = MockProvider({
+        bundle.state.providers["default"] = ScriptedTestProvider({
             "calibration": [
                 [("tool", "submit_task", {
                     "name": "内层任务",
@@ -306,7 +306,7 @@ class TestDispatchStepProfile:
 
     async def test_conversation_level_submit_task_not_linked(self, bundle: ClientBundle) -> None:
         """会话主运行（非 agent 步执行期）提交的任务不挂任何 subtask_id。"""
-        bundle.state.providers["default"] = MockProvider({
+        bundle.state.providers["default"] = ScriptedTestProvider({
             "orchestrator": [
                 [("tool", "submit_task", {
                     "name": "会话任务",

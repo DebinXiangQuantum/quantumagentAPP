@@ -9,7 +9,7 @@
 - 可观察行为：上传 201 AttachmentMeta；raw 回原字节；发消息带附件后
   Provider 收到注入内容（openai text 追加 + image_url data URL、
   anthropic text 块 + image block；文本模型服务端错误经 SSE error 透传；
-  mock 仅记录）。
+  测试替身仅记录摘要）。
 """
 
 from __future__ import annotations
@@ -431,11 +431,11 @@ class TestProviderAttachmentInjection:
         finally:
             del os.environ["TEST_KEY_X"]
 
-    async def test_mock_provider_records_attachments_only(self) -> None:
-        from qap.agents.providers.mock_provider import MockProvider
+    async def test_scripted_provider_records_attachments_only(self) -> None:
         from qap.agents.providers.base import CompletionRequest
+        from tests.scripted_provider import ScriptedTestProvider
 
-        mock = MockProvider({})
+        scripted = ScriptedTestProvider({})
         request = CompletionRequest(
             model="m",
             metadata={"run_key": "rk", "agent_id": "echo"},
@@ -447,9 +447,9 @@ class TestProviderAttachmentInjection:
                 }
             ],
         )
-        async for _ in mock.stream(request):
+        async for _ in scripted.stream(request):
             pass
-        logged = mock.request_log[-1]
+        logged = scripted.request_log[-1]
         assert logged["attachments"] == [
             {"id": "att-1", "name": "f", "mime": "text/plain", "kind": "text"}
         ]

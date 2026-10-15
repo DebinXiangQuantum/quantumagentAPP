@@ -1,26 +1,33 @@
-"""Mock Provider：脚本化驱动 §10 端到端演示链路（进程内、零网络）。
+"""ScriptedTestProvider：LLMProvider 协议的**测试替身**（v1.6 去 mock 化）。
+
+**存在边界（契约 §3 v1.6）**：本模块**只存在于 tests/**——产品 src/ 无任何
+mock/假模型渠道（provider 仅 openai|anthropic）；零网络/零算力的脚本化
+驱动是测试专属能力，绝不注册为可选渠道。剧本语义自原
+``qap/agents/providers/mock_provider.py``（v1.5 及以前）移植，数据结构
+保持兼容（``scripts: dict[agent_id, list[turn]]``，turn 是脚本项列表），
+原用 MockProvider 的测试只需改 import 路径。
 
 脚本模型：
 - 每个 agent_id 一个**剧本**（script），剧本是"轮"（turn）的列表——
-  Runtime 工具循环每轮调用一次 ``stream``，mock 用 ``run_key``
+  Runtime 工具循环每轮调用一次 ``stream``，替身用 ``run_key``
   （会话+消息级唯一，由 Runtime 放进 metadata）推进剧本游标；
 - 每轮是若干**脚本项**：``("text", str)`` 正文增量、
-  ``("thought", str)`` 思考增量（v1.1：产出 ThoughtDelta，演示
+  ``("thought", str)`` 思考增量（产出 ThoughtDelta，驱动
   message.reasoning 链路）、``("tool", name, arguments_dict)`` 完整工具
   调用、``("error", message)`` 注入式故障（负样本测试用）；
 - 剧本耗尽后回退为一句固定文本（保证任何额外轮次仍能正常收束）；
-- **v1.4 诚实化**：剧本未覆盖的 agent（无剧本且非 echo）→ 单条
-  ``[mock 渠道]`` 明确说明（:data:`UNCOVERED_NOTICE`），绝不产出看似
-  真实推理的模板内容，指引用户切换真实渠道；
-- ``echo`` agent 特殊处理：首轮原样返回最后一条用户消息（回声演示）。
+- 剧本未覆盖的 agent（无剧本且非 echo）→ 单条 :data:`UNCOVERED_NOTICE`
+  明确说明（测试诚实护栏：替身不产出看似真实推理的模板内容，缺剧本
+  时一眼可见而非静默编造）；
+- ``echo`` agent 特殊处理：首轮原样返回最后一条用户消息（回声）。
 
-v1.1 思考程度语义：mock **忽略但记录**——每次 ``stream`` 把
+thinking_level 语义：**忽略但记录**——每次 ``stream`` 把
 ``(run_key, thinking_level)`` 追加进 ``request_log``（测试可观察），
 不改变事件行为。
 
-默认剧本内置 §10 验收基线所需的全部可观察行为：
-思考流 → 文本流 → emit_artifact(circuit) → emit_artifact(counts) →
-submit_task(3 步 DAG) → 收束文本。
+默认剧本内置 §10 验收基线所需的全部可观察行为（供集成测试走通
+端到端链路）：思考流 → 文本流 → emit_artifact(circuit) →
+emit_artifact(counts) → submit_task(3 步 DAG) → 收束文本。
 """
 
 from __future__ import annotations
@@ -40,7 +47,7 @@ from qap.agents.providers.base import (
     TurnCompleted,
 )
 
-#: Bell 态线路（契约 §6 示例样例，演示用）
+#: Bell 态线路（契约 §6 示例样例，测试载荷）
 _DEMO_CIRCUIT = {
     "qubits": 2,
     "operations": [
@@ -116,23 +123,23 @@ DEFAULT_SCRIPTS: dict[str, list[list[tuple]]] = {
 }
 
 #: 剧本耗尽时的回退文本（保证任何轮次都能正常收束）
-_FALLBACK_TEXT = "（mock 剧本已耗尽——这是一条收束文本。）"
+_FALLBACK_TEXT = "（测试剧本已耗尽——这是一条收束文本。）"
 
-#: v1.4 mock 诚实化：剧本未覆盖的 agent/prompt 组合返回的**单条明确说明**
-#: ——绝不产出看似真实推理的模板内容，并指引用户切换真实渠道。
+#: 剧本未覆盖的 agent/prompt 组合返回的**单条明确说明**——测试诚实护栏：
+#: 替身绝不产出看似真实推理的模板内容（缺剧本一眼可见，不静默编造）。
 UNCOVERED_NOTICE = (
-    "[mock 渠道] 演示脚本未覆盖该请求——mock 不进行任何真实推理；"
-    "请在输入区选择真实渠道（如 glm-5.3-flash）后重试。"
+    "[scripted provider] 测试剧本未覆盖该请求——测试替身不进行任何真实推理；"
+    "请为该 agent 提供剧本或改用 openai/anthropic 渠道的 MockTransport 回放。"
 )
 
 
-class MockProvider:
-    """内置脚本化 Provider；可通过注入 scripts 覆盖默认演示剧本。
+class ScriptedTestProvider:
+    """脚本化测试替身（与 LLMProvider 同协议）；可注入 scripts 覆盖默认剧本。
 
     ``request_log``：每次 stream 记录 ``{"run_key", "agent_id",
-    "thinking_level", "attachments"}``（v1.1：mock 忽略思考程度但记录，
-    供测试断言取值优先级；v1.3：附件**仅记录摘要不注入**——契约 §5
-    "mock 仅展示"），append-only、无清理（原型内存态）。
+    "thinking_level", "attachments"}``（thinking_level 忽略但记录，
+    供测试断言取值优先级；附件**仅记录摘要不注入**——与 openai/anthropic
+    的注入语义区分），append-only、无清理（测试内存态）。
     """
 
     def __init__(self, scripts: dict[str, list[list[tuple]]] | None = None) -> None:
@@ -140,12 +147,12 @@ class MockProvider:
         self._cursors: dict[str, int] = {}  # run_key → 已消费的轮数
         self.request_log: list[dict[str, Any]] = []
 
-    # ---------- 对外接口 ----------
+    # ---------- 对外接口（LLMProvider 协议） ----------
 
     async def stream(self, request: CompletionRequest) -> AsyncIterator[ProviderEvent]:
         run_key = str(request.metadata.get("run_key", "anonymous"))
         agent_id = str(request.metadata.get("agent_id", ""))
-        # v1.3 附件：汇总本请求所有消息的附件摘要（仅元数据，无内容体）
+        # 附件：汇总本请求所有消息的附件摘要（仅元数据，无内容体）
         attachment_summaries = [
             part.summary()
             for message in request.messages
@@ -165,8 +172,7 @@ class MockProvider:
             return
         script = self._scripts.get(agent_id)
         if script is None:
-            # v1.4 诚实化：剧本未覆盖的组合 → 单条"[mock 渠道]"说明，
-            # 不产出看似真实推理的模板（指引用户切换真实渠道）。
+            # 剧本未覆盖的组合 → 单条"[scripted provider]"说明（诚实护栏）
             yield TextDelta(UNCOVERED_NOTICE)
             yield TurnCompleted("stop")
             return
@@ -189,7 +195,7 @@ class MockProvider:
                 yield ProviderErrorEvent(item[1])
                 return  # 错误后流终止，不发 TurnCompleted
             else:  # pragma: no cover - 剧本由本仓库维护，未知项防御性终止
-                yield ProviderErrorEvent(f"mock: unknown script item kind {kind!r}")
+                yield ProviderErrorEvent(f"scripted provider: unknown script item kind {kind!r}")
                 return
         yield TurnCompleted("tool_use" if had_tool else "stop")
 
@@ -211,7 +217,7 @@ class MockProvider:
 
 
 def default_demo_artifacts() -> dict[str, Any]:
-    """返回演示剧本使用的三个产物载荷（集成测试/前端联调便捷入口）。"""
+    """返回测试剧本使用的三个产物载荷（集成测试/契约自证便捷入口）。"""
     return {
         "circuit": _DEMO_CIRCUIT,
         "counts": _DEMO_COUNTS,

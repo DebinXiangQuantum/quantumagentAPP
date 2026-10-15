@@ -6,8 +6,9 @@
 - 非法输入拒绝：非 orchestrator 调用 dispatch_agent → 工具错误结果；
   dispatch 到未知 agent → agent_not_found 结构化结果。
 - 负样本：子运行 provider 故障 → 结构化 error 回给 orchestrator，主运行收束。
-- 可观察行为：agent_id 缺省=orchestrator；orchestrator mock 剧本端到端
-  dispatch（产物/任务落在 orchestrator 消息上、回复含收束文本）。
+- 可观察行为：agent_id 缺省=orchestrator；orchestrator 测试剧本端到端
+  dispatch（产物/任务落在 orchestrator 消息上、回复含收束文本）——
+  v1.6：剧本由 tests/scripted_provider.py 测试替身驱动（产品无 mock 渠道）。
 """
 
 from __future__ import annotations
@@ -16,7 +17,7 @@ import asyncio
 
 import pytest
 
-from qap.agents.providers.mock_provider import MockProvider
+from tests.scripted_provider import ScriptedTestProvider
 
 from tests.test_api_integration import (
     DEMO_HEADERS,
@@ -36,8 +37,8 @@ async def bundle(monkeypatch: pytest.MonkeyPatch) -> ClientBundle:
 
 
 def use_scripts(bundle: ClientBundle, scripts: dict) -> None:
-    """替换 default 渠道的 mock provider 剧本（runtime 闭包共享 providers 表）。"""
-    bundle.state.providers["default"] = MockProvider(scripts)
+    """替换 default 渠道的测试替身剧本（runtime 闭包共享 providers 表）。"""
+    bundle.state.providers["default"] = ScriptedTestProvider(scripts)
 
 
 async def wait_completed(bundle: ClientBundle, cid: str, timeout: float = 6.0) -> list:

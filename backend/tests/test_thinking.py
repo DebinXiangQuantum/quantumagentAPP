@@ -228,13 +228,13 @@ class TestAnthropicThinkingMapping:
         assert events[-1] == TurnCompleted("stop")
 
 
-class TestMockRecordsThinking:
-    """mock provider：忽略 thinking_level 但记录（演示/测试可观察）。"""
+class TestScriptedRecordsThinking:
+    """ScriptedTestProvider：忽略 thinking_level 但记录（测试可观察）。"""
 
-    async def test_mock_records_level(self) -> None:
-        from qap.agents.providers.mock_provider import MockProvider
+    async def test_scripted_records_level(self) -> None:
+        from tests.scripted_provider import ScriptedTestProvider
 
-        provider = MockProvider()
+        provider = ScriptedTestProvider()
         request = CompletionRequest(
             model="m", messages=[{"role": "user", "content": "q"}],
             metadata={"run_key": "r1", "agent_id": "echo"},
@@ -255,7 +255,7 @@ class TestReasoningStreamRuntime:
     async def test_reasoning_events_before_delta_and_completed_carries_full(
         self,
     ) -> None:
-        from qap.agents.providers.mock_provider import MockProvider
+        from tests.scripted_provider import ScriptedTestProvider
         from tests.test_runtime import Rig
 
         scripts = {
@@ -270,7 +270,7 @@ class TestReasoningStreamRuntime:
             ],
         }
         rig = Rig()
-        rig.provider = MockProvider(scripts)  # type: ignore[assignment]
+        rig.provider = ScriptedTestProvider(scripts)  # type: ignore[assignment]
         rig.runtime = type(rig.runtime)(
             rig.plugins, lambda ref: rig.provider, rig.tools, rig.bus
         )
@@ -354,7 +354,7 @@ class TestPostMessageThinkingApi:
         assert response.status_code == 202
         await asyncio.sleep(0.2)
         log = bundle.state.providers["default"].request_log
-        assert log, "mock provider 未收到请求"
+        assert log, "测试替身未收到请求"
         assert log[-1]["thinking_level"] == "low"
 
     async def test_channel_default_applies_when_message_level_absent(

@@ -46,13 +46,22 @@ GLM_CHANNEL = {
     "default_thinking": "high",
 }
 
+#: v1.6：测试用真实 provider 形状的占位渠道（产品无 mock——占位 openai
+#: 渠道 base_url 指向测试域、密钥读不存在的环境变量）
+SCRIPTED_CHANNEL = {
+    "provider": "openai",
+    "model": "scripted-demo",
+    "base_url": "http://test.invalid/v1",
+    "api_key_env": "QAP_TEST_KEY",
+}
+
 
 def make_loaded_config(base_dir: Path) -> LoadedConfig:
-    """基底：default(mock) + glm-5.3(openai) 双渠道。"""
+    """基底：default(占位 openai) + glm-5.3(openai) 双真实形状渠道。"""
     config = AppConfig(
         server=ServerConfig(host="127.0.0.1", port=8000, cors_origins=[]),
         models={
-            "default": ModelConfig(provider="mock", model="scripted-demo"),
+            "default": ModelConfig.model_validate(SCRIPTED_CHANNEL),
             "glm-5.3": ModelConfig.model_validate(GLM_CHANNEL),
         },
         agents=AgentsConfig(
@@ -142,25 +151,27 @@ class TestGetModels:
 class TestPutModels:
     async def test_create_local_channel(self, bundle: dict) -> None:
         payload = {
-            "provider": "mock",
+            "provider": "openai",
             "model": "scripted-alt",
+            "base_url": "http://test.invalid/v1",
+            "api_key_env": "QAP_TEST_ALT_KEY",
             "default_thinking": "low",
         }
         response = await bundle["http"].put(
-            "/api/v1/admin/models/alt-mock", json=payload, headers=DEMO_HEADERS
+            "/api/v1/admin/models/alt-chan", json=payload, headers=DEMO_HEADERS
         )
         assert response.status_code == 200, response.text
         body = response.json()
-        assert body["ref"] == "alt-mock"
+        assert body["ref"] == "alt-chan"
         assert body["has_api_key"] is False
         # 落盘 config.local.toml
         store = LocalConfigStore(bundle["tmp_path"] / "config.local.toml")
-        assert store.load()["models"]["alt-mock"]["model"] == "scripted-alt"
+        assert store.load()["models"]["alt-chan"]["model"] == "scripted-alt"
         # GET 可见 + 运行时即时可用（发消息走新渠道）
         listed = (
             await bundle["http"].get("/api/v1/admin/models", headers=DEMO_HEADERS)
         ).json()["models"]
-        assert "alt-mock" in {m["ref"] for m in listed}
+        assert "alt-chan" in {m["ref"] for m in listed}
         conversation = (
             await bundle["http"].post(
                 "/api/v1/conversations", json={"agent_id": "echo"}, headers=DEMO_HEADERS
@@ -168,7 +179,7 @@ class TestPutModels:
         ).json()
         posted = await bundle["http"].post(
             f"/api/v1/conversations/{conversation['id']}/messages",
-            json={"content": "q", "model_ref": "alt-mock"},
+            json={"content": "q", "model_ref": "alt-chan"},
             headers=DEMO_HEADERS,
         )
         assert posted.status_code == 202
@@ -215,13 +226,14 @@ class TestPutModels:
         ("label", "payload"),
         [
             ("bad_provider", {"provider": "azure", "model": "m"}),
-            ("bad_thinking", {"provider": "mock", "model": "m", "default_thinking": "ultra"}),
-            ("missing_model", {"provider": "mock"}),
+            ("bad_thinking", {"provider": "openai", "model": "m", "default_thinking": "ultra"}),
+            ("missing_model", {"provider": "openai"}),
+            ("removed_mock_provider", {"provider": "mock", "model": "m"}),
             (
                 "openai_without_base_url",
                 {"provider": "openai", "model": "m", "api_key_env": "X"},
             ),
-            ("bad_timeout", {"provider": "mock", "model": "m", "timeout_seconds": -1}),
+            ("bad_timeout", {"provider": "openai", "model": "m", "timeout_seconds": -1}),
         ],
     )
     async def test_invalid_inputs_422(self, bundle: dict, label: str, payload: dict) -> None:
@@ -241,10 +253,10 @@ class TestDeleteModels:
 
     async def test_delete_referenced_channel_409(self, bundle: dict) -> None:
         """被插件 model_ref 引用的本地渠道：删除会造成悬空引用 → 409。"""
-        # 造一个绑定 alt-mock 渠道的外部插件并安装
+        # 造一个绑定 alt-chan 渠道的外部插件并安装
         await bundle["http"].put(
-            "/api/v1/admin/models/alt-mock",
-            json={"provider": "mock", "model": "x"},
+            "/api/v1/admin/models/alt-chan",
+            json=dict(SCRIPTED_CHANNEL, model="x"),
             headers=DEMO_HEADERS,
         )
         src = bundle["tmp_path"] / "src" / "bound"
@@ -259,8 +271,8 @@ class TestDeleteModels:
             "@dataclass(frozen=True)\n"
             "class P:\n"
             "    id: str = 'bound'\n    name: str = '绑定插件'\n"
-            "    description: str = '绑定 alt-mock 渠道'\n"
-            "    capabilities: tuple = ()\n    model_ref: str = 'alt-mock'\n"
+            "    description: str = '绑定 alt-chan 渠道'\n"
+            "    capabilities: tuple = ()\n    model_ref: str = 'alt-chan'\n"
             "    system_prompt: str = 'x'\n    tools: tuple = ()\n"
             "def make_plugin(): return P()\n",
             encoding="utf-8",
@@ -271,27 +283,27 @@ class TestDeleteModels:
         )
         assert installed.status_code == 201
         response = await bundle["http"].delete(
-            "/api/v1/admin/models/alt-mock", headers=DEMO_HEADERS
+            "/api/v1/admin/models/alt-chan", headers=DEMO_HEADERS
         )
         assert response.status_code == 409
         assert "bound" in response.json()["error"]["message"]  # 原因指向引用者
 
     async def test_delete_local_channel_204(self, bundle: dict) -> None:
         await bundle["http"].put(
-            "/api/v1/admin/models/alt-mock",
-            json={"provider": "mock", "model": "x"},
+            "/api/v1/admin/models/alt-chan",
+            json=dict(SCRIPTED_CHANNEL, model="x"),
             headers=DEMO_HEADERS,
         )
         response = await bundle["http"].delete(
-            "/api/v1/admin/models/alt-mock", headers=DEMO_HEADERS
+            "/api/v1/admin/models/alt-chan", headers=DEMO_HEADERS
         )
         assert response.status_code == 204
         listed = (
             await bundle["http"].get("/api/v1/admin/models", headers=DEMO_HEADERS)
         ).json()["models"]
-        assert "alt-mock" not in {m["ref"] for m in listed}
+        assert "alt-chan" not in {m["ref"] for m in listed}
         store = LocalConfigStore(bundle["tmp_path"] / "config.local.toml")
-        assert "alt-mock" not in store.load().get("models", {})
+        assert "alt-chan" not in store.load().get("models", {})
         # 运行时同步摘除：再用该渠道发消息 → 422
         conversation = (
             await bundle["http"].post(
@@ -300,7 +312,7 @@ class TestDeleteModels:
         ).json()
         posted = await bundle["http"].post(
             f"/api/v1/conversations/{conversation['id']}/messages",
-            json={"content": "q", "model_ref": "alt-mock"},
+            json={"content": "q", "model_ref": "alt-chan"},
             headers=DEMO_HEADERS,
         )
         assert posted.status_code == 422

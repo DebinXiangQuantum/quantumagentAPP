@@ -137,12 +137,15 @@ class TestThinkingDefaults:
             load_config(write_config(tmp_path, text))
 
     def test_repo_root_config_channels_load(self) -> None:
-        """仓库根 config.toml（v1.1 真实契约样例：glm 渠道池）可加载。"""
+        """仓库根 config.toml（v1.6 真实契约样例：glm 渠道池，无 mock）可加载。"""
         repo_root = Path(__file__).resolve().parents[2]
         loaded = load_config_with_sources(repo_root / "config.toml")
         refs = set(loaded.config.models)
-        assert {"default", "claude", "glm-5.3", "glm-5.3-flash",
-                "openai-compatible", "mock"} <= refs
+        assert {"claude", "glm-5.3", "glm-5.3-flash", "openai-compatible"} <= refs
+        assert "mock" not in {
+            entry.provider for entry in loaded.config.models.values()
+        }
+        assert loaded.config.agents.default_model_ref == "glm-5.3-flash"
         assert loaded.config.models["glm-5.3"].default_thinking == "high"
         assert loaded.config.models["glm-5.3-flash"].default_thinking == "low"
 
@@ -188,9 +191,10 @@ class TestOverlayFailFast:
 
     def test_local_invalid_merged_result_rejected(self, tmp_path: Path) -> None:
         """覆盖后悬空引用（本地删除了被引用模型）→ fail-fast。"""
-        local = '[models.default]\nprovider = "mock"\nmodel = "other"'
-        # 把 default 的 model 改名不影响引用；用删除式覆盖制造悬空：
-        # 覆盖 claude 为 mock 后 default_model_ref 仍指向 default——合法；
+        local = (
+            '[models.default]\nprovider = "openai"\nmodel = "other"\n'
+            'base_url = "http://test.invalid/v1"\napi_key_env = "QAP_TEST_KEY"'
+        )
         # 真正的悬空：本地把 [agents] default_model_ref 指向不存在渠道。
         local += '\n\n[agents]\ndefault_model_ref = "ghost-ref"'
         path = write_pair(tmp_path, VALID_CONFIG, local)
@@ -220,7 +224,11 @@ class TestLocalStoreRoundTrip:
         })
         assert store.load()["models"]["glm-5.3"]["timeout_seconds"] == 300.0
         # 键含点号必须带引号写出，回读后键保持原样
-        store.upsert_model("glm-5.3-flash", {"provider": "mock", "model": "m"})
+        store.upsert_model("glm-5.3-flash", {
+            "provider": "openai", "model": "glm-5.3-flash",
+            "base_url": "https://open.bigmodel.cn/api/paas/v4",
+            "api_key_env": "GLM_API_KEY",
+        })
         data = store.load()
         assert set(data["models"]) == {"glm-5.3", "glm-5.3-flash"}
         assert store.delete_model("glm-5.3") is True
@@ -242,11 +250,14 @@ class TestLocalStoreRoundTrip:
         path.write_text('[server]\nport = 9001\n\n[tenancy]\ndefault_tenant = "demo"\n',
                         encoding="utf-8")
         store = LocalConfigStore(path)
-        store.upsert_model("m1", {"provider": "mock", "model": "x"})
+        store.upsert_model("m1", {
+            "provider": "openai", "model": "x",
+            "base_url": "http://test.invalid/v1", "api_key_env": "X_KEY",
+        })
         data = store.load()
         assert data["server"]["port"] == 9001
         assert data["tenancy"]["default_tenant"] == "demo"
-        assert data["models"]["m1"]["provider"] == "mock"
+        assert data["models"]["m1"]["provider"] == "openai"
 
     def test_missing_file_loads_empty(self, tmp_path: Path) -> None:
         store = LocalConfigStore(tmp_path / "config.local.toml")
