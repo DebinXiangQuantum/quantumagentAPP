@@ -659,6 +659,11 @@
 
 /* QPU 拓扑保真度图（手写 SVG）：>12×12 滚动 */
 .qpu-topo__scroll {
+  /* position:relative 是悬停浮层的定位上下文——浮层 left/top 相对本容器
+   * （而非页面根），数值才会贴着鼠标悬浮的比特/耦合器（用户走查反馈：
+   * 修复"数据跑到页面最顶部"——此前 absolute 相对最近的定位祖先可能是
+   * Drawer/body，导致偏移量按整页计算）。 */
+  position: relative;
   overflow: auto;
   max-width: 100%;
   border: 1px solid var(--border-default);
