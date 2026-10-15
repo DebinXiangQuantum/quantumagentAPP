@@ -461,9 +461,9 @@ function lqQpuNode(
       layout: 'cloud',
       rows: 0,
       cols: 0,
-      qubits: coordinates.map((_, qid) => ({ id: qid })),
+      // v1.8：物理坐标直接在 qubits[].x/y（IBM 式芯片摆放）
+      qubits: coordinates.map(([x, y], qid) => ({ id: qid, x, y })),
       couplers: [],
-      qubit_coordinates: coordinates,
     },
   };
   return {

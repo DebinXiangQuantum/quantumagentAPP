@@ -141,6 +141,8 @@ export const ja: Record<string, string> = {
   'hw.detail.vram': 'VRAM',
   'hw.topo.aria': '{count} 量子ビットのトポロジ忠実度図',
   'hw.topo.tooltip': 'Q{id} · T1 {t1} · T2 {t2} · 1Q {sq} · 読み出し {ro}',
+  'hw.topo.couplerTooltip': '結合器 Q{a}–Q{b} · CZ ゲート忠実度 {cz}',
+  'hw.topo.couplerNotProvided': '結合器 Q{a}–Q{b} · CZ 忠実度：未提供',
   'hw.topo.legend.good': '良（2Q≥0.992 · 1Q≥0.999 · 読み出し≥0.98）',
   'hw.topo.legend.fair': '可',
   'hw.topo.legend.poor': '不良（2Q<0.985 · 1Q<0.995 · 読み出し<0.95）',

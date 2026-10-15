@@ -143,6 +143,8 @@ export const zh: Record<string, string> = {
   'hw.detail.vram': '显存',
   'hw.topo.aria': '{count} 比特拓扑保真度图',
   'hw.topo.tooltip': 'Q{id} · T1 {t1} · T2 {t2} · 1Q {sq} · 读出 {ro}',
+  'hw.topo.couplerTooltip': '耦合器 Q{a}–Q{b} · CZ 门保真度 {cz}',
+  'hw.topo.couplerNotProvided': '耦合器 Q{a}–Q{b} · CZ 保真度：平台未提供',
   'hw.topo.legend.good': '优（2Q≥0.992 · 1Q≥0.999 · 读出≥0.98）',
   'hw.topo.legend.fair': '中',
   'hw.topo.legend.poor': '差（2Q<0.985 · 1Q<0.995 · 读出<0.95）',

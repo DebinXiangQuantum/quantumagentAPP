@@ -141,6 +141,8 @@ export const en: Record<string, string> = {
   'hw.detail.vram': 'VRAM',
   'hw.topo.aria': '{count}-qubit topology fidelity map',
   'hw.topo.tooltip': 'Q{id} · T1 {t1} · T2 {t2} · 1Q {sq} · readout {ro}',
+  'hw.topo.couplerTooltip': 'Coupler Q{a}-Q{b} · CZ gate fidelity {cz}',
+  'hw.topo.couplerNotProvided': 'Coupler Q{a}-Q{b} · CZ fidelity: not provided',
   'hw.topo.legend.good': 'Good (2Q≥0.992 · 1Q≥0.999 · readout≥0.98)',
   'hw.topo.legend.fair': 'Fair',
   'hw.topo.legend.poor': 'Poor (2Q<0.985 · 1Q<0.995 · readout<0.95)',

@@ -233,6 +233,9 @@ export interface Allocation {
 export interface QubitInfo {
   /** id = row*cols + col（grid 布局一一对应） */
   id: number;
+  /** 物理坐标（芯片布局列/行，v1.8：云端 qubit_coordinates 镜像；缺省走 grid 摆放） */
+  x?: number;
+  y?: number;
   /** 相干时间 T1（µs，> 0）；云端真机缺省 */
   t1_us?: number;
   /** 相干时间 T2（µs，> 0 且 ≤ 2*t1_us）；云端真机缺省 */

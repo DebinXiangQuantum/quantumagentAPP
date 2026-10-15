@@ -78,10 +78,8 @@ describe('HardwareTopology（v1.2 性能监控与 QPU 拓扑）', () => {
     expect(screen.queryAllByTestId(/^qpu-topo-coupler-/)).toHaveLength(0);
     expect(screen.queryAllByTestId(/^qpu-topo-readout-/)).toHaveLength(0);
     expect(screen.queryAllByTestId('qpu-topo-legend-item')).toHaveLength(0);
-    const title = screen.getByTestId('qpu-topo-qubit-0').querySelector('title');
-    expect(title?.textContent).toContain('平台未提供');
-    fireEvent.click(screen.getByTestId('drawer-close'));
-  });
+    // v1.8：title 元素已移除——悬停浮层承载（此处验云真机 Drawer 有画布即可）
+    expect(screen.getByTestId('qpu-topo-scroll')).toBeInTheDocument();});
 
   it('CPU 卡：CPU 使用率 + 内存双迷你条；GPU 卡：VRAM 迷你条（usageLevel 着色）', () => {
     render(<HardwareTopology nodes={TEST_HARDWARE_NODES} tasks={TEST_TASKS} history={{}} />);
