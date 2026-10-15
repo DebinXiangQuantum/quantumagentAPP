@@ -5,6 +5,41 @@ Validation（本切片测试结论）+ Known defects（已知缺陷，无则写�
 scope 与流程见 docs/DEVELOPMENT.md §2。
 
 
+## 2026-10-14 `backend: v1.7 计算节点真实执行 + 云端标定采集`
+
+### Added
+- **node worker**（`qap/compute/node_worker.py`）：运行于 CPU/GPU 节点机器的
+  轻量 HTTP 服务——/execute 收 Python 源码，节点自己的 Python 环境子进程
+  真实执行（临时工作目录、可选 pip 装包、限时强杀、stdout/stderr 截断、
+  RUSAGE 峰值 RSS、实测时长）；/health 心跳（节点名+Python 版本）。
+  **后端只分发不执行**（用户产品级要求：代码跑在计算节点机器上）。
+- **NodeWorkerClient**（worker_client.py）：异步分发客户端；不可达/非 200 →
+  WorkerUnreachable（步骤级错误）。
+- **CodeDispatchRunner**（code_runner.py）：调度器分层 runner——classical 步
+  携带 workload.code 时按"显式 node_id > 租约节点 > 首个可执行在线节点"
+  选机器分发；结果（exit/stdout/stderr/时长/RSS）写 step.workload.result
+  （query_task_results 可读回闭环）；exit!=0 → 步骤失败带 stderr；无 exec_url
+  节点 → 诚实报错指路。无 code 的步 → 委托既有 runner（语义不变）。
+- **config**：HardwareNodeConfig 增 exec_url（仅 cpu/gpu；http(s) 校验）；
+  registry 暴露 exec_endpoint/code_capable_ids。
+- **submit_task 工具文档**：classical 步新增 code/packages 参数说明（API 文档
+  级，非 agent 逻辑——agent 智能由 agent 团队负责）。
+- **云端标定采集（v1.7）**：adapter._normalize_backend 透传 properties
+  （qubit_metrics/coupler_metrics/last_update，实测 MQ02 有 24+23 条）；
+  registry 映射 readout=√(f0·f1)、sq=xeb_fidelity、t1/t2（t2 夹取 ≤2·t1）、
+  coupler tq=cz_fidelity——拓扑保真度视图由云端真实标定点亮。
+
+### Validation
+- `pytest` **522 passed**（+11：node worker 7 + code dispatch 4——真实子进程
+  执行/失败带 stderr/无端点诚实报错/无码步透传）。
+- **真实节点部署**（remote-sandbox）：A100 GPU 机（10.130.144.37:8301，
+  Python 3.12.3）与 HKVPS 公网 CPU 机（45.192.193.8:8301，3.11.2）各运行
+  worker，本机直连 /health 双双 200——计算节点=真实远程机器。
+
+### Known defects
+- SV2U4G 云安全组未放行 8301（需控制台操作）；HKVPS sklearn 安装进行中。
+
+
 
 ## 2026-10-14 `frontend: v1.6 去 mock 化——mock 引擎删除，测试改 fakeApi 注入（子代理中断后续作完成）`
 

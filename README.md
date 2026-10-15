@@ -214,7 +214,12 @@ pytest 500 passed。
 **v1.6（2026-10-14）**：去 mock 化（provider 仅 openai/anthropic；mock
 provider 退出 src，测试改 tests/scripted_provider 替身；config 假渠道已删）
 + QPU 真机强制（云模式 quantum 步必须携带线路，缺失即失败；simulated 仅
-初步验证）。pytest 511 passed。真实 E2E：H₂ 问题→GLM 自选 VQE+UCCSD→真机任务（模糊
+初步验证）。pytest 511 passed。
+
+**v1.7（2026-10-14）**：计算节点真实执行——node worker 部署于真实机器
+（A100 GPU 机 + HKVPS 公网 CPU 机，remote-sandbox 接入），classical 步携带
+code 即在节点机器上真实子进程执行（后端只分发）；云端标定采集点亮拓扑
+保真度/T1/T2（MQ02 实测 24 比特+23 耦合器全量标定）。pytest 522 passed。真实 E2E：H₂ 问题→GLM 自选 VQE+UCCSD→真机任务（模糊
 节点 bug 由真实测试暴露并修复）。
 
 **B1（v1.1 渠道池与配置覆盖层）**：

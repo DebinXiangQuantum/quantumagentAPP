@@ -31,6 +31,7 @@ from qap.hardware.allocator import Allocator
 from qap.hardware.registry import NodeRegistry, build_node_registry, make_cloud_adapter
 from qap.hardware.simulator import UtilizationSimulator
 from qap.orchestrator.cloud_runner import CloudStepRunner
+from qap.orchestrator.code_runner import CodeDispatchRunner
 from qap.orchestrator.scheduler import Scheduler
 from qap.tenancy.service import TenantService
 
@@ -206,11 +207,16 @@ def build_app_state(
         app_config.scheduler,
         allocator,
         events,
-        runner=CloudStepRunner(
-            adapter=cloud_adapter_resolved,
-            registry=nodes,
-            events=events,
-            artifact_emitter=emit_step_artifact,
+        # v1.7 分层 runner：classical code 步 → 计算节点 worker 分发；
+        # 其余（quantum 真机/无码负载）→ CloudStepRunner 既有语义
+        runner=CodeDispatchRunner(
+            nodes,
+            CloudStepRunner(
+                adapter=cloud_adapter_resolved,
+                registry=nodes,
+                events=events,
+                artifact_emitter=emit_step_artifact,
+            ),
         ),
         on_task_finished=on_task_finished,
     )

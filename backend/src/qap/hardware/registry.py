@@ -70,7 +70,11 @@ def build_cloud_nodes(backends: Sequence[dict[str, Any]]) -> list[HardwareNode]:
 
 
 def _cloud_qpu_metrics(raw: dict[str, Any]) -> dict[str, Any]:
-    """云端记录 → QPU metrics（cloud-observed 拓扑；fidelity 全 null）。"""
+    """云端记录 → QPU metrics（cloud-observed 拓扑 + v1.7 标定映射）。
+
+    properties.qubit_metrics/coupler_metrics 存在时映射保真度/T1/T2
+    （readout=√(f0·f1)、sq=xeb、tq=cz；缺项 null 诚实降级）。
+    """
     topology = raw.get("topology") or {}
     raw_coordinates = topology.get("qubit_coordinates") or {}
     # dict（实测形状：键=比特下标字符串 → [x,y]）与 list（兼容形状）统一
@@ -88,6 +92,21 @@ def _cloud_qpu_metrics(raw: dict[str, Any]) -> dict[str, Any]:
         items = list(enumerate(raw_coordinates))
     else:
         items = []
+    # v1.7 标定映射（cloud-observed）：qubit_metrics 按 id 索引——
+    # readout=√(measure_f0·measure_f1)（两方向读出几何平均，与迁移编译器
+    # 的质量定义一致）；单比特门=xeb_fidelity；t1/t2 原样（µs），t2 夹取
+    # ≤2·t1（物理上界，防御云端偶发坏点）；缺项 → None（诚实降级）
+    qubit_cal: dict[int, dict[str, Any]] = {}
+    for entry in (raw.get("properties") or {}).get("qubit_metrics") or []:
+        if isinstance(entry, dict) and isinstance(entry.get("id"), int):
+            qubit_cal[entry["id"]] = entry
+
+    def _finite_or_none(value: Any) -> float | None:
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return None
+        value = float(value)
+        return value if value == value and value not in (float("inf"), float("-inf")) else None
+
     qubits: list[dict[str, Any]] = []
     rows = cols = 1
     for qubit_id, coordinate in items:
@@ -99,16 +118,23 @@ def _cloud_qpu_metrics(raw: dict[str, Any]) -> dict[str, Any]:
             continue
         rows = max(rows, y + 1)
         cols = max(cols, x + 1)
+        cal = qubit_cal.get(qubit_id, {})
+        f0 = _finite_or_none(cal.get("measure_f0"))
+        f1 = _finite_or_none(cal.get("measure_f1"))
+        readout = (f0 * f1) ** 0.5 if f0 is not None and f1 is not None else None
+        t1 = _finite_or_none(cal.get("t1"))
+        t2 = _finite_or_none(cal.get("t2"))
+        if t1 is not None and t2 is not None:
+            t2 = min(t2, 2.0 * t1)  # 物理上界（t2 ≤ 2·t1）
         qubits.append(
             {
                 "id": qubit_id,
                 "x": x,
                 "y": y,
-                # 平台未提供保真度/相干时间 → null（诚实降级，绝不伪造）
-                "t1_us": None,
-                "t2_us": None,
-                "readout_fidelity": None,
-                "sq_fidelity": None,
+                "t1_us": t1,
+                "t2_us": t2,
+                "readout_fidelity": readout,
+                "sq_fidelity": _finite_or_none(cal.get("xeb_fidelity")),
             }
         )
     # 云端显式 rows/cols 优先（cloud-observed 事实；缺省退回坐标极值+1）
@@ -118,16 +144,31 @@ def _cloud_qpu_metrics(raw: dict[str, Any]) -> dict[str, Any]:
     if isinstance(explicit_cols, int) and explicit_cols >= 1:
         cols = explicit_cols
     couplers: list[dict[str, Any]] = []
-    # 实测（2026-10-14）：coupling_map 连接对是云端事实（照录）；
-    # 两比特门保真度云端未提供 → null（绝不编造数值）
+    # v1.7：coupler_metrics（[a,b]→cz_fidelity）映射两比特门保真度；
+    # 无标定数据的耦合对 → null（诚实降级，绝不编造数值）
+    coupler_cal: dict[tuple[int, int], float] = {}
+    for entry in (raw.get("properties") or {}).get("coupler_metrics") or []:
+        if not isinstance(entry, dict):
+            continue
+        pair = entry.get("qubits")
+        if isinstance(pair, (list, tuple)) and len(pair) == 2:
+            try:
+                key = (min(int(pair[0]), int(pair[1])), max(int(pair[0]), int(pair[1])))
+            except (TypeError, ValueError):
+                continue
+            fidelity = _finite_or_none(entry.get("cz_fidelity"))
+            if fidelity is not None:
+                coupler_cal[key] = fidelity
     for pair in topology.get("coupling_map") or []:
         if isinstance(pair, (list, tuple)) and len(pair) == 2:
             try:
-                couplers.append(
-                    {"a": int(pair[0]), "b": int(pair[1]), "tq_fidelity": None}
-                )
+                a, b = int(pair[0]), int(pair[1])
             except (TypeError, ValueError):
                 continue  # 畸形耦合对跳过
+            key = (min(a, b), max(a, b))
+            couplers.append(
+                {"a": a, "b": b, "tq_fidelity": coupler_cal.get(key)}
+            )
     return {
         "qubits_count": len(qubits),
         "source": "cloud-observed",
@@ -224,6 +265,9 @@ class NodeRegistry:
         self._nodes: dict[str, HardwareNode] = {}
         self._order: list[str] = []
         self._simulated_order: list[str] = []
+        #: v1.7 计算节点执行端点表（node_id → worker URL）——classical
+        #: code 步的分发目标；未登记的节点不支持代码执行
+        self._exec_endpoints: dict[str, str] = {}
         source = rng if rng is not None else random.Random()
         # 1) 云拉节点（cloud-observed，不参与模拟器漂移）
         for node in cloud_nodes or []:
@@ -242,6 +286,8 @@ class NodeRegistry:
                 metrics=build_initial_metrics(node_config, source),
             )
             self._insert(node, simulated=True)
+            if node_config.exec_url and node_config.kind in ("cpu", "gpu"):
+                self._exec_endpoints[node_config.id] = node_config.exec_url
 
     def _insert(self, node: HardwareNode, *, simulated: bool) -> None:
         """插入节点（重复 id 防御性拒绝），维护全局序与 simulated 子序。"""
@@ -268,6 +314,21 @@ class NodeRegistry:
     def snapshot(self) -> list[HardwareNode]:
         """全量节点深拷贝（API/事件/工具的统一出口，按注册顺序）。"""
         return [copy.deepcopy(self._nodes[node_id]) for node_id in self._order]
+
+    def exec_endpoint(self, node_id: str) -> str | None:
+        """节点执行端点（未配置/不存在 → None）。"""
+        return self._exec_endpoints.get(node_id)
+
+    def code_capable_ids(self) -> tuple[str, ...]:
+        """支持代码执行且在线的 cpu/gpu 节点（分发兜底候选，按注册序）。"""
+        return tuple(
+            node_id
+            for node_id in self._order
+            if node_id in self._exec_endpoints
+            and (n := self._nodes.get(node_id)) is not None
+            and n.kind in ("cpu", "gpu")
+            and n.status == "online"
+        )
 
     def all_ids(self) -> tuple[str, ...]:
         return tuple(self._order)

@@ -110,6 +110,19 @@ _SUBMIT_TASK_SPEC = {
                                     "type": "integer",
                                     "description": "采样数（缺省 1024）",
                                 },
+                                "code": {
+                                    "type": "string",
+                                    "description": (
+                                        "v1.7 classical 步 Python 源码——代码在"
+                                        "计算节点机器上真实执行（后端只分发）；"
+                                        "stdout/stderr/exit/实测时长经 "
+                                        "query_task_results 的 result 字段读回"
+                                    ),
+                                },
+                                "packages": {
+                                    "type": "array", "items": {"type": "string"},
+                                    "description": "节点环境预装包（pip，幂等）",
+                                },
                                 "node_id": {
                                     "type": "string",
                                     "description": (

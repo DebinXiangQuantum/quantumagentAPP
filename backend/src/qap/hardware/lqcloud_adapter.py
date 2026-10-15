@@ -352,6 +352,12 @@ def _normalize_backend(raw: Any) -> dict[str, Any]:
     topology = raw.get("topology")
     if not isinstance(topology, dict):
         topology = {}
+    # v1.7 标定采集（实测 2026-10-14）：properties 含 last_update 与
+    # qubit_metrics（measure_f0/f1、t1/t2/t2_star µs、xeb_fidelity）、
+    # coupler_metrics（cz_fidelity）——cloud-observed 原样透传给注册表映射
+    properties = raw.get("properties")
+    if not isinstance(properties, dict):
+        properties = {}
     return {
         "name": raw.get("name"),
         "chip_architecture": raw.get("chip_architecture"),
@@ -362,6 +368,11 @@ def _normalize_backend(raw: Any) -> dict[str, Any]:
             "cols": topology.get("cols"),
             "qubit_coordinates": topology.get("qubit_coordinates") or {},
             "coupling_map": topology.get("coupling_map") or [],
+        },
+        "properties": {
+            "last_update": properties.get("last_update"),
+            "qubit_metrics": properties.get("qubit_metrics") or [],
+            "coupler_metrics": properties.get("coupler_metrics") or [],
         },
     }
 

@@ -185,6 +185,20 @@ class HardwareNodeConfig(_StrictModel):
     vram_total_gb: float | None = Field(default=None, gt=0)
     cpu_cores: int | None = Field(default=None, ge=1)
     memory_total_gb: float | None = Field(default=None, gt=0)
+    #: v1.7 计算节点执行端点（仅 cpu/gpu）：classical 步携带 code 时代码
+    #: 分发到此节点机器上的 node worker（后端只分发不执行）。缺省 None——
+    #: 该节点不支持代码执行（classical code 步将诚实报错）。
+    exec_url: str | None = Field(default=None, min_length=8)
+
+    @field_validator("exec_url")
+    @classmethod
+    def _validate_exec_url(cls, value: str | None) -> str | None:
+        """exec_url 仅 cpu/gpu 可配；必须形如 http(s)://…（防拼写废端点）。"""
+        if value is None:
+            return value
+        if not (value.startswith("http://") or value.startswith("https://")):
+            raise ValueError("exec_url must start with http:// or https://")
+        return value.rstrip("/")
 
     @model_validator(mode="after")
     def _check_kind_key_alignment(self) -> "HardwareNodeConfig":
@@ -196,6 +210,8 @@ class HardwareNodeConfig(_StrictModel):
             mismatches.append(f"vram_total_gb is only allowed on kind='gpu' (got {kind!r})")
         if kind != "cpu" and (self.cpu_cores is not None or self.memory_total_gb is not None):
             mismatches.append(f"cpu_cores/memory_total_gb are only allowed on kind='cpu' (got {kind!r})")
+        if self.exec_url is not None and kind == "qpu":
+            mismatches.append("exec_url is only allowed on kind='cpu'/'gpu' (compute nodes)")
         if kind == "cpu" and (self.cpu_cores is None) != (self.memory_total_gb is None):
             mismatches.append("cpu metrics require both cpu_cores and memory_total_gb")
         if mismatches:
