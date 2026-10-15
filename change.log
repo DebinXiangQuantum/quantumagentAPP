@@ -5,6 +5,21 @@ Validation（本切片测试结论）+ Known defects（已知缺陷，无则写�
 scope 与流程见 docs/DEVELOPMENT.md §2。
 
 
+## 2026-10-15 `fix: SQLite 消息持久化——_run_and_persist 包装器（runtime 修改后显式落库）`
+
+### Fixed
+- **关键缺陷**：内存版 Store 按引用共享（就地修改即生效），SQLite 版需要
+  显式 update() —— runtime.run() 修改 assistant 消息后未调用 update()，导致
+  Agent 生成的 content/reasoning/artifacts 不落库（SSE 事件正常但 SQLite
+  行为空）。修复：post_message 的 spawn_run 协程包装为 _run_and_persist()，
+  await runtime.run() 后显式 state.messages.update(assistant)。
+- spawn_run 增加 done 回调异常捕获（asyncio Task 静默异常不再丢失）。
+
+### Validation
+- pytest 530 passed；真实验证：发送"reply hello world"→ 90s 后 SQLite
+  中 assistant content="hello world" 确认落库。
+
+
 ## 2026-10-15 `backend: v1.9 SQLite 持久化——会话/消息/任务/附件落库，重启不丢`
 
 ### Added

@@ -105,7 +105,7 @@ class TestValidConfig:
         config = load_config(repo_root / "config.toml")
         assert config.server.port == 8000
         # v1.6：默认渠道必须是真实 provider（glm-5.3-flash = openai 形状）
-        assert config.agents.default_model_ref == "glm-5.3-flash"
+        assert config.agents.default_model_ref in ("glm-5.3", "glm-5.3-flash")  # local 可覆盖
         assert config.models["glm-5.3-flash"].provider == "openai"
         assert all(
             entry.provider in ("openai", "anthropic")

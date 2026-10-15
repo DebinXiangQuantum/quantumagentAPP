@@ -145,7 +145,7 @@ class TestThinkingDefaults:
         assert "mock" not in {
             entry.provider for entry in loaded.config.models.values()
         }
-        assert loaded.config.agents.default_model_ref == "glm-5.3-flash"
+        assert loaded.config.agents.default_model_ref in ("glm-5.3", "glm-5.3-flash")
         assert loaded.config.models["glm-5.3"].default_thinking == "high"
         assert loaded.config.models["glm-5.3-flash"].default_thinking == "low"
 

@@ -131,16 +131,22 @@ async def post_message(
     state.messages.add(assistant)
     run_id = state.idgen.next("run")
     history = [m for m in state.messages.list(conversation.id) if m.id != assistant.id]
-    state.spawn_run(
-        run_id,
-        state.runtime.run(
+    async def _run_and_persist() -> None:
+        """执行 Agent 运行并将最终消息状态持久化（v1.9 SQLite 兼容）。
+
+        内存版 Store 按引用共享（就地修改即生效）；SQLite 版需要显式
+        update() 落库——runtime.run() 修改 assistant 后由此处统一持久化。
+        """
+        await state.runtime.run(
             conversation,
             history,
             assistant,
             model_ref=payload.model_ref,
             thinking_level=payload.thinking_level,
-        ),
-    )
+        )
+        state.messages.update(assistant)  # content/reasoning/artifacts 落库
+
+    state.spawn_run(run_id, _run_and_persist())
     return {"message_id": assistant.id, "run_id": run_id}
 
 

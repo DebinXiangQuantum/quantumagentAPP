@@ -123,10 +123,20 @@ class AppState:
 
 
 def _spawn(coroutine):
-    """create_task 的薄封装（集中 try 语义，避免散落）。"""
+    """create_task 的薄封装（done 回调捕获静默异常——调试 v1.9）。"""
     import asyncio
+    import traceback
 
-    return asyncio.get_running_loop().create_task(coroutine)
+    task = asyncio.get_running_loop().create_task(coroutine)
+
+    def _log_if_failed(t: asyncio.Task) -> None:
+        if not t.cancelled() and t.exception() is not None:
+            traceback.print_exception(
+                type(t.exception()), t.exception(), t.exception().__traceback__
+            )
+
+    task.add_done_callback(_log_if_failed)
+    return task
 
 
 def build_app_state(
