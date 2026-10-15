@@ -3,19 +3,19 @@
  *
  * 覆盖：
  *  1. ＋ → 文件选择 → 无活跃会话先自动建会话 → POST attachments →
- *     预览条出现（图片缩略图 / 文件卡名称+大小；附件 id 由 mock 动态分配，
+ *     预览条出现（图片缩略图 / 文件卡名称+大小；附件 id 由 fakeApi 动态分配，
  *     断言用文件名/大小定位，不写死 id）；
  *  2. × 移除单个附件；
  *  3. 随消息发送：onSend 收到 (text, attachments[])（ChatPanel 将其作为
  *     attachment_ids/attachments 传给 store.sendMessage）；
  *  4. 上传失败内联错误（不吞异常）。
  */
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MessageInput } from './MessageInput';
 import { useAppStore } from '../../store/appStore';
 import { useUiStore } from '../../store/uiStore';
-import { createMockClient } from '../../api/mock/engine';
+import { createFakeApi, type FakeApiClient } from '../../test/fakeApi';
 import { setApi } from '../../api';
 import { ApiError } from '../../api/client';
 import type { AttachmentMeta } from '../../types/domain';
@@ -25,13 +25,16 @@ function fileOf(name: string, mime: string, size = 2048): File {
 }
 
 describe('composer 附件全流程（v1.3）', () => {
-  let client: ReturnType<typeof createMockClient>;
+  let client: FakeApiClient;
 
   beforeEach(() => {
-    client = createMockClient();
+    client = createFakeApi();
     setApi(client);
     useUiStore.getState().resetForTest();
     useAppStore.getState().resetForTest();
+  });
+  afterEach(() => {
+    client.dispose();
   });
 
   it('＋ 选择文件：无会话先自动建会话 → 上传 → 预览条文件卡；随消息发送', async () => {
@@ -97,6 +100,5 @@ describe('composer 附件全流程（v1.3）', () => {
       expect(screen.getByTestId('composer-error')).toHaveTextContent('8MB');
     });
     expect(uploadSpy).toHaveBeenCalled();
-    client.dispose();
   });
 });

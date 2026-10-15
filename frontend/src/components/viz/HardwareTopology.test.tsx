@@ -13,18 +13,18 @@
 import { describe, expect, it } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { HardwareTopology } from './HardwareTopology';
-import { HARDWARE_NODES, TASKS } from '../../api/mock/fixtures';
+import { TEST_HARDWARE_NODES, TEST_TASKS } from '../../test/data';
 import { formatFidelity, medianTqFidelity } from '../../utils/hw';
 import type { QpuMetrics } from '../../types/domain';
 
-const qpu20 = HARDWARE_NODES.find((n) => n.id === 'qpu-quanta-20q')!;
+const qpu20 = TEST_HARDWARE_NODES.find((n) => n.id === 'qpu-quanta-20q')!;
 const qpuMedian = medianTqFidelity(
   (qpu20.metrics as QpuMetrics).topology.couplers,
 )!;
 
 describe('HardwareTopology（v1.2 性能监控与 QPU 拓扑）', () => {
   it('按 kind 分组渲染卡片（10 QPU + 3 GPU + 1 CPU = 14）', () => {
-    render(<HardwareTopology nodes={HARDWARE_NODES} tasks={TASKS} history={{}} />);
+    render(<HardwareTopology nodes={TEST_HARDWARE_NODES} tasks={TEST_TASKS} history={{}} />);
     expect(screen.getByTestId('hw-group-header-qpu').textContent).toContain('QPU');
     expect(screen.getByTestId('hw-group-header-gpu').textContent).toContain('GPU');
     expect(screen.getByTestId('hw-group-header-cpu').textContent).toContain('CPU');
@@ -32,14 +32,14 @@ describe('HardwareTopology（v1.2 性能监控与 QPU 拓扑）', () => {
   });
 
   it('QPU 分组头：`QPU · 在线 6/10`（离线计入总数）', () => {
-    render(<HardwareTopology nodes={HARDWARE_NODES} tasks={TASKS} history={{}} />);
+    render(<HardwareTopology nodes={TEST_HARDWARE_NODES} tasks={TEST_TASKS} history={{}} />);
     const header = screen.getByTestId('hw-group-header-qpu');
     expect(header.textContent).toContain('QPU');
     expect(header.textContent).toContain('在线 10/15'); // 6 模拟在线 + 4 云端在线
   });
 
   it('QPU 卡副行来源标注（v1.4）：simulated「模拟 · N 比特」；离线卡降饱和 + 离线徽标', () => {
-    render(<HardwareTopology nodes={HARDWARE_NODES} tasks={TASKS} history={{}} />);
+    render(<HardwareTopology nodes={TEST_HARDWARE_NODES} tasks={TEST_TASKS} history={{}} />);
     const card = screen.getByTestId('hw-card-qpu-quanta-20q');
     const subline = card.querySelector('.hw-card__qpu-subline');
     expect(subline).not.toBeNull();
@@ -51,7 +51,7 @@ describe('HardwareTopology（v1.2 性能监控与 QPU 拓扑）', () => {
   });
 
   it('云端真机卡：副行「云端 · N 比特 · <model>」；利用率无数据显示 "—"', () => {
-    render(<HardwareTopology nodes={HARDWARE_NODES} tasks={TASKS} history={{}} />);
+    render(<HardwareTopology nodes={TEST_HARDWARE_NODES} tasks={TEST_TASKS} history={{}} />);
     const card = screen.getByTestId('hw-card-lq-agate-100');
     const subline = card.querySelector('.hw-card__qpu-subline');
     expect(subline).not.toBeNull();
@@ -67,7 +67,7 @@ describe('HardwareTopology（v1.2 性能监控与 QPU 拓扑）', () => {
   });
 
   it('云端真机 Drawer：坐标点拓扑（无 coupler/读出标注/图例），tooltip 平台未提供', () => {
-    render(<HardwareTopology nodes={HARDWARE_NODES} tasks={TASKS} history={{}} />);
+    render(<HardwareTopology nodes={TEST_HARDWARE_NODES} tasks={TEST_TASKS} history={{}} />);
     fireEvent.click(screen.getByTestId('hw-card-lq-qz01-surface-code'));
     const drawer = screen.getByTestId('drawer');
     expect(drawer).toHaveTextContent('lq-qz01-surface-code');
@@ -84,7 +84,7 @@ describe('HardwareTopology（v1.2 性能监控与 QPU 拓扑）', () => {
   });
 
   it('CPU 卡：CPU 使用率 + 内存双迷你条；GPU 卡：VRAM 迷你条（usageLevel 着色）', () => {
-    render(<HardwareTopology nodes={HARDWARE_NODES} tasks={TASKS} history={{}} />);
+    render(<HardwareTopology nodes={TEST_HARDWARE_NODES} tasks={TEST_TASKS} history={{}} />);
     const cpu = screen.getByTestId('hw-card-cpu-node-0');
     expect(cpu.querySelectorAll('.hw-card__mini').length).toBe(2);
     expect(cpu.textContent).toContain('CPU');
@@ -102,7 +102,7 @@ describe('HardwareTopology（v1.2 性能监控与 QPU 拓扑）', () => {
   });
 
   it('型号/容量点/利用率/allocation 徽标（既有回归）', () => {
-    render(<HardwareTopology nodes={HARDWARE_NODES} tasks={TASKS} history={{}} />);
+    render(<HardwareTopology nodes={TEST_HARDWARE_NODES} tasks={TEST_TASKS} history={{}} />);
     expect(screen.getAllByText('NVIDIA A800 80GB').length).toBe(2);
     const card = screen.getByTestId('hw-card-gpu-a800-0');
     expect(card.querySelectorAll('.hw-card__dot--leased').length).toBe(1);
@@ -111,7 +111,7 @@ describe('HardwareTopology（v1.2 性能监控与 QPU 拓扑）', () => {
   });
 
   it('点击 QPU 卡 → Drawer 内嵌拓扑保真度图 + 摘要行', () => {
-    render(<HardwareTopology nodes={HARDWARE_NODES} tasks={TASKS} history={{}} />);
+    render(<HardwareTopology nodes={TEST_HARDWARE_NODES} tasks={TEST_TASKS} history={{}} />);
     fireEvent.click(screen.getByTestId('hw-card-qpu-quanta-20q'));
     const drawer = screen.getByTestId('drawer');
     expect(drawer).toHaveTextContent('qpu-quanta-20q');
@@ -126,7 +126,7 @@ describe('HardwareTopology（v1.2 性能监控与 QPU 拓扑）', () => {
   });
 
   it('点击 CPU 卡 → Drawer 含核数/内存数值；空数据渲染空态文案', () => {
-    render(<HardwareTopology nodes={HARDWARE_NODES} tasks={TASKS} history={{}} />);
+    render(<HardwareTopology nodes={TEST_HARDWARE_NODES} tasks={TEST_TASKS} history={{}} />);
     fireEvent.click(screen.getByTestId('hw-card-cpu-node-0'));
     const drawer = screen.getByTestId('drawer');
     expect(drawer).toHaveTextContent('核数');

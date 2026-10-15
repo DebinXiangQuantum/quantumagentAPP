@@ -21,13 +21,13 @@ import { useUiStore } from '../../store/uiStore';
 import { useAppStore } from '../../store/appStore';
 import { readFileSync } from 'node:fs';
 import { setApi } from '../../api';
-import { createMockClient, type MockClient } from '../../api/mock/engine';
+import { createFakeApi, type FakeApiClient } from '../../test/fakeApi';
 
 describe('SettingsPage 四分区', () => {
-  let client: MockClient;
+  let client: FakeApiClient;
 
   beforeEach(() => {
-    client = createMockClient();
+    client = createFakeApi();
     setApi(client);
     useUiStore.getState().resetForTest();
     useAppStore.getState().resetForTest();
@@ -73,7 +73,7 @@ describe('SettingsPage 四分区', () => {
 
   it('渠道：列表渲染（密钥√ + default_thinking 文案）；表单校验内联错误', async () => {
     render(<SettingsPage />);
-    // 列表来自 mock fixtures（三渠道）
+    // 列表来自 fakeApi 预置渠道（glm-5.3 / glm-5.3-flash）
     const row = await screen.findByTestId('channel-row-glm-5.3-flash');
     expect(row.textContent).toContain('glm-5.3-flash');
     expect(row.textContent).toContain('未设置密钥');
@@ -145,7 +145,7 @@ describe('SettingsPage 四分区', () => {
     act(() => {
       fireEvent.click(confirm);
     });
-    // mock：基底渠道 → 409，错误内联
+    // fakeApi：基底渠道 → 409，错误内联
     await waitFor(() => {
       expect(screen.getByRole('alert').textContent).toContain('基底渠道');
     });
@@ -228,10 +228,10 @@ describe('SettingsPage 四分区', () => {
 
 /** v1.2/v1.3：权限分流 + 插件卡状态徽标与信息补全 + 文字边界。 */
 describe('设置页权限与插件状态（v1.2/v1.3）', () => {
-  let roleClient: MockClient;
+  let roleClient: FakeApiClient;
 
   beforeEach(() => {
-    roleClient = createMockClient();
+    roleClient = createFakeApi();
     setApi(roleClient);
     useUiStore.getState().resetForTest();
     useAppStore.getState().resetForTest();

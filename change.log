@@ -5,6 +5,58 @@ Validation（本切片测试结论）+ Known defects（已知缺陷，无则写�
 scope 与流程见 docs/DEVELOPMENT.md §2。
 
 
+## 2026-10-14 `frontend: v1.6 去 mock 化——mock 引擎删除，测试改 fakeApi 注入（子代理中断后续作完成）`
+
+### Removed / Changed
+- `src/api/mock/`（engine/fixtures/scripts）整目录删除；`api/index.ts` 移除
+  VITE_USE_MOCK 分支（product 恒 RestClient 真实后端）；composer「演示」
+  徽标逻辑与用例删除（mock 渠道已不存在）；client.ts 头注释同步。
+- 测试替身 `src/test/fakeApi.ts`（可编程 ApiClient fake）+ `src/test/data.ts`
+  （原 fixtures 的测试数据搬迁）——store/组件/流行为测试全部改为注入驱动，
+  语义等价（自动建会话/agent.activity 归并/artifact.created 插卡/queue
+  演进/角色分流等）；mock 契约类用例随引擎删除。
+
+### Validation
+- `npm test` **229 passed**（31 文件）；`npm run build` 零错误；
+  `grep VITE_USE_MOCK|api/mock src/` 零命中（测试替身注释除外）。
+
+### Known defects
+- 子代理因用量上限中断；协调者续作（保留其 fakeApi/data.ts 与测试改写，
+  补删引擎/徽标/README 并全量回归）。
+
+
+## 2026-10-14 `frontend: W2 测试改注入——新增 fakeApi 测试替身，mock 引擎消费方测试重写`
+
+### Added
+- `frontend/src/test/fakeApi.ts`：可编程 ApiClient 测试替身（仅供测试注入
+  setApi）——预置数据 + 内存可变状态；sendMessage 可挂相对延时脚本
+  （FakeSendScript，fake timers 驱动）或 emitConversation/emitGlobal 手动
+  注入任意 SSE 事件；会话流 seq 单调（delta/reasoning/agent.activity 自动
+  补号）+ ?after= 重放；REST 404/409/422 语义（附件 8MB 上限、渠道
+  provider 仅 openai|anthropic、基底渠道 409、builtin 插件 409）；dispose
+  清理定时器。
+- `frontend/src/test/data.ts`：测试预置数据（原 mock fixtures 中仍有复用
+  价值的部分迁入：QPU 机群/lq 真机/GPU/CPU、任务（含嵌套子任务）、会话+
+  Markdown/线路/计数/波形历史、渠道池（无 mock 渠道）、插件注册表）。
+- `frontend/src/test/fakeApi.test.ts`：替身自身 16 条契约测试。
+
+### Changed
+- store/组件测试脱离 mock 引擎、改注入 fakeApi（行为断言等价保持）：
+  appStore.test（bootstrap/202 上屏/流式归并/task·hardware upsert 与
+  utilHistory cap/自动建会话三分支/agent.activity 聚合/artifact.created
+  插卡/queue_position 演进全链）、ReasoningBlock.test（思考先于正文）、
+  SettingsPage.test、MessageInput.test、MessageBubble.test、
+  ComposerAttachments.test、HardwareTopology.test（fixtures import 改
+  test/data）。
+
+### Validation
+- `npm test` 35 文件 **266 passed**（基线 250 + fakeApi 16；mock 引擎仍
+  在库，其专属契约用例随 W1 删除）。`npm run build` 零错误。
+
+### Known defects
+- 无（mock 引擎仍在库中待 W1 删除，不影响产品路径——getApi 默认真实后端）。
+
+
 ## 2026-10-14 `backend: 噪声自适应编译迁入（lqmap）+ query_task_results 闭环 + 规模诚实`
 
 ### Added

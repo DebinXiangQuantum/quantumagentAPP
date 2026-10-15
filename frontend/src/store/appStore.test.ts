@@ -1,6 +1,8 @@
 /**
- * appStore.test.ts —— 数据 store 的可观察行为测试（用 Mock 引擎驱动）。
+ * appStore.test.ts —— 数据 store 的可观察行为测试（注入 fakeApi 替身驱动）。
  *
+ * v1.6 去 mock 化：数据全部来自 src/test/fakeApi.ts 预置/脚本注入，
+ * 行为语义保持既有断言（202 上屏、流式归并、upsert、自动建会话三分支）。
  * 覆盖：
  *  1. bootstrap：agents/tenant/会话/硬件/任务全部落库，自动选中首个会话并
  *     挂载消息；连接灯 online；
@@ -12,24 +14,24 @@
  *     404 自动重建重试一次、非 404 失败 sendError/failedDraft + retrySend。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { useAppStore } from './appStore';
+import { useAppStore, UTIL_HISTORY_CAP } from './appStore';
 import { setApi } from '../api';
-import { createMockClient, type MockClient } from '../api/mock/engine';
+import { createFakeApi, type FakeApiClient } from '../test/fakeApi';
 import { ApiError } from '../api/client';
 import type { Artifact, AttachmentMeta, Conversation, Message } from '../types/domain';
 import type { ConversationStreamEvent } from '../types/events';
 
-describe('useAppStore（Mock 引擎驱动）', () => {
-  let client: MockClient;
+describe('useAppStore（fakeApi 驱动）', () => {
+  let api: FakeApiClient;
 
   beforeEach(() => {
     vi.useFakeTimers();
-    client = createMockClient();
-    setApi(client);
+    api = createFakeApi();
+    setApi(api);
     useAppStore.getState().resetForTest();
   });
   afterEach(() => {
-    client.dispose();
+    api.dispose();
     vi.useRealTimers();
   });
 
@@ -51,10 +53,10 @@ describe('useAppStore（Mock 引擎驱动）', () => {
   it('bootstrap 失败可重试（bootError + retryBootstrap）', async () => {
     let failed = true;
     const flaky = {
-      ...client,
+      ...api,
       async listAgents() {
         if (failed) throw new Error('backend down');
-        return client.listAgents();
+        return api.listAgents();
       },
     };
     setApi(flaky);
@@ -67,14 +69,56 @@ describe('useAppStore（Mock 引擎驱动）', () => {
   });
 
   it('sendMessage 全链路：用户消息上屏 → 流式累积 → completed 落库', async () => {
+    api.setSendScript(() => [
+      {
+        atMs: 100,
+        run: (c) =>
+          c.emitConversation({
+            event: 'message.reasoning',
+            data: { conversation_id: c.cid, message_id: c.assistantMessageId, delta: '思考…' },
+          } as never),
+      },
+      {
+        atMs: 150,
+        run: (c) =>
+          c.emitConversation({
+            event: 'message.delta',
+            data: { conversation_id: c.cid, message_id: c.assistantMessageId, delta: '正在合成' },
+          } as never),
+      },
+      {
+        atMs: 150,
+        run: (c) =>
+          c.emitConversation({
+            event: 'message.delta',
+            data: { conversation_id: c.cid, message_id: c.assistantMessageId, delta: '线路' },
+          } as never),
+      },
+      {
+        atMs: 600,
+        run: (c) =>
+          c.emitConversation({
+            event: 'message.completed',
+            data: {
+              conversation_id: c.cid,
+              message_id: c.assistantMessageId,
+              reasoning: '思考…',
+              artifacts: [
+                { id: 'a-1', type: 'circuit', title: 'Ansatz', payload: { qubits: 2, operations: [] } },
+                { id: 'a-2', type: 'counts', title: '计数', payload: { shots: 8, qubits: 1, counts: { '0': 4, '1': 4 } } },
+              ],
+            },
+          } as never),
+      },
+    ]);
     await useAppStore.getState().bootstrap();
     const cid = useAppStore.getState().activeConversationId!;
     const before = useAppStore.getState().messagesByCid[cid].length;
     const sendP = useAppStore.getState().sendMessage('请设计 VQE 线路');
-    await vi.advanceTimersByTimeAsync(600);
+    await vi.advanceTimersByTimeAsync(300);
     // 用户消息已即时上屏（202 语义：不等 SSE）
     expect(useAppStore.getState().messagesByCid[cid].length).toBe(before + 1);
-    // 流式累积中
+    // 流式累积中（思考先于正文到达，正文已有增量）
     const streaming = useAppStore.getState().streamingByCid[cid];
     expect(streaming).toBeDefined();
     expect((streaming?.text.length ?? 0)).toBeGreaterThan(0);
@@ -90,21 +134,35 @@ describe('useAppStore（Mock 引擎驱动）', () => {
     await sendP;
   });
 
-  it('task.updated upsert 新任务；hardware.updated 更新节点与利用率历史', async () => {
+  it('task.updated upsert 新任务；hardware.updated 更新节点与利用率历史（cap）', async () => {
     await useAppStore.getState().bootstrap();
-    const s1 = useAppStore.getState();
-    const hist0 = (s1.utilHistoryByNode['qpu-quanta-20q'] ?? []).length;
-    await vi.advanceTimersByTimeAsync(4_500);
-    const s2 = useAppStore.getState();
-    // 脚本提交的新任务（t-10x）经全局流 upsert
-    expect(s2.tasks.some((t) => t.status === 'running' || t.status === 'succeeded')).toBe(
-      true,
-    );
-    // 利用率历史随 tick 滚动（cap 30 = 60s / 2s）
-    expect(s2.utilHistoryByNode['qpu-quanta-20q'].length).toBeGreaterThan(hist0);
-    expect(
-      s2.utilHistoryByNode['qpu-quanta-20q'].length,
-    ).toBeLessThanOrEqual(30);
+    const nodes = useAppStore.getState().hardwareNodes;
+    // 未知任务经全局流 upsert（事件包络合成占位）
+    api.emitGlobal({
+      event: 'task.updated',
+      data: {
+        task_id: 't-900',
+        status: 'running',
+        steps: [{ id: 's-9', name: '新步骤', kind: 'quantum', status: 'running' } as never],
+      },
+    });
+    const withNew = useAppStore.getState().tasks;
+    expect(withNew.some((t) => t.id === 't-900' && t.status === 'running')).toBe(true);
+
+    // 利用率历史随 hardware.updated 滚动，窗口 cap = 30（60s / 2s）
+    const qpu = nodes.find((n) => n.id === 'qpu-quanta-20q')!;
+    for (let i = 0; i < UTIL_HISTORY_CAP + 10; i += 1) {
+      api.emitGlobal({
+        event: 'hardware.updated',
+        data: { nodes: [{ ...qpu, utilization: 0.2 + i * 0.001 }] },
+      });
+    }
+    const history = useAppStore.getState().utilHistoryByNode['qpu-quanta-20q'];
+    expect(history.length).toBe(UTIL_HISTORY_CAP);
+    // 滚动窗口：最早的样本被挤出，末尾为最新值
+    expect(history[history.length - 1]).toBeCloseTo(0.2 + (UTIL_HISTORY_CAP + 9) * 0.001, 5);
+    // 节点本身被事件数据替换
+    expect(useAppStore.getState().hardwareNodes.length).toBe(1);
   });
 });
 
@@ -117,12 +175,12 @@ describe('sendMessage 自动建会话（v1.2）', () => {
     tenant_id: 'demo',
     created_at: '2026-10-13T09:00:00Z',
   });
-  /** 构造可编程 API 桩：create/send 行为按用例注入。 */
+  /** 构造可编程 API 桩：create/send 行为按用例注入（基底为 fakeApi）。 */
   function stubApi(overrides: {
     create?: (req: { title?: string }) => Promise<Conversation>;
     send?: (cid: string, content: string) => Promise<{ message_id: string; run_id: string }>;
   }): void {
-    const base = createMockClient();
+    const base = createFakeApi();
     setApi({
       ...base,
       createConversation: overrides.create ?? base.createConversation.bind(base),
@@ -248,7 +306,7 @@ describe('sendMessage 自动建会话（v1.2）', () => {
 describe('sendMessage 附件参数（v1.3）', () => {
   it('attachment_ids 非空时进入 POST body；attachments 元数据随乐观用户消息上屏', async () => {
     const sendSpy = vi.fn(async () => ({ message_id: 'm-20', run_id: 'r-20' }));
-    const base = createMockClient();
+    const base = createFakeApi();
     setApi({
       ...base,
       sendMessage: sendSpy,
@@ -288,7 +346,7 @@ describe('v1.4 agent.activity / artifact.created 归并', () => {
   let emit: ((e: ConversationStreamEvent) => void) | null = null;
 
   beforeEach(() => {
-    const base = createMockClient();
+    const base = createFakeApi();
     setApi({
       ...base,
       // 可编程流：捕获 onEvent 供测试注入合成事件（不发真实脚本）
@@ -510,27 +568,95 @@ describe('v1.4 agent.activity / artifact.created 归并', () => {
   });
 });
 
-/** v1.4 mock 全链：发送消息 → agent.activity 聚合 + artifact.created 流式插卡 → completed 收束。 */
-describe('v1.4 Mock 引擎全链（专家工作区 + 流式插卡）', () => {
-  let engine: MockClient;
+/**
+ * v1.4 全链（fakeApi 脚本注入）：发送消息 → agent.activity 聚合 +
+ * artifact.created 流式插卡 → completed 收束（queue_position 演进经
+ * task.updated 由同一脚本发射，行为语义与引擎版等价）。
+ */
+describe('v1.4 全链（专家工作区 + 流式插卡 + queue_position）', () => {
+  let api: FakeApiClient;
 
   beforeEach(() => {
     vi.useFakeTimers();
-    engine = createMockClient();
-    setApi(engine);
+    api = createFakeApi();
+    api.setSendScript((ctx) => {
+      const delta = (d: string) => ({
+        event: 'message.delta',
+        data: { conversation_id: ctx.cid, message_id: ctx.assistantMessageId, delta: d },
+      } as never);
+      const activityEvt = (phase: string, extra: Record<string, unknown> = {}) => ({
+        event: 'agent.activity',
+        data: {
+          conversation_id: ctx.cid,
+          message_id: ctx.assistantMessageId,
+          agent_id: 'algorithm-designer',
+          phase,
+          ...extra,
+        },
+      } as never);
+      const artifactEvt = (artifact: Artifact) => ({
+        event: 'artifact.created',
+        data: { conversation_id: ctx.cid, message_id: ctx.assistantMessageId, artifact },
+      } as never);
+      const circuit: Artifact = {
+        id: 'a-1',
+        type: 'circuit',
+        title: 'Ansatz',
+        payload: { qubits: 2, operations: [] },
+      };
+      // 时间轴（atMs 为相对延时，累计绝对时刻见注释）：
+      // 50 started → 100 reasoning → 150 tool_call → 250 正文 delta →
+      // 300/350/400 queue_position 3→2→1 → 500 artifact.created →
+      // 600 运行帧(cloud_job_id) → 750 tool_call(emit_artifact) →
+      // 900 dispatch_completed → 1200 message.completed
+      return [
+        { atMs: 50, run: (c) => c.emitConversation(activityEvt('dispatch_started')) },
+        { atMs: 50, run: (c) => c.emitConversation(activityEvt('reasoning_delta', { delta: '分析…' })) },
+        { atMs: 50, run: (c) => c.emitConversation(activityEvt('tool_call', { tool: 'query_hardware' })) },
+        { atMs: 100, run: (c) => c.emitConversation(delta('正在合成线路')) },
+        // quantum 步排队演进：queue_position 3 → 2 → 1
+        { atMs: 50, run: (c) => c.emitGlobal({ event: 'task.updated', data: { task_id: 't-90', status: 'running', steps: [{ id: 's-q', name: '线路执行', kind: 'quantum', status: 'pending', queue_position: 3 } as never] } }) },
+        { atMs: 50, run: (c) => c.emitGlobal({ event: 'task.updated', data: { task_id: 't-90', status: 'running', steps: [{ id: 's-q', name: '线路执行', kind: 'quantum', status: 'pending', queue_position: 2 } as never] } }) },
+        { atMs: 50, run: (c) => c.emitGlobal({ event: 'task.updated', data: { task_id: 't-90', status: 'running', steps: [{ id: 's-q', name: '线路执行', kind: 'quantum', status: 'pending', queue_position: 1 } as never] } }) },
+        // artifact.created 即时插卡（骨架态）
+        { atMs: 100, run: (c) => c.emitConversation(artifactEvt(circuit)) },
+        // 运行期：cloud_job_id 就位、queue_position 清空
+        { atMs: 100, run: (c) => c.emitGlobal({ event: 'task.updated', data: { task_id: 't-90', status: 'running', steps: [{ id: 's-q', name: '线路执行', kind: 'quantum', status: 'running', cloud_job_id: 'job-1', circuit: { qubits: 2, operations: [] }, queue_position: null } as never] } }) },
+        { atMs: 150, run: (c) => c.emitConversation(activityEvt('tool_call', { tool: 'emit_artifact' })) },
+        { atMs: 150, run: (c) => c.emitConversation(activityEvt('dispatch_completed')) },
+        {
+          atMs: 300,
+          run: (c) =>
+            c.emitConversation({
+              event: 'message.completed',
+              data: {
+                conversation_id: c.cid,
+                message_id: c.assistantMessageId,
+                reasoning: '分析…',
+                artifacts: [
+                  circuit,
+                  { id: 'a-2', type: 'counts', title: '计数', payload: { shots: 8, qubits: 1, counts: { '0': 4, '1': 4 } } },
+                ],
+              },
+            } as never),
+        },
+      ];
+    });
+    setApi(api);
     useAppStore.getState().resetForTest();
   });
   afterEach(() => {
-    engine.dispose();
+    api.dispose();
     vi.useRealTimers();
   });
 
-  it('VQE 脚本驱动：工作区聚合 + 流式临时卡 + completed 全量收束', async () => {
+  it('脚本驱动：工作区聚合 + 流式临时卡 + queue_position 演进 + completed 收束', async () => {
     await useAppStore.getState().bootstrap();
     const cid = useAppStore.getState().activeConversationId!;
     void useAppStore.getState().sendMessage('请设计 VQE 线路');
-    // 工作区运行中（约 0.85s）：正文流式 + activity 聚合（phase 未收束）
-    await vi.advanceTimersByTimeAsync(850);
+
+    // 工作区运行中（0.45s）：正文流式 + activity 聚合（phase 未收束）+ 排队完成
+    await vi.advanceTimersByTimeAsync(450);
     let s = useAppStore.getState();
     let streaming = s.streamingByCid[cid];
     expect(streaming).toBeDefined();
@@ -540,14 +666,22 @@ describe('v1.4 Mock 引擎全链（专家工作区 + 流式插卡）', () => {
     expect(activities[0].agentId).toBe('algorithm-designer');
     expect(activities[0].phase).not.toBe('dispatch_completed');
     expect(activities[0].text.length).toBeGreaterThan(0);
-    expect(activities[0].tools.length).toBeGreaterThanOrEqual(1);
+    expect(activities[0].tools).toEqual(['query_hardware']);
+    // queue_position 3 → 2 → 1 已全部推送
+    const queued = s.tasks.find((t) => t.id === 't-90');
+    expect(queued?.steps[0]?.queue_position).toBe(1);
 
-    // artifact.created 到达（约 1.4s）：流式消息临时 artifacts 即时插卡（骨架态）
-    await vi.advanceTimersByTimeAsync(550);
+    // artifact.created 到达（0.65s）：流式消息临时 artifacts 即时插卡（骨架态）
+    await vi.advanceTimersByTimeAsync(200);
     s = useAppStore.getState();
     streaming = s.streamingByCid[cid];
     expect(streaming).toBeDefined();
     expect((streaming?.artifacts ?? []).map((a) => a.type)).toEqual(['circuit']);
+    // 运行帧：cloud_job_id 就位、排队清空
+    const running = useAppStore.getState().tasks.find((t) => t.id === 't-90');
+    expect(running?.steps[0]?.status).toBe('running');
+    expect(running?.steps[0]?.cloud_job_id).toBe('job-1');
+    expect(running?.steps[0]?.queue_position).toBeNull();
 
     // 尾段（快进）：completed 收束 + artifacts 落库 + 工作区折叠态数据保留
     await vi.advanceTimersByTimeAsync(2_000);

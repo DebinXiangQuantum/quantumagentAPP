@@ -16,7 +16,7 @@ import { MessageBubble } from './MessageBubble';
 import { ChatPanel } from './ChatPanel';
 import { useAppStore } from '../../store/appStore';
 import { setApi } from '../../api';
-import { createMockClient } from '../../api/mock/engine';
+import { createFakeApi, type FakeApiClient } from '../../test/fakeApi';
 import type { Message } from '../../types/domain';
 
 const REASONING =
@@ -80,12 +80,49 @@ describe('MessageBubble（思考块挂载）', () => {
   });
 });
 
-describe('store 归并（message.reasoning SSE，Mock 引擎驱动）', () => {
-  let client: ReturnType<typeof createMockClient>;
+describe('store 归并（message.reasoning SSE，fakeApi 脚本驱动）', () => {
+  let client: FakeApiClient;
 
   beforeEach(() => {
     vi.useFakeTimers();
-    client = createMockClient();
+    client = createFakeApi();
+    // 时间轴：100 思考增量 → 600 正文 delta → 1800 completed
+    // （契约 §7：reasoning 先于正文 delta 到达）
+    client.setSendScript(() => [
+      {
+        atMs: 100,
+        run: (c) =>
+          c.emitConversation({
+            event: 'message.reasoning',
+            data: {
+              conversation_id: c.cid,
+              message_id: c.assistantMessageId,
+              delta: '计划：dispatch_agent("algorithm-designer")，以 STO-3G 建模。',
+            },
+          } as never),
+      },
+      {
+        atMs: 500,
+        run: (c) =>
+          c.emitConversation({
+            event: 'message.delta',
+            data: { conversation_id: c.cid, message_id: c.assistantMessageId, delta: '正在合成 Ansatz' },
+          } as never),
+      },
+      {
+        atMs: 1200,
+        run: (c) =>
+          c.emitConversation({
+            event: 'message.completed',
+            data: {
+              conversation_id: c.cid,
+              message_id: c.assistantMessageId,
+              reasoning: '计划：dispatch_agent("algorithm-designer")，以 STO-3G 建模。',
+              artifacts: [],
+            },
+          } as never),
+      },
+    ]);
     setApi(client);
     useAppStore.getState().resetForTest();
   });

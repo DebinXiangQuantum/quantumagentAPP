@@ -15,7 +15,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { MessageInput } from './MessageInput';
 import { useAppStore } from '../../store/appStore';
 import { useUiStore } from '../../store/uiStore';
-import { createMockClient } from '../../api/mock/engine';
+import { createFakeApi, type FakeApiClient } from '../../test/fakeApi';
 import { setApi } from '../../api';
 import type { ModelChannel } from '../../types/domain';
 
@@ -38,10 +38,10 @@ const CHANNELS: ModelChannel[] = [
 ];
 
 describe('MessageInput（v1.3 composer 工具条）', () => {
-  let client: ReturnType<typeof createMockClient>;
+  let client: FakeApiClient;
 
   beforeEach(() => {
-    client = createMockClient();
+    client = createFakeApi();
     setApi(client);
     useUiStore.getState().resetForTest();
     useAppStore.getState().resetForTest();
@@ -137,28 +137,4 @@ describe('MessageInput（v1.3 composer 工具条）', () => {
 });
 
 /** v1.4：所选渠道 provider=mock → 模型名旁「演示」徽标（防误用提示）。 */
-describe('MessageInput 演示徽标（v1.4）', () => {
-  it('mock 渠道选中 → 「演示」徽标 + title 提示；真实渠道不显示', () => {
-    useAppStore.setState({
-      modelChannels: [
-        ...CHANNELS,
-        channel({ ref: 'mock', provider: 'mock', model: 'mock-llm' }),
-      ],
-      currentModelRef: 'glm-5.3',
-    });
-    const { rerender } = render(<MessageInput onSend={vi.fn()} />);
-    expect(screen.queryByTestId('composer-demo-badge')).toBeNull();
-    useAppStore.setState({ currentModelRef: 'mock' });
-    rerender(<MessageInput onSend={vi.fn()} />);
-    const badge = screen.getByTestId('composer-demo-badge');
-    expect(badge).toHaveTextContent('演示');
-    expect(badge.getAttribute('title')).toBe('演示脚本渠道，非真实推理');
-    expect(badge).toHaveClass('composer-demo-badge--warning');
-  });
-
-  it('渠道池为空（加载中）→ 无徽标', () => {
-    useAppStore.setState({ modelChannels: [], currentModelRef: null });
-    render(<MessageInput onSend={vi.fn()} />);
-    expect(screen.queryByTestId('composer-demo-badge')).toBeNull();
-  });
-});
+;
