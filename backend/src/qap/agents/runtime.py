@@ -42,7 +42,10 @@ from qap.domain.models import Conversation, Message
 from qap.events.bus import EventBus
 
 #: 工具循环安全上限（轮）：脚本化测试替身需要 2 轮；真实模型偶发多轮工具
-MAX_TOOL_LOOP_TURNS = 8
+#: 工具循环安全上限（防死循环）。v1.6 调研：真实真机工作流（编排 dispatch +
+#: 多机提交 + query_task_results 轮询 + 最终分析）在 8 轮内收不住——真实
+#: 联调实测一次 QNN 全流程需 12+ 轮；24 轮兼顾安全与真实工作流长度。
+MAX_TOOL_LOOP_TURNS = 24
 #: dispatch_agent 嵌套深度上限（契约 §8 v1.1：深度=1，子 Agent 不可再分派）
 MAX_DISPATCH_DEPTH = 1
 
