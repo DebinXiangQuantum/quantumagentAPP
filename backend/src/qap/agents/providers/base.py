@@ -50,7 +50,7 @@ class AttachmentPart:
     data_base64: str | None = None
 
     def summary(self) -> dict[str, str]:
-        """日志/mock 记录用的元数据摘要（无内容体）。"""
+        """日志/记录型 provider（测试替身）用的元数据摘要（无内容体）。"""
         return {"id": self.id, "name": self.name, "mime": self.mime, "kind": self.kind}
 
 
@@ -59,7 +59,7 @@ class CompletionRequest:
     """一次补全请求（provider 无关）。
 
     ``metadata`` 携带运行上下文（run_key / agent_id / conversation_id）：
-    mock provider 用 run_key 推进脚本游标，openai/anthropic 忽略之。
+    测试替身用 run_key 推进脚本游标，openai/anthropic 忽略之。
     ``thinking_level``（v1.1 §9）：归一化思考程度，由 Runtime 按优先级
     解析（消息级 > 渠道 default_thinking）；None 表示"未指定"——provider
     不发送任何思考参数（向后兼容，仅单元测试/子运行直达路径会出现）。
@@ -67,7 +67,7 @@ class CompletionRequest:
     消息 dict 可携带 ``"attachments": [AttachmentPart]``（v1.3）——
     Runtime 从带附件的 user 消息构造，provider 负责翻译为自家 wire
     format（openai：text 追加 / image_url data URL；anthropic：文本块 /
-    image block；mock 仅记录摘要）。
+    image block；记录型 provider 仅记录摘要）。
     """
 
     model: str

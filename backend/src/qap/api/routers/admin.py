@@ -140,23 +140,23 @@ async def put_model(
     tenant: TenantContext = Depends(require_admin),
     state: AppState = Depends(get_state),
 ) -> dict:
-    """更新或创建渠道：校验（非法 provider/thinking → 422）→ 写
-    config.local.toml → 运行时即时生效（providers 表原地替换）。"""
+    """更新或创建渠道：校验（非法 provider/thinking → 422；v1.6 无 mock
+    渠道）→ 写 config.local.toml → 运行时即时生效（providers 表原地替换）。"""
     try:
         entry = ModelConfig.model_validate(payload.model_dump())
-        # 与启动加载一致的引用完整性：非 mock 渠道需 base_url + 密钥来源
-        if entry.provider != "mock":
-            missing = [
-                name
-                for name, value in (
-                    ("base_url", entry.base_url),
-                    ("api_key_env or api_key_inline",
-                     entry.api_key_env or entry.api_key_inline),
-                )
-                if not value
-            ]
-            if missing:
-                raise ValueError(f"provider {entry.provider!r} requires {', '.join(missing)}")
+        # 与启动加载一致的引用完整性：一切渠道（v1.6 无 mock）需
+        # base_url + 密钥来源
+        missing = [
+            name
+            for name, value in (
+                ("base_url", entry.base_url),
+                ("api_key_env or api_key_inline",
+                 entry.api_key_env or entry.api_key_inline),
+            )
+            if not value
+        ]
+        if missing:
+            raise ValueError(f"provider {entry.provider!r} requires {', '.join(missing)}")
     except Exception as exc:
         from qap.core.errors import ValidationFailed
 

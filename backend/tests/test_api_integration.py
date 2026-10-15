@@ -7,7 +7,9 @@
 3. Scheduler 按容量分配：quantum → qpu-quanta-20q，classical → cpu-node-0，
    task.updated 逐步推送；
 4. hardware.updated 反映 allocation（前端可回答"哪个 Agent 在用哪块 GPU"）；
-5. 全程零真实 LLM 调用、零真实硬件依赖（mock provider + 模拟执行器）。
+5. 全程零真实 LLM 调用、零真实硬件依赖（v1.6：产品无 mock 渠道——
+   测试以 tests/scripted_provider.py 的 ScriptedTestProvider 替身驱动，
+   经 providers 表原地注入；硬件为 simulated 初步验证执行器）。
 
 另含鉴权/配额/跨租户/续传等负样本与可观察行为断言。
 """
@@ -36,17 +38,33 @@ from qap.core.config import (
     TenantConfig,
 )
 from qap.main import create_app
+from tests.scripted_provider import ScriptedTestProvider
 
 DEMO_HEADERS = {"Authorization": "Bearer demo-key"}
 OTHER_HEADERS = {"Authorization": "Bearer other-key"}
 
+#: 测试渠道的占位密钥环境变量名（绝不指向真实服务；值无需存在——
+#: provider 由 ScriptedTestProvider 原地替换，OpenAI 实例从不发起调用）
+TEST_KEY_ENV = "QAP_TEST_SCRIPTED_KEY"
+
 
 def make_test_config(*, max_messages_per_day: int = 1000) -> AppConfig:
-    """集成测试配置：mock provider、双租户、契约同构硬件节点。"""
+    """集成测试配置：真实 provider 形状的占位渠道、双租户、契约同构硬件。
+
+    v1.6 去 mock 化：models 配置必须是真实 provider（openai）形状——
+    base_url 指向不可路由的测试域，密钥读不存在的环境变量；运行时由
+    :class:`ClientBundle` 把 ``providers["default"]`` 原地替换为
+    ScriptedTestProvider（runtime 闭包共享同一 dict，替换即时生效）。
+    """
     return AppConfig(
         server=ServerConfig(host="127.0.0.1", port=8000, cors_origins=[]),
         models={
-            "default": ModelConfig(provider="mock", model="scripted-demo"),
+            "default": ModelConfig(
+                provider="openai",
+                model="scripted-demo",
+                base_url="http://test.invalid/v1",
+                api_key_env=TEST_KEY_ENV,
+            ),
         },
         agents=AgentsConfig(
             default_model_ref="default",
@@ -90,6 +108,9 @@ class ClientBundle:
     def __init__(self, config: AppConfig) -> None:
         self.app: FastAPI = create_app(config)
         self.state: AppState = self.app.state.qap
+        # v1.6 测试替身注入：占位 openai 渠道 → ScriptedTestProvider（剧本
+        # 驱动 §10 链路；runtime 闭包共享 providers dict，原地替换即时生效）
+        self.state.providers["default"] = ScriptedTestProvider()
         transport = httpx.ASGITransport(app=self.app)
         self.http = httpx.AsyncClient(transport=transport, base_url="http://testserver")
 

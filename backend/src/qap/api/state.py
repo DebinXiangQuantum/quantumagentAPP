@@ -219,7 +219,7 @@ def build_app_state(
         idgen, tenants, scheduler, tasks, nodes.snapshot, events=events
     )
 
-    # Provider 表：model_ref → provider 实例（mock 共享剧本游标，天然单例）。
+    # Provider 表：model_ref → provider 实例（真实渠道，密钥调用时读取）。
     # 存于 providers dict 并挂到 state：admin 渠道编辑（v1.1 §5）原地增删改。
     providers: dict[str, LLMProvider] = {
         ref: create_provider(entry) for ref, entry in app_config.models.items()
@@ -272,7 +272,7 @@ def build_app_state(
         else "high",
         attachment_resolver=attachment_parts,
         # v1.4：插件绑定 model_ref="default" 视为保留别名 → default_model_ref
-        # （否则内置专家字面命中 mock 渠道，dispatch 走演示剧本产出模板回复）
+        # （否则内置专家字面绑定过期渠道时 dispatch 走错渠道产出模板回复）
         model_ref_alias=lambda ref: app_config.agents.default_model_ref
         if ref == "default"
         else ref,

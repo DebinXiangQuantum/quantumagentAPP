@@ -41,7 +41,7 @@ from qap.core.errors import NotFoundError
 from qap.domain.models import Conversation, Message
 from qap.events.bus import EventBus
 
-#: 工具循环安全上限（轮）：剧本化 mock 需要 2 轮；真实模型偶发多轮工具
+#: 工具循环安全上限（轮）：脚本化测试替身需要 2 轮；真实模型偶发多轮工具
 MAX_TOOL_LOOP_TURNS = 8
 #: dispatch_agent 嵌套深度上限（契约 §8 v1.1：深度=1，子 Agent 不可再分派）
 MAX_DISPATCH_DEPTH = 1
@@ -76,8 +76,8 @@ class AgentRuntime:
         self._default_thinking_for = default_thinking_for or (lambda _ref: "high")
         self._attachment_resolver = attachment_resolver
         # v1.4 别名：插件绑定 model_ref == "default" → agents.default_model_ref
-        # （真实联调缺陷修复：内置插件字面指向 mock 渠道会让 dispatch 专家走
-        #  演示剧本产出模板回复；别名只作用于插件绑定，消息级覆盖保持字面）。
+        # （真实联调缺陷修复：内置插件字面指向演示渠道会让 dispatch 专家
+        #  产出模板回复；别名只作用于插件绑定，消息级覆盖保持字面）。
         self._model_ref_alias = model_ref_alias or (lambda ref: ref)
 
     # ---------- 入口 ----------

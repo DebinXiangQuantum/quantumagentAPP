@@ -97,7 +97,9 @@ def make_loaded_config(
     """以临时目录为配置根组装 LoadedConfig（本地覆盖层同目录）。"""
     config = AppConfig(
         server=ServerConfig(host="127.0.0.1", port=8000, cors_origins=[]),
-        models={"default": ModelConfig(provider="mock", model="scripted-demo")},
+        models={"default": ModelConfig(provider="openai", model="scripted-demo",
+                                            base_url="http://test.invalid/v1",
+                                            api_key_env="QAP_TEST_KEY")},
         agents=AgentsConfig(
             default_model_ref="default",
             plugins_dir=str(plugins_dir),
