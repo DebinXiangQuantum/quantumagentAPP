@@ -653,6 +653,9 @@ export const useAppStore = create<AppDataState>((set, get) => {
         const thinking = s.thinkingTouched
           ? s.currentThinkingLevel
           : parseThinkingLevel(channel.default_thinking);
+        // 粘性修复（用户走查反馈）：手动选模型同时持久化到 uiStore
+        // localStorage——刷新/bootstrap 不再重置回渠道列表首项
+        useUiStore.getState().setDefaultModelRef(ref);
         return { currentModelRef: ref, currentThinkingLevel: thinking };
       });
     },
