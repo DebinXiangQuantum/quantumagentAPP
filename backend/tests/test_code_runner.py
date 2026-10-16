@@ -169,3 +169,48 @@ def _fake_fallback():
     from qap.orchestrator.runners import simulate_step
 
     return simulate_step
+
+
+class TestClassicalGpuFallback:
+    """v1.7 修订：classical code 步在 cpu 无在线节点时回退 gpu 计算池
+    （A100/H100 均配 exec_url worker，用户指定仅用 GPU 节点跑代码）。"""
+
+    def _config_gpu_only(self) -> HardwareConfig:
+        return HardwareConfig(
+            provider="simulated",
+            simulated=True,
+            tick_seconds=60.0,
+            nodes=[
+                HardwareNodeConfig(
+                    id="gpu-only", kind="gpu", name="GPU", model="m",
+                    capacity=2, vram_total_gb=80.0,
+                    exec_url="http://gpu-node:8301",
+                ),
+            ],
+        )
+
+    async def test_classical_code_falls_back_to_gpu_pool(self) -> None:
+        registry = build_node_registry(self._config_gpu_only())
+        bus = EventBus()
+        scheduler = Scheduler(
+            SchedulerConfig(max_parallel_steps=2, step_timeout_seconds=60.0,
+                            retry_failed_steps=False),
+            Allocator(registry, bus), bus,
+            runner=CodeDispatchRunner(registry, _fake_fallback(),
+                                      client_factory=make_client_factory()),
+            poll_interval=0.01,
+        )
+        from qap.domain.models import Task
+
+        task = Task(
+            id="t-7", conversation_id="c-1", tenant_id="demo", name="GPU 兜底",
+            steps=build_steps([StepSpec(
+                name="code-on-gpu", kind="classical",
+                workload={"code": "print('gpu-exec')"},
+            )], IdGenerator()),
+            created_at="2026-10-15T00:00:00Z",
+        )
+        done = await scheduler.submit(task, agent_id="a")
+        step = done.steps[0]
+        assert step.status == "succeeded"
+        assert step.node_id == "gpu-only"  # 回退到 gpu 池真实执行

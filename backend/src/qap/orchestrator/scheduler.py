@@ -180,6 +180,15 @@ class Scheduler:
             if self._active_steps >= self._max_parallel:
                 break  # 全局并行满：本轮不再启动（下一轮再试）
             node_kind = STEP_KIND_TO_NODE_KIND[step.kind]
+            # v1.7 修订：classical 步的代码在 gpu/cpu 计算节点上都可执行
+            # （两者均配 exec_url worker）——cpu 无在线节点时回退 gpu 池
+            if (
+                node_kind == "cpu"
+                and step.workload.get("code")
+                and not self._allocator.has_online_node("cpu")
+                and self._allocator.has_online_node("gpu")
+            ):
+                node_kind = "gpu"
             if not self._allocator.has_online_node(node_kind):
                 step.status = "failed"
                 step.error = f"no online {node_kind!r} node for step {step.id!r}"

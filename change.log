@@ -5,6 +5,15 @@ Validation（本切片测试结论）+ Known defects（已知缺陷，无则写�
 scope 与流程见 docs/DEVELOPMENT.md §2。
 
 
+## 2026-10-15 `fix: classical code 步 GPU 池回退——用户指定仅用 A100/H100`
+
+### Fixed
+- classical code 步在 cpu 无在线节点时回退 gpu 计算池（A100/H100 均配
+  exec_url worker）——用户指定计算节点只用 GPU 机后，cpu 池空导致
+  "no online cpu node"（真实 E2E t-1~t-4 失败根因）。真实失败数据：
+  t-5 Bell 量子步 MQ02 成功（3202ms），证明量子链路完好、仅经典分发断。
+
+
 ## 2026-10-15 `fix: StepSpec code/packages 缺失（工具调用 422 根因）+ workload 序列化 + 调度器落库`
 
 ### Fixed（用户走查反馈的根因）
