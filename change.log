@@ -5,6 +5,29 @@ Validation（本切片测试结论）+ Known defects（已知缺陷，无则写�
 scope 与流程见 docs/DEVELOPMENT.md §2。
 
 
+## 2026-10-15 `E2E 真实双问题验证——A100 真实求解 MINLP + MNIST 混合量子分类（真机+GPU 节点）`
+
+### Added（真实执行证据，全部 cloud-observed / node-observed）
+- **任务 1（MIP→MINLP 化工厂 8 线×3 产品）**：GLM-5.3 自主建模 + 在
+  gpu-a100 计算节点真实执行 numpy+scipy SLSQP 求解器（10717ms 实测）——
+  最优利润 244.956 万元（开 7 号线，x=[5.118,5.076,3.187]，预算余 268 万、
+  碳排余 0.27t，附 top6 子集枚举）；真实失败遥测 2 条（A100 pip 网络受限，
+  GLM 自适应改用 numpy 手写求解成功）。
+- **任务 2（MNIST 类 digits 混合量子 10 分类）**：33 任务，18 成功——
+  gpu-h100 上 PCA/类中心（sklearn 真实执行）；3 个测试样本的 8 比特 RY
+  角度编码+CX 环线路在 MQ02 真机各 512+ shots（真实 256 维计数分布，
+  如 '11110010': 14 等）；TV 距离最近中心判定在 gpu-a100 执行。
+  GLM 诚实汇报：浅层编码下 10 分类区分度不足（判错），附边际分布数据——
+  真实科学结论而非编造成功。Agent 展现自主排障：A100 pip 失败→切换
+  H100→最小探针定位→自包含方案。
+- 本轮暴露并修复：StepSpec 缺 code/packages（422 根因）、GPU 池回退、
+  SQLite _run_and_persist、spawn 异常捕获（见上方切片）。
+
+### Known defects
+- GLM-5.3 对复杂多步推理较慢（单次 dispatch 10-30 分钟）且轮次上限内
+  部分收束；属模型侧特性，平台侧可调 MAX_TOOL_LOOP_TURNS/timeout。
+
+
 ## 2026-10-15 `fix: classical code 步 GPU 池回退——用户指定仅用 A100/H100`
 
 ### Fixed
