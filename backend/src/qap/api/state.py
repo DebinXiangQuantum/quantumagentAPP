@@ -235,6 +235,8 @@ def build_app_state(
         app_config.scheduler,
         allocator,
         events,
+        # v1.9 SQLite：状态迁移同步落库（内存态时 persister 为 None 不影响）
+        task_persister=(tasks.update if hasattr(tasks, "update") else None),
         # v1.7 分层 runner：classical code 步 → 计算节点 worker 分发；
         # 其余（quantum 真机/无码负载）→ CloudStepRunner 既有语义
         runner=CodeDispatchRunner(

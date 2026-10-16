@@ -116,10 +116,11 @@ class TestStepProfileFields:
         with pytest.raises(ValidationError):
             step.peak_memory_mb = 0.0  # 不变量：> 0 或 null
 
-    def test_workload_not_serialized(self) -> None:
-        """workload 是 runner 的执行参数，不进入 Step 序列化（契约纯净）。"""
+    def test_workload_serialized_for_code_persistence(self) -> None:
+        """v1.9 修订：workload 进入序列化——classical code 步的 code/packages
+        必须跨重启留存（否则重启后 pending 任务丢失执行数据）。"""
         step = Step(id="s-1", name="a", kind="quantum", workload={"qubits": 10})
-        assert "workload" not in step.model_dump()
+        assert step.model_dump()["workload"] == {"qubits": 10}
 
 
 # ---------- 真实计算负载（quantum/classical） ----------

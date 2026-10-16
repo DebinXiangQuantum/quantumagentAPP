@@ -50,6 +50,10 @@ class StepSpec(BaseModel):
     shots: int | None = Field(default=None, gt=0)
     #: v1.4 指定执行节点（运行时参数；接受 lq-<name> 注册表 id 或裸后端名）
     node_id: str | None = Field(default=None, min_length=1)
+    #: v1.7 classical 步 Python 源码——分发到计算节点机器真实执行
+    code: str | None = Field(default=None, min_length=1)
+    #: v1.7 节点环境预装包（pip，幂等）
+    packages: list[str] = Field(default_factory=list)
 
     @field_validator("circuit")
     @classmethod
@@ -140,6 +144,11 @@ def build_steps(specs: Sequence[StepSpec], idgen: IdGenerator) -> list[Step]:
             workload["shots"] = spec.shots
         if spec.node_id is not None:
             workload["node_id"] = spec.node_id
+        # v1.7 代码执行：classical 步携带 code 时分发到计算节点 worker
+        if spec.code is not None:
+            workload["code"] = spec.code
+        if spec.packages:
+            workload["packages"] = list(spec.packages)
         steps.append(
             Step(
                 id=step_id,

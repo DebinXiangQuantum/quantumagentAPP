@@ -146,7 +146,10 @@ class Step(BaseModel):
     circuit: dict[str, Any] | None = None
     cloud_job_id: str | None = None
     queue_position: int | None = Field(default=None, ge=0)
-    workload: dict[str, Any] = Field(default_factory=dict, exclude=True)
+    #: v1.9 修订：workload 序列化入库——classical code 步的 code/packages
+    #: 必须跨重启留存（否则重启后 pending 任务丢失执行数据）。v1.4 的
+    #: "不进入序列化"决定基于负载仅为小规模验证参数的前提，code 步打破该前提。
+    workload: dict[str, Any] = Field(default_factory=dict)
     detail: str = ""
     error: str | None = None
 

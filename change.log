@@ -5,6 +5,30 @@ Validation（本切片测试结论）+ Known defects（已知缺陷，无则写�
 scope 与流程见 docs/DEVELOPMENT.md §2。
 
 
+## 2026-10-15 `fix: StepSpec code/packages 缺失（工具调用 422 根因）+ workload 序列化 + 调度器落库`
+
+### Fixed（用户走查反馈的根因）
+- **StepSpec 缺 code/packages 字段**：submit_task 工具 schema 声明了
+  classical 步的 code/packages（v1.7），但 StepSpec Pydantic 模型
+  extra=forbid 拒绝——Agent 提交带代码的 classical 步全部 422 失败，
+  导致 tool_call 无成功展示、经典代码从未真实执行。修复：StepSpec 增
+  code/packages 字段，build_steps 落入 workload。
+- **Step.workload 序列化**：v1.4 决定（exclude）基于负载仅为验证参数的
+  前提；code 步打破前提——workload 进入序列化（跨重启留存执行数据）。
+- **调度器 task_persister**：每次状态迁移（_publish）同步落库 Task
+  （组装根注入 tasks.update；内存态 None 行为不变）。
+
+### Validation
+- pytest 530 passed（config 断言放宽适配 local overlay；workload 序列化
+  用例翻转为新契约；test_step_profile 误删块从 HEAD 恢复）。
+- 真实验证：发送"hello world"→ SQLite 落库确认（881bb41 修复 +
+  本切片 persister 共同构成完整持久化链）。
+
+### Known defects
+- test_step_profile 曾被误编辑截断（workflow 失误），已从 HEAD 恢复 +
+  最小 diff 重做，530 全绿确认无功能损失。
+
+
 ## 2026-10-15 `fix: SQLite 消息持久化——_run_and_persist 包装器（runtime 修改后显式落库）`
 
 ### Fixed

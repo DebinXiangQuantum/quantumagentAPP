@@ -15,22 +15,14 @@ import { ConversationListSkeleton } from '../common/Skeletons';
 import { useTranslate } from '../../i18n';
 
 /** 齿轮图标（16px，stroke 跟随文字色）。 */
+/** IBM Carbon "settings" 齿轮图标（16px，外齿圈 + 中孔，经典齿轮形状）。 */
 function GearIcon(): JSX.Element {
   return (
     <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
-      <circle
-        cx="8"
-        cy="8"
-        r="2.4"
-        fill="none"
-        strokeWidth="1.4"
-        className="svg-stroke-current"
-      />
       <path
-        d="M8 1.6v2M8 12.4v2M1.6 8h2M12.4 8h2M3.5 3.5l1.4 1.4M11.1 11.1l1.4 1.4M12.5 3.5l-1.4 1.4M4.9 11.1l-1.4 1.4"
-        fill="none"
-        strokeWidth="1.4"
-        className="svg-stroke-current"
+        d="M14.94 5.76l-1.32-.28a5.9 5.9 0 00-.46-1.11l.74-1.13-1.65-1.65-1.13.74c-.35-.19-.72-.34-1.11-.46L9.73.56h-2.33l-.28 1.31c-.4.12-.77.27-1.12.46l-1.13-.74L3.23 3.24l.74 1.13c-.2.35-.35.72-.47 1.11l-1.31.28v2.33l1.31.28c.12.4.27.77.47 1.12l-.74 1.13 1.65 1.65 1.13-.74c.35.2.72.35 1.11.47l.28 1.31h2.33l.28-1.31c.39-.12.76-.27 1.11-.47l1.13.75 1.65-1.65-.74-1.13c.19-.35.34-.72.46-1.11l1.31-.28V5.76zM7.94 10.5a2.5 2.5 0 110-5 2.5 2.5 0 010 5z"
+        fill="currentColor"
+        stroke="none"
       />
     </svg>
   );

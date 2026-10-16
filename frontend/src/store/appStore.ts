@@ -577,6 +577,15 @@ export const useAppStore = create<AppDataState>((set, get) => {
         // 用户消息用本地临时 id 上屏；刷新后以后端落库的真实消息为准。
         void ack;
         const localUserId = `local-user-${nextLocalSeq()}`;
+        // 会话标题自动生成（用户走查反馈）：自动建会话的标题可能因 seed
+        // 为空而缺失——首条真实消息发出后，把侧栏标题同步为消息摘要
+        set((s2) => ({
+          conversations: s2.conversations.map((c) =>
+            c.id === cid && (c.title.length === 0 || c.title === t('chat.autoTitle'))
+              ? { ...c, title: autoTitle(trimmed) }
+              : c,
+          ),
+        }));
         set((s2) => {
           const list = s2.messagesByCid[cid] ?? [];
           if (list.some((m) => m.id === localUserId)) return s2;

@@ -56,6 +56,7 @@ class Scheduler:
         *,
         runner: StepRunner = simulate_step,
         poll_interval: float = 0.05,
+        task_persister: Callable[[Task], None] | None = None,
         on_task_finished: Callable[[Task], None] | None = None,
     ) -> None:
         if poll_interval <= 0:
@@ -68,6 +69,9 @@ class Scheduler:
         self._runner = runner
         self._poll_interval = poll_interval
         self._on_task_finished = on_task_finished
+        #: v1.9 SQLite 持久化：每次 _publish（状态迁移全量帧）同步落库；
+        #: None = 内存态（测试 Rig），行为不变。
+        self._task_persister = task_persister
         self._agent_executor: AgentStepExecutor | None = None
         self._active_steps = 0  # 全局运行中步数（跨任务，≤ max_parallel_steps）
 
@@ -270,6 +274,8 @@ class Scheduler:
             },
             conversation_id=task.conversation_id,
         )
+        if self._task_persister is not None:
+            self._task_persister(task)
 
     # ---------- 查询（测试/监控） ----------
 
