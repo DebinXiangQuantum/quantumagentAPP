@@ -5,6 +5,13 @@ Validation（本切片测试结论）+ Known defects（已知缺陷，无则写�
 scope 与流程见 docs/DEVELOPMENT.md §2。
 
 
+## 2026-10-15 `backend: 前端静态同源托管（QAP_FRONTEND_DIR）——服务器部署支持`
+
+### Added
+- main.create_app：QAP_FRONTEND_DIR 环境变量指向前端构建产物（dist/）时，
+  挂载 StaticFiles(html=True)——前后端同源单端口部署，规避跨域。
+
+
 ## 2026-10-15 `E2E 真实双问题验证——A100 真实求解 MINLP + MNIST 混合量子分类（真机+GPU 节点）`
 
 ### Added（真实执行证据，全部 cloud-observed / node-observed）

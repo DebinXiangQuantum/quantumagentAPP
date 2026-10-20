@@ -11,7 +11,9 @@ CORS 白名单来自 config（前端 Vite dev server 5173 已在默认配置中�
 
 from __future__ import annotations
 
+import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -64,6 +66,17 @@ def create_app(
     )
     app.include_router(api_router)
     app.add_exception_handler(QapError, qap_error_handler)
+    # v1.9 部署：前端静态托管（同源——SPA 无客户端路由，直接 index.html
+    # 兜底即可；QAP_FRONTEND_DIR 环境变量指向构建产物 dist/ 时启用）。
+    frontend_dir = os.environ.get("QAP_FRONTEND_DIR")
+    if frontend_dir and Path(frontend_dir).is_dir():
+        from fastapi.staticfiles import StaticFiles
+
+        app.mount(
+            "/",
+            StaticFiles(directory=frontend_dir, html=True),
+            name="frontend",
+        )
     return app
 
 
