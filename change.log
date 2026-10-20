@@ -5,6 +5,23 @@ Validation（本切片测试结论）+ Known defects（已知缺陷，无则写�
 scope 与流程见 docs/DEVELOPMENT.md §2。
 
 
+## 2026-10-20 `deploy: YDYVPS 生产部署——systemd 持久服务 + 前端同源托管`
+
+### Added
+- YDYVPS（腾讯云 36.139.114.84，ecs-65700318）完整部署：
+  /opt/qap/{backend,frontend,secrets,data,logs}；SSH 密钥
+  id_reelfusion_deploy；systemd 服务 qap.service（Restart=always，
+  开机自启）；后端 127.0.0.1:8200 + 前端同源 StaticFiles 托管。
+- hardware 实拉验证：logicalcloud QPU 10 台（在线 6）从 YDYVPS 网络成功。
+- 隧道验证：本机 18200 → YDYVPS 8200，API/UI 200。
+
+### Known defects
+- 腾讯云安全组未放行 8200 公网（需控制台操作，本机 iptables 已加）；
+  当前经 SSH 隧道访问（ssh -L 18200:127.0.0.1:8200）。
+- A100/H100 计算节点（10.130.x 内网）从 YDYVPS 不可达——经典代码执行
+  在 YDYVPS 部署上暂不可用（可选：YDYVPS 本机跑 node worker 做 cpu 节点）。
+
+
 ## 2026-10-15 `backend: 前端静态同源托管（QAP_FRONTEND_DIR）——服务器部署支持`
 
 ### Added
