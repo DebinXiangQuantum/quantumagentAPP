@@ -61,6 +61,7 @@ DispatcherFn = Callable[[ToolContext, str, str], Awaitable[dict]]
 
 
 _EMIT_ARTIFACT_SPEC = {
+    # v1.11 提示模型：circuit 的 title 建议含算法名与层深（如 "QAOA p=2 线路"）
     "name": "emit_artifact",
     "description": "附加一个可视化产物（circuit/counts/waveform）到当前回复消息",
     "parameters": {

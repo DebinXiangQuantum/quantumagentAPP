@@ -14,7 +14,9 @@ PING_INTERVAL_SECONDS = 15.0
 
 def sse_frame(event: QapEvent) -> str:
     """一条事件的 SSE 帧：``id`` 行（续传游标）+ ``event`` + ``data``。"""
-    data = json.dumps(event.data, ensure_ascii=False)
+    # ensure_ascii=True：非 ASCII 全部转义为 \uXXXX，保证 data 行纯 ASCII
+    # 单行——避免多行/编码问题导致前端 JSON.parse 失败（stream.parse 修复）
+    data = json.dumps(event.data, ensure_ascii=True)
     return f"id: {event.seq}\nevent: {event.name}\ndata: {data}\n\n"
 
 

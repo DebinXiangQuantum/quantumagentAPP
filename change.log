@@ -5,6 +5,21 @@ Validation（本切片测试结论）+ Known defects（已知缺陷，无则写�
 scope 与流程见 docs/DEVELOPMENT.md §2。
 
 
+## 2026-10-20 `fix: 电路渲染同列错开 + SSE 编码安全 + 专家提示设计原理 + GPU 池回退`
+
+### Fixed（用户走查三连反馈）
+- **电路同列 CZ/RZZ 重叠**：同列多个 twodot 门加 x 偏移错开（±10px/门，
+  连接线从格点中心到偏移线标示比特对连接）——用户能分清每个 CZ 连接哪些比特。
+- **SSE stream.parse**：sse_frame 从 ensure_ascii=False 改为 True——非 ASCII
+  全部转义 \uXXXX，保证 data 行纯 ASCII 单行，消除前端 JSON.parse 失败。
+- **专家提示增强（v1.11）**：线路设计前必须文字说明算法选择理由、线路结构、
+  每个角度参数的物理含义（如 γ=0.165 对应边耦合强度）、末尾必须有 MEASURE。
+
+### Verified
+- 后端测量后不变量（v1.5）确认强制生效：测量后接门 → ValidationFailed。
+- pytest 531 passed / 前端 229 passed / build 零错误。
+
+
 ## 2026-10-20 `frontend: v1.10 子 Agent 完整线程视图——Codex 风格抽屉 + 工作区卡片增强`
 
 ### Added（用户核心反馈：subagent 必须有展示组件 + 点开看完整对话）

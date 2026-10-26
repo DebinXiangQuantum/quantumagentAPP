@@ -88,6 +88,18 @@ export function CircuitCanvas(props: { payload: unknown }): JSX.Element {
     wireEndX.set(q, lastIsMeasure && lastCol >= 0 ? colX(lastCol) + 14 : width - 8);
   }
 
+  // v1.11 同列 twodot 错开：同列第 i 个 twodot 偏移 (i - (count-1)/2) * 10 px
+  // 例：同列 3 个 RZZ → 偏移 -10, 0, +10（居中格点向两侧散开，不再重叠）
+  const twodotShiftOf = (op: CircuitOperation, col: number): number => {
+    const all = layout.placed.filter(
+      (p) => p.column === col && gateShape(p.op) === 'twodot',
+    );
+    const count = all.length;
+    if (count <= 1) return 0;
+    const idx = all.findIndex((p) => p.op.id === op.id);
+    return (idx - (count - 1) / 2) * 10;
+  };
+
   const renderGate = (op: CircuitOperation, col: number): JSX.Element => {
     const cx = colX(col);
     const shape = gateShape(op);
@@ -133,22 +145,41 @@ export function CircuitCanvas(props: { payload: unknown }): JSX.Element {
       const top = qY(allQ[0]);
       const bottom = qY(allQ[allQ.length - 1]);
       const isRzz = op.gate.trim().toUpperCase() === 'RZZ';
+      // v1.11 同列错开 + 连接线（从格点中心到偏移线，标示比特对连接）
+      const shift = twodotShiftOf(op, col);
+      const lx = cx + shift;
       return (
         <g key={testId} data-testid={testId} data-col={col} {...handlers} className="circuit-gate">
+          {shift !== 0 ? (
+            <>
+              {allQ.map((q) => (
+                <line
+                  key={`link-${q}`}
+                  x1={cx}
+                  y1={qY(q)}
+                  x2={lx}
+                  y2={qY(q)}
+                  strokeWidth="1"
+                  className="circuit-stroke-violet"
+                  opacity="0.5"
+                />
+              ))}
+            </>
+          ) : null}
           <line
-            x1={cx}
+            x1={lx}
             y1={top}
-            x2={cx}
+            x2={lx}
             y2={bottom}
             strokeWidth="1.6"
             className="circuit-stroke-violet"
           />
           {allQ.map((q) => (
-            <circle key={`d-${q}`} cx={cx} cy={qY(q)} r="4" className="circuit-fill-violet" />
+            <circle key={`d-${q}`} cx={lx} cy={qY(q)} r="4" className="circuit-fill-violet" />
           ))}
           {isRzz ? (
             <text
-              x={cx}
+              x={lx}
               y={(top + bottom) / 2 + 4}
               textAnchor="middle"
               className="circuit-gate-label mono"
