@@ -112,8 +112,18 @@ class TestTenantIsolation:
 
 
 class TestDuplicateRejection:
-    def test_duplicate_conversation(self, tmp_path):
+    def test_duplicate_conversation_idempotent_same_tenant(self, tmp_path):
+        """v1.11：同租户同 id 幂等返回（重启后 IdGenerator 重用 id 不再 500）。"""
         stores = make_stores(tmp_path)
         stores["conversations"].add(make_conversation())
+        stores["conversations"].add(make_conversation())  # 不应抛异常
+        # 确认只有一行
+        count = stores["conversations"].list_for_tenant("demo", limit=100)
+        assert len(count) == 1
+
+    def test_duplicate_conversation_cross_tenant_still_rejected(self, tmp_path):
+        """不同租户的同 id 仍拒绝（租户隔离不允许静默覆盖）。"""
+        stores = make_stores(tmp_path)
+        stores["conversations"].add(make_conversation(tenant="demo"))
         with pytest.raises(ValueError):
-            stores["conversations"].add(make_conversation())
+            stores["conversations"].add(make_conversation(tenant="other"))

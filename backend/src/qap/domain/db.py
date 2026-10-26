@@ -84,7 +84,7 @@ class SqliteConversationStore:
         self._conn.executescript(_SCHEMA)
 
     def add(self, conversation) -> None:
-        """插入会话（重复 id 由 PRIMARY KEY 约束拒绝 → ValueError 对齐内存版）。"""
+        """插入会话（幂等——同 id 同租户已存在则静默返回，v1.11 修复重启 500）。"""
         data = conversation.model_dump_json()
         with self._lock:
             try:
@@ -94,8 +94,16 @@ class SqliteConversationStore:
                      conversation.created_at, data),
                 )
                 self._conn.commit()
-            except sqlite3.IntegrityError as exc:
-                raise ValueError(f"duplicate conversation id {conversation.id!r}") from exc
+            except sqlite3.IntegrityError:
+                # v1.11: 重启后 IdGenerator 重新分配同 ID（c-1 等）撞上
+                # SQLite 已有行 → 幂等返回（同租户同 id 不再 500）
+                row = self._conn.execute(
+                    "SELECT tenant_id FROM conversations WHERE id=?",
+                    (conversation.id,),
+                ).fetchone()
+                if row is not None and row[0] == conversation.tenant_id:
+                    return
+                raise ValueError(f"duplicate conversation id {conversation.id!r}")
 
     def get(self, conversation_id: str, tenant_id: str):
         from qap.domain.models import Conversation
@@ -144,7 +152,7 @@ class SqliteMessageStore:
         return int(row[0])
 
     def add(self, message) -> None:
-        """追加消息（重复 id 由 PRIMARY KEY 拒绝 → 对齐内存版行为）。"""
+        """追加消息（幂等——同 id 已存在则返回，v1.11 修复重启 500）。"""
         seq = self._next_seq(message.conversation_id)
         with self._lock:
             try:
@@ -154,8 +162,13 @@ class SqliteMessageStore:
                      message.model_dump_json()),
                 )
                 self._conn.commit()
-            except sqlite3.IntegrityError as exc:
-                raise ValueError(f"duplicate message id {message.id!r}") from exc
+            except sqlite3.IntegrityError:
+                row = self._conn.execute(
+                    "SELECT 1 FROM messages WHERE id=?", (message.id,),
+                ).fetchone()
+                if row is not None:
+                    return
+                raise ValueError(f"duplicate message id {message.id!r}")
 
     def update(self, message) -> None:
         """就地更新消息（Agent 运行中填充 content/reasoning/artifacts）。"""
@@ -185,6 +198,7 @@ class SqliteTaskStore:
         self._conn.executescript(_SCHEMA)
 
     def add(self, task) -> None:
+        """插入任务（幂等——同 id 已存在则返回，v1.11 修复重启 500）。"""
         with self._lock:
             try:
                 self._conn.execute(
@@ -192,8 +206,13 @@ class SqliteTaskStore:
                     (task.id, task.tenant_id, task.model_dump_json()),
                 )
                 self._conn.commit()
-            except sqlite3.IntegrityError as exc:
-                raise ValueError(f"duplicate task id {task.id!r}") from exc
+            except sqlite3.IntegrityError:
+                row = self._conn.execute(
+                    "SELECT 1 FROM tasks WHERE id=?", (task.id,),
+                ).fetchone()
+                if row is not None:
+                    return
+                raise ValueError(f"duplicate task id {task.id!r}")
 
     def get(self, task_id: str, tenant_id: str):
         from qap.domain.models import Task

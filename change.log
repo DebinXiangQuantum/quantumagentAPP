@@ -5,6 +5,16 @@ Validation（本切片测试结论）+ Known defects（已知缺陷，无则写�
 scope 与流程见 docs/DEVELOPMENT.md §2。
 
 
+## 2026-10-26 `fix: SQLite 重启 500——add 方法幂等化（UNIQUE 冲突静默返回）`
+
+### Fixed（用户报告 500: POST /conversations/c-2/messages）
+- 根因：后端重启后 IdGenerator 从头计数（c-1 重新分配），SQLite 已有同 ID
+  行 → `sqlite3.IntegrityError: UNIQUE constraint failed: conversations.id`
+  → 未捕获 → 500。
+- 修复：conversations/messages/tasks 三个 Store 的 add() 改为幂等——INSERT
+  冲突时确认归属后**静默返回**（跨租户仍 ValueError 由路由层转 404/422）。
+
+
 ## 2026-10-20 `fix: 电路渲染同列错开 + SSE 编码安全 + 专家提示设计原理 + GPU 池回退`
 
 ### Fixed（用户走查三连反馈）
