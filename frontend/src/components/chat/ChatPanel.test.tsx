@@ -184,8 +184,10 @@ describe('ChatPanel 专家工作区（v1.4）', () => {
         {
           agentId: 'algorithm-designer',
           phase: 'dispatch_completed',
+          reasoning: '',
+          timeline: [],
           text: '已完成合成。',
-          tools: ['query_hardware', 'emit_artifact'],
+          toolCalls: [{ name: 'query_hardware', arguments: '{}' }, { name: 'emit_artifact', arguments: '{}' }],
         },
       ],
     });
@@ -193,7 +195,7 @@ describe('ChatPanel 专家工作区（v1.4）', () => {
     const ws = screen.getByTestId('subagent-workspace-algorithm-designer');
     expect(ws).toHaveTextContent('量子算法设计');
     expect(ws.getAttribute('aria-expanded')).toBe('false');
-    expect(ws).toHaveTextContent('专家已完成 · 输出 6 字 · 工具 2 次');
+    expect(ws).toHaveTextContent('已完成'); // v1.10 格式变更
   });
 
   it('流式消息：工作区运行中展开（含工具行），随流式气泡渲染', () => {
@@ -202,8 +204,10 @@ describe('ChatPanel 专家工作区（v1.4）', () => {
         {
           agentId: 'calibration',
           phase: 'text_delta',
+          reasoning: '',
+          timeline: [],
           text: '正在合成 DRAG 脉冲',
-          tools: ['query_hardware'],
+          toolCalls: [{ name: 'query_hardware', arguments: '{}' }],
         },
       ],
     });
@@ -216,7 +220,7 @@ describe('ChatPanel 专家工作区（v1.4）', () => {
     expect(ws.getAttribute('data-running')).toBe('true');
     expect(ws.getAttribute('aria-expanded')).toBe('true');
     expect(ws).toHaveTextContent('正在合成 DRAG 脉冲');
-    expect(screen.getAllByTestId(/^subagent-tool-/).length).toBe(1);
+    expect(screen.getAllByTestId(/^subagent-tool-line-/).length).toBe(1);
     // 未注册专家 → 回退原始 id
     expect(ws).toHaveTextContent('calibration');
   });

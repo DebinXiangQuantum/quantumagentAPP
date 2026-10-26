@@ -24,6 +24,8 @@ import { MessageInput } from './MessageInput';
 import { StreamingCursor } from './StreamingCursor';
 import { ReasoningBlock } from './ReasoningBlock';
 import { SubagentWorkspace } from './SubagentWorkspace';
+import { SubagentThreadDrawer } from './SubagentThreadDrawer';
+import type { SubagentActivity } from '../../store/appStore';
 import { MessageListSkeleton } from '../common/Skeletons';
 import { useTranslate } from '../../i18n';
 
@@ -67,6 +69,9 @@ export function ChatPanel(): JSX.Element {
   const conv = conversations.find((c) => c.id === activeCid) ?? null;
   const messages: Message[] = activeCid ? messagesByCid[activeCid] ?? [] : [];
   const streaming = activeCid ? streamingByCid[activeCid] : undefined;
+  // v1.10 子线程抽屉状态：当前打开的 SubagentActivity（null=关闭）
+  const [openThread, setOpenThread] = useState<SubagentActivity | null>(null);
+
   const messagesLoading =
     activeCid !== null && !loadedCids[activeCid] && !streaming;
 
@@ -159,6 +164,7 @@ export function ChatPanel(): JSX.Element {
                         key={activity?.agentId ?? 'unknown'}
                         activity={activity}
                         agentName={agentNameOf(activity?.agentId ?? '')}
+                        onOpenThread={() => setOpenThread(activity)}
                       />
                     ))}
                     <div className="message__text">
@@ -204,6 +210,12 @@ export function ChatPanel(): JSX.Element {
           }}
         />
       </div>
+          {/* v1.10 子 Agent 完整线程抽屉（点击工作区卡片打开） */}
+      <SubagentThreadDrawer
+        activity={openThread}
+        agentName={openThread ? agentNameOf(openThread.agentId) : ''}
+        onClose={() => setOpenThread(null)}
+      />
     </section>
   );
 }

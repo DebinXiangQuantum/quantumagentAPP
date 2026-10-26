@@ -42,6 +42,8 @@ function imageUrlsOf(attachments: Message['attachments']): Record<string, string
 export function MessageBubble(props: {
   message: Message;
   activities?: SubagentActivity[];
+  /** v1.10 打开子线程抽屉（由 ChatPanel 管理状态） */
+  onOpenThread?: (activity: SubagentActivity) => void;
   agentNameOf?: (agentId: string) => string;
   showAvatar?: boolean;
   separator?: boolean;
@@ -95,6 +97,7 @@ export function MessageBubble(props: {
                 <SubagentWorkspace
                   key={activity?.agentId ?? 'unknown'}
                   activity={activity}
+                  onOpenThread={props.onOpenThread ? () => props.onOpenThread!(activity) : undefined}
                   agentName={props.agentNameOf?.(activity?.agentId ?? '')}
                 />
               ))

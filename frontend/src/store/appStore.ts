@@ -75,13 +75,28 @@ interface StreamingMessage {
  * message_id → agentId 聚合；reasoning/text 增量追加进 text，tool_call
  * 依序记录工具名；dispatch_completed 收束 phase（保留全文供回看）。
  */
+/** v1.10：工具调用结构（与后端 agent.activity tool 字段对应） */
+export interface SubagentToolCall {
+  name: string;
+  arguments: string;
+}
+
+/**
+ * v1.10 子 Agent 活动完整视图（Codex 风格子线程）：
+ * - reasoning / text 分离存储（专家工作区渐进块与完整线程抽屉各自取用）
+ * - toolCalls 结构化（名称 + 完整参数——用户点开可查看完整执行细节）
+ */
 export interface SubagentActivity {
   agentId: string;
   phase: AgentActivityPhase;
-  /** reasoning/text 增量累计全文（专家工作区正文） */
+  /** 思考过程（reasoning_delta 累积；工作区只显摘要，抽屉全文） */
+  reasoning: string;
+  /** 专家回复正文（text_delta 累积） */
   text: string;
-  /** 已调用工具名（按调用顺序；畸形 tool 降级为占位空串） */
-  tools: string[];
+  /** 已调用工具（按调用序，含参数） */
+  toolCalls: SubagentToolCall[];
+  /** 事件时间线（每次 phase 变化记一条；渲染线程视图的骨架） */
+  timeline: Array<{ phase: AgentActivityPhase; at: string; summary?: string }>;
 }
 
 /** 发送失败的草稿（内联重试用；附件元数据一并保留以便重试渲染）。 */
@@ -192,24 +207,34 @@ export const useAppStore = create<AppDataState>((set, get) => {
     set((s) => {
       const list = s.subagentActivityByMessage[mid] ?? [];
       const idx = list.findIndex((a) => a.agentId === agentId);
-      const prev: SubagentActivity =
-        idx >= 0 ? list[idx] : { agentId, phase: 'dispatch_started', text: '', tools: [] };
+      const prev: SubagentActivity = idx >= 0
+        ? list[idx]
+        : { agentId, phase: 'dispatch_started', reasoning: '', text: '', toolCalls: [], timeline: [{ phase: 'dispatch_started', at: new Date().toISOString() }] };
       let next: SubagentActivity;
-      if (phase === 'reasoning_delta' || phase === 'text_delta') {
-        next = {
-          ...prev,
-          phase,
-          text: prev.text + (typeof delta === 'string' ? delta : ''),
-        };
+      const now = new Date().toISOString();
+      if (phase === 'reasoning_delta') {
+        next = { ...prev, phase, reasoning: prev.reasoning + (typeof delta === 'string' ? delta : '') };
+      } else if (phase === 'text_delta') {
+        next = { ...prev, phase, text: prev.text + (typeof delta === 'string' ? delta : '') };
       } else if (phase === 'tool_call') {
+        // v1.10：tool 是 {name, arguments} 对象（后端实际形状）；兼容字符串
+        const call: SubagentToolCall =
+          tool !== null && typeof tool === 'object'
+            ? {
+                name: typeof tool.name === 'string' ? tool.name : 'unknown',
+                arguments: typeof tool.arguments === 'string' ? tool.arguments : '',
+              }
+            : { name: typeof tool === 'string' ? tool : 'unknown', arguments: '' };
         next = {
           ...prev,
           phase,
-          tools: [...prev.tools, typeof tool === 'string' ? tool : ''],
+          toolCalls: [...prev.toolCalls, call],
+          timeline: [...prev.timeline, { phase, at: now, summary: call.name }],
         };
+      } else if (phase === 'dispatch_started' || phase === 'dispatch_completed') {
+        next = { ...prev, phase, timeline: [...prev.timeline, { phase, at: now }] };
       } else {
-        // dispatch_started / dispatch_completed：只迁移 phase（text/tools 保留）
-        next = { ...prev, phase };
+        next = prev;
       }
       return {
         subagentActivityByMessage: {

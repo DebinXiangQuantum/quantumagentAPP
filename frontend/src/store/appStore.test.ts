@@ -408,17 +408,17 @@ describe('v1.4 agent.activity / artifact.created 归并', () => {
     activity(4, 'text_delta', { delta: '正在合成线路' });
     let entry = useAppStore.getState().subagentActivityByMessage['m-a'];
     expect(entry).toHaveLength(1);
-    expect(entry![0]).toEqual({
-      agentId: 'algorithm-designer',
-      phase: 'text_delta',
-      text: '分析问题…选择 ansatz。正在合成线路',
-      tools: [],
-    });
+    const a = entry![0];
+    expect(a.agentId).toBe('algorithm-designer');
+    expect(a.phase).toBe('text_delta');
+    expect(a.text).toBe('正在合成线路');
+    expect(a.reasoning).toBe('分析问题…选择 ansatz。');
+    expect(a.toolCalls).toEqual([]);
     activity(5, 'dispatch_completed');
     entry = useAppStore.getState().subagentActivityByMessage['m-a'];
     expect(entry![0].phase).toBe('dispatch_completed');
     // 收束后 text/tools 保持（摘要行可回看）
-    expect(entry![0].text).toBe('分析问题…选择 ansatz。正在合成线路');
+    expect(entry![0].text).toBe('正在合成线路');
   });
 
   it('tool_call 追加工具名（多次调用按序保留）', () => {
@@ -427,7 +427,7 @@ describe('v1.4 agent.activity / artifact.created 归并', () => {
     activity(3, 'tool_call', { tool: 'emit_artifact' });
     activity(4, 'tool_call', { tool: 'query_hardware' });
     const entry = useAppStore.getState().subagentActivityByMessage['m-a']!;
-    expect(entry[0].tools).toEqual(['query_hardware', 'emit_artifact', 'query_hardware']);
+    expect(entry[0].toolCalls.map((c: { name: string }) => c.name)).toEqual(['query_hardware', 'emit_artifact', 'query_hardware']);
   });
 
   it('多个专家同消息并存（按 agentId 聚合互不串扰）', () => {
@@ -613,6 +613,7 @@ describe('v1.4 全链（专家工作区 + 流式插卡 + queue_position）', () 
         { atMs: 50, run: (c) => c.emitConversation(activityEvt('dispatch_started')) },
         { atMs: 50, run: (c) => c.emitConversation(activityEvt('reasoning_delta', { delta: '分析…' })) },
         { atMs: 50, run: (c) => c.emitConversation(activityEvt('tool_call', { tool: 'query_hardware' })) },
+        { atMs: 50, run: (c) => c.emitConversation(activityEvt('text_delta', { delta: '专家输出正文' })) },
         { atMs: 100, run: (c) => c.emitConversation(delta('正在合成线路')) },
         // quantum 步排队演进：queue_position 3 → 2 → 1
         { atMs: 50, run: (c) => c.emitGlobal({ event: 'task.updated', data: { task_id: 't-90', status: 'running', steps: [{ id: 's-q', name: '线路执行', kind: 'quantum', status: 'pending', queue_position: 3 } as never] } }) },
@@ -666,7 +667,7 @@ describe('v1.4 全链（专家工作区 + 流式插卡 + queue_position）', () 
     expect(activities[0].agentId).toBe('algorithm-designer');
     expect(activities[0].phase).not.toBe('dispatch_completed');
     expect(activities[0].text.length).toBeGreaterThan(0);
-    expect(activities[0].tools).toEqual(['query_hardware']);
+    expect(activities[0].toolCalls.map((c: { name: string }) => c.name)).toEqual(['query_hardware']);
     // queue_position 3 → 2 → 1 已全部推送
     const queued = s.tasks.find((t) => t.id === 't-90');
     expect(queued?.steps[0]?.queue_position).toBe(1);
@@ -693,6 +694,6 @@ describe('v1.4 全链（专家工作区 + 流式插卡 + queue_position）', () 
     expect(last.artifacts.map((a) => a.type).sort()).toEqual(['circuit', 'counts']);
     const done = s.subagentActivityByMessage[last.id] ?? [];
     expect(done[0]?.phase).toBe('dispatch_completed');
-    expect(done[0]?.tools).toContain('emit_artifact');
+    expect(done[0]?.toolCalls.map((c: { name: string }) => c.name)).toContain('emit_artifact');
   });
 });

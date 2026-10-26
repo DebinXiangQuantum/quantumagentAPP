@@ -5,6 +5,27 @@ Validation（本切片测试结论）+ Known defects（已知缺陷，无则写�
 scope 与流程见 docs/DEVELOPMENT.md §2。
 
 
+## 2026-10-20 `frontend: v1.10 子 Agent 完整线程视图——Codex 风格抽屉 + 工作区卡片增强`
+
+### Added（用户核心反馈：subagent 必须有展示组件 + 点开看完整对话）
+- **SubagentThreadDrawer**：右侧滑入抽屉，完整呈现子 Agent 执行轨迹——
+  思考过程全文（可折叠）、正文输出全文、每次工具调用（名称+完整参数
+  JSON 可展开）、时间线（dispatch_started→…→dispatch_completed）。
+  概要头部显示状态徽标 + 统计（思考N字·输出N字·工具N次）。
+- **SubagentWorkspace 重写**：卡片更醒目（🔧图标+专家名+运行/完成徽标
+  + 统计徽标 N字·N次工具）；流式期间实时正文+工具行+光标；完成后折叠
+  为摘要行；**点击卡片/「查看完整运行对话」按钮**打开 ThreadDrawer。
+- **SubagentActivity 重构**：reasoning/text 分离存储；toolCalls 结构化
+  （{name, arguments} 含完整参数）；timeline 事件骨架（phase+时间戳）。
+  AgentActivityData.tool 类型修正为对象（后端实际形状 {name, arguments}）。
+- ChatPanel 管理 openThread 状态（Drawer 开关）；MessageBubble 传递
+  onOpenThread 回调；三语 i18n 14 键。
+
+### Validation
+- 229 passed / build 零错误。全部旧 fixtures 更新为新形状
+  （reasoning/text/toolCalls/timeline），full-chain 测试补 text_delta 事件。
+
+
 ## 2026-10-20 `deploy: YDYVPS 公网访问打通（0.0.0.0:8070）+ 本机剩余节点（A100/H100）标注`
 
 ### Fixed

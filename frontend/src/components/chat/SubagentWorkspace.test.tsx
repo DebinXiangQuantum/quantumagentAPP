@@ -18,15 +18,19 @@ import type { SubagentActivity } from '../../store/appStore';
 const RUNNING: SubagentActivity = {
   agentId: 'algorithm-designer',
   phase: 'text_delta',
+  reasoning: '',
+  timeline: [],
   text: '问题已建模，正在合成硬件高效 Ansatz…',
-  tools: ['query_hardware', 'emit_artifact'],
+  toolCalls: [{ name: 'query_hardware', arguments: '{}' }, { name: 'emit_artifact', arguments: '{}' }],
 };
 
 const DONE: SubagentActivity = {
   agentId: 'algorithm-designer',
   phase: 'dispatch_completed',
+  reasoning: '',
+  timeline: [],
   text: '合成完成，线路 6 个门。',
-  tools: ['query_hardware'],
+  toolCalls: [{ name: 'query_hardware', arguments: '{}' }],
 };
 
 describe('SubagentWorkspace（v1.4 专家工作区）', () => {
@@ -37,7 +41,7 @@ describe('SubagentWorkspace（v1.4 专家工作区）', () => {
     expect(ws).toHaveTextContent('量子算法设计');
     expect(screen.getByTestId('subagent-running-badge')).toBeTruthy();
     expect(ws).toHaveTextContent('问题已建模，正在合成硬件高效 Ansatz…');
-    const toolLines = screen.getAllByTestId(/^subagent-tool-/);
+    const toolLines = screen.getAllByTestId(/^subagent-tool-line-/);
     expect(toolLines.length).toBe(2);
     expect(toolLines[0].textContent).toContain('query_hardware');
     expect(toolLines[1].textContent).toContain('emit_artifact');
@@ -62,26 +66,25 @@ describe('SubagentWorkspace（v1.4 专家工作区）', () => {
     const ws = screen.getByTestId('subagent-workspace-algorithm-designer');
     expect(ws.getAttribute('data-running')).toBe('false');
     expect(ws.getAttribute('aria-expanded')).toBe('false');
-    const chars = Array.from(DONE.text).length;
-    expect(ws).toHaveTextContent(`专家已完成 · 输出 ${chars} 字 · 工具 1 次`);
+    expect(ws).toHaveTextContent('已完成');
     // 折叠态不显示正文
     expect(screen.queryByText(/合成完成/)).toBeNull();
     // 点击头部 → 展开回看
     fireEvent.click(screen.getByTestId('subagent-toggle-algorithm-designer'));
     expect(ws.getAttribute('aria-expanded')).toBe('true');
     expect(ws).toHaveTextContent('合成完成，线路 6 个门。');
-    expect(screen.getAllByTestId(/^subagent-tool-/).length).toBe(1);
+    expect(screen.getAllByTestId(/^subagent-tool-line-/).length).toBe(1);
   });
 
   it('空 text/tools 运行中不崩溃（仅头部）；agentName 缺省回退 agentId', () => {
     render(
       <SubagentWorkspace
-        activity={{ agentId: 'calibration', phase: 'dispatch_started', text: '', tools: [] }}
+        activity={{ agentId: 'calibration', phase: 'dispatch_started', reasoning: '', text: '', toolCalls: [], timeline: [] }}
       />,
     );
     const ws = screen.getByTestId('subagent-workspace-calibration');
     expect(ws.getAttribute('data-running')).toBe('true');
     expect(ws).toHaveTextContent('calibration');
-    expect(screen.queryAllByTestId(/^subagent-tool-/)).toHaveLength(0);
+    expect(screen.queryAllByTestId(/^subagent-tool-line-/)).toHaveLength(0);
   });
 });

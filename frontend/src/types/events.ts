@@ -57,13 +57,18 @@ export type AgentActivityPhase =
  * §7 v1.4 agent.activity —— 子 Agent 运行事件（专家工作区渐进块驱动源）。
  * delta 仅 reasoning_delta/text_phase 携带；tool 仅 tool_call 携带。
  */
+export interface AgentActivityToolCall {
+  name: string;
+  arguments?: string;
+}
 export interface AgentActivityData {
   conversation_id: string;
   message_id: string;
   agent_id: string;
   phase: AgentActivityPhase;
   delta?: string;
-  tool?: string;
+  /** 后端实际形状：{name, arguments}；兼容字符串（旧数据/畸形） */
+  tool?: AgentActivityToolCall | string;
   seq: number;
 }
 
