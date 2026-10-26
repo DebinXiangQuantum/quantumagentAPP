@@ -5,6 +5,20 @@ Validation（本切片测试结论）+ Known defects（已知缺陷，无则写�
 scope 与流程见 docs/DEVELOPMENT.md §2。
 
 
+## 2026-10-20 `deploy: YDYVPS 公网访问打通（0.0.0.0:8070）+ 本机剩余节点（A100/H100）标注`
+
+### Fixed
+- 服务监听从 127.0.0.1 改为 0.0.0.0:8070（此前仅回环，公网不可达）。
+- 公网验证通过：API health 200 / 前端 UI 200 / hardware 返回 QPU 10 台
+  （在线 6）+ 计算节点。
+
+### Changed
+- 本机 config.local.toml 保持 A100/H100 双 GPU 计算节点（10.130 内网）；
+  YDYVPS 部署的 /opt/qap/config.local.toml 无手写节点（QPU 全部实拉），
+  classical code 步在 YDYVPS 部署上暂不可用（A100/H100 10.130 内网从
+  腾讯云不可达）——后续可在 YDYVPS 本机跑 node worker 做 cpu 节点补齐。
+
+
 ## 2026-10-20 `deploy: YDYVPS 生产部署——systemd 持久服务 + 前端同源托管`
 
 ### Added
