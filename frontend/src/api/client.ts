@@ -415,7 +415,8 @@ class ConversationStream extends ReconnectingStream {
   ) {
     super(
       (seq) => buildStreamUrl(base, cid, seq, apiKey),
-      ['message.delta', 'message.reasoning', 'message.completed', 'error'],
+      ['message.delta', 'message.reasoning', 'message.completed',
+       'agent.activity', 'artifact.created', 'task.updated', 'error'],
       cb as StreamCallbacks<never>,
       after,
     );
